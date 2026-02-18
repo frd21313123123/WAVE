@@ -70,8 +70,8 @@ const SIDEBAR_MIN_WIDTH = 260;
 const SIDEBAR_MAIN_MIN_WIDTH = 420;
 const SIDEBAR_HANDLE_WIDTH = 10;
 const SIDEBAR_MAX_WIDTH = 560;
-const CALL_RINGTONE_VIDEO_ID = "tGLg27Qj_pM";
-const CALL_RINGTONE_URL = `https://www.youtube.com/embed/${CALL_RINGTONE_VIDEO_ID}?autoplay=1&controls=0&disablekb=1&loop=1&modestbranding=1&playsinline=1&rel=0&playlist=${CALL_RINGTONE_VIDEO_ID}`;
+const CALL_RINGTONE_SRC = "/sound-call.mp3";
+const MESSAGE_SOUND_SRC = "/sound-message.mp3";
 const ALLOWED_TRANSLATION_LANGS = new Set([
   "off",
   "en",
@@ -257,7 +257,7 @@ function clearPendingIncomingCall() {
 }
 
 function showIncomingCallUi(callerName) {
-  incomingCallText.textContent = `Входящий звонок от ${callerName}`;
+  incomingCallText.textContent = callerName;
   incomingCallPanel.classList.remove("hidden");
   setIncomingCallActionInFlight(false);
 }
@@ -267,22 +267,17 @@ function startCallRingtone() {
     return;
   }
 
-  const iframe = document.createElement("iframe");
-  iframe.className = "hidden-media call-ringtone-frame";
-  iframe.title = "Call ringtone";
-  iframe.tabIndex = -1;
-  iframe.allow = "autoplay";
-  iframe.setAttribute("aria-hidden", "true");
-  iframe.src = CALL_RINGTONE_URL;
-  document.body.appendChild(iframe);
-  state.call.ringtoneFrame = iframe;
+  const audio = new Audio(CALL_RINGTONE_SRC);
+  audio.loop = true;
+  audio.play().catch(() => {});
+  state.call.ringtoneFrame = audio;
 }
 
 function stopCallRingtone() {
   if (!state.call.ringtoneFrame) {
     return;
   }
-  state.call.ringtoneFrame.remove();
+  state.call.ringtoneFrame.pause();
   state.call.ringtoneFrame = null;
 }
 
@@ -1048,33 +1043,8 @@ function updateParticipantPresence(userId, online) {
 
 function playIncomingMessageSound() {
   try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) {
-      return;
-    }
-
-    if (!state.incomingSoundContext) {
-      state.incomingSoundContext = new AudioCtx();
-    }
-
-    const context = state.incomingSoundContext;
-    if (context.state === "suspended") {
-      context.resume().catch(() => {});
-    }
-
-    const now = context.currentTime;
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(900, now);
-    oscillator.frequency.exponentialRampToValueAtTime(650, now + 0.14);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.08, now + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.17);
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 0.18);
+    const audio = new Audio(MESSAGE_SOUND_SRC);
+    audio.play().catch(() => {});
   } catch {
   }
 }

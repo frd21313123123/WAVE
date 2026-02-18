@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(copy \"C:\\\\Users\\\\jaifl\\\\Downloads\\\\skype-sound-message-received-message-received.mp3\" \"D:\\\\python-w1\\\\WAVE\\\\public\\\\sound-message.mp3\")",
+      "Bash(copy \"C:\\\\Users\\\\jaifl\\\\Downloads\\\\skype-sound-of-an-incoming-call-incoming-call.mp3\" \"D:\\\\python-w1\\\\WAVE\\\\public\\\\sound-call.mp3\")",
+      "Bash(ls:*)"
+    ]
+  }
+}
