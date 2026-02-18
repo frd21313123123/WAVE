@@ -51,7 +51,7 @@ const store = new JsonStore(path.join(__dirname, "data", "db.json"), {
 
 const app = express();
 app.set("trust proxy", TRUST_PROXY);
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "5mb" }));
 app.use(cookieParser());
 
 function normalize(value) {
@@ -212,6 +212,7 @@ function toPublicUser(user) {
     email: user.email,
     createdAt: user.createdAt,
     twoFactorEnabled: Boolean(user.twoFactor?.enabled),
+    avatarUrl: user.avatarUrl || null,
   };
 }
 
@@ -320,12 +321,32 @@ function buildConversationPayload(
   usersById,
   messagesById
 ) {
-  const partnerId = conversation.participantIds.find((id) => id !== viewerId);
   const viewer = usersById.get(viewerId);
-  const partner = usersById.get(partnerId);
   const lastMessage = conversation.lastMessageId
     ? messagesById.get(conversation.lastMessageId)
     : null;
+
+  if (conversation.type === "group") {
+    const participants = conversation.participantIds
+      .map((id) => usersById.get(id))
+      .filter(Boolean)
+      .map((u) => ({ ...toPublicUser(u), online: isUserOnline(u.id), lastSeenAt: lastSeenByUser.get(u.id) || null }));
+    return {
+      id: conversation.id,
+      type: "group",
+      name: conversation.name || "Группа",
+      participants,
+      participantIds: conversation.participantIds,
+      updatedAt: conversation.updatedAt,
+      createdAt: conversation.createdAt,
+      lastMessage: lastMessage
+        ? { id: lastMessage.id, conversationId: lastMessage.conversationId, senderId: lastMessage.senderId, text: lastMessage.text, messageType: lastMessage.messageType || "text", encryption: lastMessage.encryption || null, readAt: lastMessage.readAt || null, createdAt: lastMessage.createdAt }
+        : null,
+    };
+  }
+
+  const partnerId = conversation.participantIds.find((id) => id !== viewerId);
+  const partner = usersById.get(partnerId);
   const blockedByMe = Boolean(viewer && partnerId && isUserBlockedBy(viewer, partnerId));
   const blockedMe = Boolean(partner && isUserBlockedBy(partner, viewerId));
   const chatProtected = Boolean(
@@ -337,9 +358,10 @@ function buildConversationPayload(
     type: conversation.type,
     participant: partner
       ? {
-          ...toPublicUser(partner),
-          online: isUserOnline(partnerId),
-        }
+        ...toPublicUser(partner),
+        online: isUserOnline(partnerId),
+        lastSeenAt: lastSeenByUser.get(partnerId) || null,
+      }
       : null,
     blockedByMe,
     blockedMe,
@@ -348,14 +370,15 @@ function buildConversationPayload(
     createdAt: conversation.createdAt,
     lastMessage: lastMessage
       ? {
-          id: lastMessage.id,
-          conversationId: lastMessage.conversationId,
-          senderId: lastMessage.senderId,
-          text: lastMessage.text,
-          encryption: lastMessage.encryption || null,
-          readAt: lastMessage.readAt || null,
-          createdAt: lastMessage.createdAt,
-        }
+        id: lastMessage.id,
+        conversationId: lastMessage.conversationId,
+        senderId: lastMessage.senderId,
+        text: lastMessage.text,
+        messageType: lastMessage.messageType || "text",
+        encryption: lastMessage.encryption || null,
+        readAt: lastMessage.readAt || null,
+        createdAt: lastMessage.createdAt,
+      }
       : null,
   };
 }
@@ -377,6 +400,7 @@ function validateRegistration(username, email, password) {
 }
 
 const socketsByUser = new Map();
+const lastSeenByUser = new Map();
 
 function addSocket(userId, socket) {
   if (!socketsByUser.has(userId)) {
@@ -433,26 +457,28 @@ function closeAllUserSockets(userId, code = 1000, reason = "Session ended") {
   }
 }
 
+function getContactIds(stateData, userId) {
+  const contactIds = new Set();
+  for (const conversation of stateData.conversations) {
+    if (!conversation.participantIds.includes(userId)) continue;
+    for (const pid of conversation.participantIds) {
+      if (pid !== userId) contactIds.add(pid);
+    }
+  }
+  return contactIds;
+}
+
 async function broadcastPresenceChange(userId, online) {
   try {
+    if (!online) lastSeenByUser.set(userId, new Date().toISOString());
     const state = await store.read();
-    const contactIds = new Set();
-    for (const conversation of state.conversations) {
-      if (!conversation.participantIds.includes(userId)) {
-        continue;
-      }
-      for (const participantId of conversation.participantIds) {
-        if (participantId !== userId) {
-          contactIds.add(participantId);
-        }
-      }
-    }
-
+    const contactIds = getContactIds(state, userId);
     for (const contactId of contactIds) {
       sendToUser(contactId, {
         type: "presence:update",
         userId,
         online: Boolean(online),
+        lastSeenAt: lastSeenByUser.get(userId) || null,
       });
     }
   } catch (error) {
@@ -1172,7 +1198,13 @@ app.get("/api/conversations/:id/messages", requireAuth, async (req, res) => {
       conversationId: message.conversationId,
       senderId: message.senderId,
       text: message.text,
+      messageType: message.messageType || "text",
       encryption: message.encryption || null,
+      replyToId: message.replyToId || null,
+      forwardFromId: message.forwardFromId || null,
+      voiceData: message.voiceData || null,
+      reactions: message.reactions || [],
+      editedAt: message.editedAt || null,
       readAt: message.readAt || null,
       createdAt: message.createdAt,
       sender: usersById.get(message.senderId)
@@ -1188,12 +1220,16 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
   const text = normalize(req.body.text);
   const encryptionType = normalizeLower(req.body.encryption?.type);
   const encryption = encryptionType === "vigenere" ? { type: "vigenere" } : null;
+  const replyToId = normalize(req.body.replyToId);
+  const forwardFromId = normalize(req.body.forwardFromId);
+  const voiceData = String(req.body.voiceData || "").trim();
+  const messageType = voiceData ? "voice" : "text";
 
-  if (!text) {
+  if (!text && !voiceData) {
     return res.status(400).json({ error: "Сообщение пустое" });
   }
 
-  if (text.length > MAX_MESSAGE_LENGTH) {
+  if (text && text.length > MAX_MESSAGE_LENGTH) {
     return res
       .status(400)
       .json({ error: `Максимум ${MAX_MESSAGE_LENGTH} символов` });
@@ -1208,12 +1244,14 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
         throw error;
       }
 
-      const receiverId = conversation.participantIds.find((id) => id !== req.user.id);
-      const receiver = data.users.find((user) => user.id === receiverId);
-      if (receiver && isUserBlockedBy(receiver, req.user.id)) {
-        const error = new Error("Собеседник вас заблокировал");
-        error.code = "BLOCKED_BY_RECEIVER";
-        throw error;
+      if (conversation.type === "direct") {
+        const receiverId = conversation.participantIds.find((id) => id !== req.user.id);
+        const receiver = data.users.find((user) => user.id === receiverId);
+        if (receiver && isUserBlockedBy(receiver, req.user.id)) {
+          const error = new Error("Собеседник вас заблокировал");
+          error.code = "BLOCKED_BY_RECEIVER";
+          throw error;
+        }
       }
 
       const now = new Date().toISOString();
@@ -1221,8 +1259,13 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
         id: crypto.randomUUID(),
         conversationId,
         senderId: req.user.id,
-        text,
+        text: text || "",
+        messageType,
         encryption,
+        replyToId: replyToId || null,
+        forwardFromId: forwardFromId || null,
+        voiceData: voiceData || null,
+        reactions: [],
         readAt: null,
         createdAt: now,
       };
@@ -1250,7 +1293,13 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
       conversationId: result.message.conversationId,
       senderId: result.message.senderId,
       text: result.message.text,
+      messageType: result.message.messageType || "text",
       encryption: result.message.encryption || null,
+      replyToId: result.message.replyToId || null,
+      forwardFromId: result.message.forwardFromId || null,
+      voiceData: result.message.voiceData || null,
+      reactions: result.message.reactions || [],
+      editedAt: result.message.editedAt || null,
       readAt: result.message.readAt || null,
       createdAt: result.message.createdAt,
       sender: sender ? toPublicUser(sender) : null,
@@ -1532,6 +1581,123 @@ app.delete("/api/conversations/:id", requireAuth, async (req, res) => {
   }
 });
 
+// --- Avatar upload ---
+app.post("/api/auth/avatar", requireAuth, async (req, res) => {
+  const avatarData = String(req.body.avatar || "").trim();
+  if (!avatarData) return res.status(400).json({ error: "Нет данных аватарки" });
+  if (avatarData.length > 2 * 1024 * 1024) return res.status(400).json({ error: "Аватарка слишком большая (макс 1.5MB)" });
+  try {
+    await store.withWriteLock((data) => {
+      const user = data.users.find((u) => u.id === req.user.id);
+      if (!user) throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });
+      user.avatarUrl = avatarData;
+    });
+    return res.json({ avatarUrl: avatarData });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "Не удалось сохранить аватарку" });
+  }
+});
+
+// --- Group chat creation ---
+app.post("/api/conversations/group", requireAuth, async (req, res) => {
+  const name = normalize(req.body.name);
+  const memberIds = Array.isArray(req.body.memberIds) ? [...new Set(req.body.memberIds.map((id) => normalize(id)).filter(Boolean))] : [];
+  if (!name || name.length > 64) return res.status(400).json({ error: "Название группы: 1-64 символа" });
+  if (memberIds.length === 0) return res.status(400).json({ error: "Добавьте хотя бы одного участника" });
+  const allIds = [req.user.id, ...memberIds.filter((id) => id !== req.user.id)];
+  try {
+    const result = await store.withWriteLock((data) => {
+      for (const mid of allIds) {
+        if (mid !== req.user.id && !data.users.some((u) => u.id === mid)) {
+          throw Object.assign(new Error("Пользователь не найден"), { code: "NOT_FOUND" });
+        }
+      }
+      const now = new Date().toISOString();
+      const conv = { id: crypto.randomUUID(), type: "group", name, participantIds: allIds, createdAt: now, updatedAt: now, lastMessageId: null };
+      data.conversations.push(conv);
+      return { conversationId: conv.id };
+    });
+    const state = await store.read();
+    const conv = state.conversations.find((c) => c.id === result.conversationId);
+    const usersById = new Map(state.users.map((u) => [u.id, u]));
+    const messagesById = new Map(state.messages.map((m) => [m.id, m]));
+    const payload = buildConversationPayload(conv, req.user.id, usersById, messagesById);
+    for (const pid of allIds) {
+      if (pid !== req.user.id) {
+        const p = buildConversationPayload(conv, pid, usersById, messagesById);
+        sendToUser(pid, { type: "conversation:update", conversation: p });
+      }
+    }
+    return res.status(201).json({ conversation: payload });
+  } catch (e) {
+    if (e.code === "NOT_FOUND") return res.status(404).json({ error: e.message });
+    console.error(e);
+    return res.status(500).json({ error: "Не удалось создать группу" });
+  }
+});
+
+// --- Edit message ---
+app.patch("/api/conversations/:id/messages/:messageId", requireAuth, async (req, res) => {
+  const conversationId = req.params.id;
+  const messageId = req.params.messageId;
+  const newText = normalize(req.body.text);
+  if (!newText) return res.status(400).json({ error: "Текст не может быть пустым" });
+  if (newText.length > MAX_MESSAGE_LENGTH) return res.status(400).json({ error: `Максимум ${MAX_MESSAGE_LENGTH} символов` });
+  try {
+    const result = await store.withWriteLock((data) => {
+      const conv = data.conversations.find((c) => c.id === conversationId);
+      if (!conv || !conv.participantIds.includes(req.user.id)) throw Object.assign(new Error("Диалог не найден"), { code: "CONV_NF" });
+      const msg = data.messages.find((m) => m.id === messageId && m.conversationId === conversationId);
+      if (!msg) throw Object.assign(new Error("Сообщение не найдено"), { code: "MSG_NF" });
+      if (msg.senderId !== req.user.id) throw Object.assign(new Error("Нельзя редактировать чужое сообщение"), { code: "FORBIDDEN" });
+      msg.text = newText;
+      msg.editedAt = new Date().toISOString();
+      return { message: { ...msg }, participantIds: [...conv.participantIds] };
+    });
+    const state = await store.read();
+    const sender = state.users.find((u) => u.id === req.user.id);
+    const msgPayload = { ...result.message, sender: sender ? toPublicUser(sender) : null };
+    for (const pid of result.participantIds) {
+      sendToUser(pid, { type: "message:edited", message: msgPayload });
+    }
+    return res.json({ message: msgPayload });
+  } catch (e) {
+    if (["CONV_NF", "MSG_NF", "FORBIDDEN"].includes(e.code)) return res.status(e.code === "FORBIDDEN" ? 403 : 404).json({ error: e.message });
+    console.error(e);
+    return res.status(500).json({ error: "Не удалось отредактировать" });
+  }
+});
+
+// --- Reactions ---
+app.post("/api/conversations/:id/messages/:messageId/reactions", requireAuth, async (req, res) => {
+  const conversationId = req.params.id;
+  const messageId = req.params.messageId;
+  const emoji = normalize(req.body.emoji);
+  if (!emoji || emoji.length > 4) return res.status(400).json({ error: "Некорректная реакция" });
+  try {
+    const result = await store.withWriteLock((data) => {
+      const conv = data.conversations.find((c) => c.id === conversationId);
+      if (!conv || !conv.participantIds.includes(req.user.id)) throw Object.assign(new Error("NF"), { code: "NF" });
+      const msg = data.messages.find((m) => m.id === messageId && m.conversationId === conversationId);
+      if (!msg) throw Object.assign(new Error("NF"), { code: "NF" });
+      if (!Array.isArray(msg.reactions)) msg.reactions = [];
+      const existing = msg.reactions.findIndex((r) => r.userId === req.user.id && r.emoji === emoji);
+      if (existing >= 0) msg.reactions.splice(existing, 1);
+      else msg.reactions.push({ userId: req.user.id, emoji, createdAt: new Date().toISOString() });
+      return { reactions: [...msg.reactions], participantIds: [...conv.participantIds] };
+    });
+    for (const pid of result.participantIds) {
+      sendToUser(pid, { type: "message:reactions", conversationId, messageId, reactions: result.reactions });
+    }
+    return res.json({ reactions: result.reactions });
+  } catch (e) {
+    if (e.code === "NF") return res.status(404).json({ error: "Не найдено" });
+    console.error(e);
+    return res.status(500).json({ error: "Ошибка" });
+  }
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("*", (req, res, next) => {
@@ -1575,6 +1741,22 @@ wss.on("connection", async (socket, req) => {
 
     if (payload.type === "ping") {
       socket.send(JSON.stringify({ type: "pong" }));
+      return;
+    }
+
+    if (payload.type === "typing") {
+      const convId = normalize(payload.conversationId);
+      if (!convId) return;
+      try {
+        const s = await store.read();
+        const conv = s.conversations.find((c) => c.id === convId);
+        if (!conv || !conv.participantIds.includes(user.id)) return;
+        for (const pid of conv.participantIds) {
+          if (pid !== user.id) {
+            sendToUser(pid, { type: "typing", conversationId: convId, userId: user.id, username: user.username });
+          }
+        }
+      } catch { }
       return;
     }
 

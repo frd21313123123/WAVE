@@ -56,10 +56,35 @@ const chatLockCodeInput = document.getElementById("chatLockCodeInput");
 const chatUnlockBtn = document.getElementById("chatUnlockBtn");
 const chatLockStatus = document.getElementById("chatLockStatus");
 const deleteAccountBtn = document.getElementById("deleteAccountBtn");
+const microphoneSelect = document.getElementById("microphoneSelect");
 const remoteAudio = document.getElementById("remoteAudio");
 const chatMain = document.querySelector(".chat-main");
 const sidebarResizeHandle = document.getElementById("sidebarResizeHandle");
 const sendMessageBtn = messageForm.querySelector('button[type="submit"]');
+const typingIndicator = document.getElementById("typingIndicator");
+const replyBar = document.getElementById("replyBar");
+const replyBarText = document.getElementById("replyBarText");
+const replyBarCancel = document.getElementById("replyBarCancel");
+const voiceRecordBtn = document.getElementById("voiceRecordBtn");
+const messageContextMenu = document.getElementById("messageContextMenu");
+const ctxReply = document.getElementById("ctxReply");
+const ctxEdit = document.getElementById("ctxEdit");
+const ctxForward = document.getElementById("ctxForward");
+const ctxReact = document.getElementById("ctxReact");
+const reactionPicker = document.getElementById("reactionPicker");
+const createGroupBtn = document.getElementById("createGroupBtn");
+const createGroupModal = document.getElementById("createGroupModal");
+const closeGroupModalBtn = document.getElementById("closeGroupModalBtn");
+const groupNameInput = document.getElementById("groupNameInput");
+const groupMemberSearch = document.getElementById("groupMemberSearch");
+const groupMemberResults = document.getElementById("groupMemberResults");
+const groupSelectedMembers = document.getElementById("groupSelectedMembers");
+const groupCreateBtn = document.getElementById("groupCreateBtn");
+const groupCreateStatus = document.getElementById("groupCreateStatus");
+const avatarPreview = document.getElementById("avatarPreview");
+const avatarFileInput = document.getElementById("avatarFileInput");
+const avatarUploadBtn = document.getElementById("avatarUploadBtn");
+const notifToggleBtn = document.getElementById("notifToggleBtn");
 
 const UI_SETTINGS_KEY = "messenger_ui_settings_v1";
 const DEFAULT_VIGENERE_KEY = "WAVE";
@@ -118,12 +143,20 @@ const state = {
   },
   deleteMode: false,
   selectedMessageIds: new Set(),
+  replyToMessage: null,
+  contextMenuMessageId: null,
+  typingTimers: new Map(),
+  typingDebounce: null,
+  voiceRecorder: null,
+  voiceRecording: false,
+  groupSelectedMembers: [],
   ui: {
     theme: "light",
     targetLanguage: "off",
     vigenereEnabled: false,
     vigenereKey: DEFAULT_VIGENERE_KEY,
     sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+    microphoneId: "",
   },
 };
 
@@ -269,7 +302,7 @@ function startCallRingtone() {
 
   const audio = new Audio(CALL_RINGTONE_SRC);
   audio.loop = true;
-  audio.play().catch(() => {});
+  audio.play().catch(() => { });
   state.call.ringtoneFrame = audio;
 }
 
@@ -288,8 +321,8 @@ function getPeerConnectionConstructor() {
 function canUseAudioCalls() {
   return Boolean(
     getPeerConnectionConstructor() &&
-      navigator.mediaDevices &&
-      typeof navigator.mediaDevices.getUserMedia === "function"
+    navigator.mediaDevices &&
+    typeof navigator.mediaDevices.getUserMedia === "function"
   );
 }
 
@@ -392,7 +425,7 @@ async function acceptPendingIncomingCall() {
       await selectConversation(callerConversation.id);
     }
 
-    const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const localStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
     const peer = await createCallPeer(
       pendingCall.fromUserId,
       callerConversation?.id || pendingCall.conversationId,
@@ -460,8 +493,8 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
     remoteAudio.srcObject = stream;
     remoteAudio
       .play()
-      .then(() => {})
-      .catch(() => {});
+      .then(() => { })
+      .catch(() => { });
   };
 
   peer.onconnectionstatechange = () => {
@@ -510,7 +543,7 @@ async function startOutgoingCall() {
   }
 
   try {
-    const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const localStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
     const peer = await createCallPeer(
       targetUserId,
       state.activeConversationId,
@@ -1016,11 +1049,24 @@ function renderActiveConversationHeader() {
     return;
   }
 
-  chatTitle.textContent = conversation.participant?.username || "Диалог";
-  const isOnline = Boolean(conversation.participant?.online);
-  chatPresence.textContent = isOnline ? "онлайн" : "оффлайн";
-  chatPresence.classList.toggle("online", isOnline);
-  chatPresence.classList.toggle("offline", !isOnline);
+  if (conversation.type === "group") {
+    chatTitle.textContent = conversation.name || "Группа";
+    const onlineCount = (conversation.participants || []).filter((p) => p.online).length;
+    chatPresence.textContent = `${conversation.participants?.length || 0} участников, ${onlineCount} онлайн`;
+    chatPresence.classList.remove("online", "offline");
+  } else {
+    chatTitle.textContent = conversation.participant?.username || "Диалог";
+    const isOnline = Boolean(conversation.participant?.online);
+    if (isOnline) {
+      chatPresence.textContent = "онлайн";
+    } else {
+      const lastSeen = conversation.participant?.lastSeenAt;
+      chatPresence.textContent = lastSeen ? formatLastSeen(lastSeen) : "оффлайн";
+    }
+    chatPresence.classList.toggle("online", isOnline);
+    chatPresence.classList.toggle("offline", !isOnline);
+  }
+  hideTypingIndicator();
   updateBlockUserUi();
   updateComposerUi();
   updateCallUi();
@@ -1029,14 +1075,19 @@ function renderActiveConversationHeader() {
 function updateParticipantPresence(userId, online) {
   let changed = false;
   for (const conversation of state.conversations) {
-    if (conversation.participant?.id !== userId) {
-      continue;
+    if (conversation.participant?.id === userId) {
+      if (Boolean(conversation.participant.online) !== Boolean(online)) {
+        conversation.participant.online = Boolean(online);
+        changed = true;
+      }
     }
-    if (Boolean(conversation.participant.online) === Boolean(online)) {
-      continue;
+    if (conversation.participants) {
+      const p = conversation.participants.find((pp) => pp.id === userId);
+      if (p && Boolean(p.online) !== Boolean(online)) {
+        p.online = Boolean(online);
+        changed = true;
+      }
     }
-    conversation.participant.online = Boolean(online);
-    changed = true;
   }
   return changed;
 }
@@ -1044,7 +1095,7 @@ function updateParticipantPresence(userId, online) {
 function playIncomingMessageSound() {
   try {
     const audio = new Audio(MESSAGE_SOUND_SRC);
-    audio.play().catch(() => {});
+    audio.play().catch(() => { });
   } catch {
   }
 }
@@ -1293,6 +1344,7 @@ function saveUiSettings() {
         targetLanguage: state.ui.targetLanguage,
         vigenereEnabled: state.ui.vigenereEnabled,
         sidebarWidth: normalizeSidebarWidth(state.ui.sidebarWidth),
+        microphoneId: state.ui.microphoneId || "",
       })
     );
   } catch {
@@ -1312,6 +1364,7 @@ function loadUiSettings() {
     state.ui.vigenereEnabled = Boolean(parsed.vigenereEnabled);
     state.ui.sidebarWidth = normalizeSidebarWidth(parsed.sidebarWidth);
     state.ui.vigenereKey = DEFAULT_VIGENERE_KEY;
+    state.ui.microphoneId = String(parsed.microphoneId || "");
   } catch {
   }
 }
@@ -1321,6 +1374,31 @@ function syncUiControls() {
   translationLanguage.value = normalizeTranslationLanguage(state.ui.targetLanguage);
   vigenereKeyInput.value = normalizeVigenereKey(state.ui.vigenereKey);
   updateVigenereToggle();
+  loadMicrophoneDevices();
+}
+
+async function loadMicrophoneDevices() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+    return;
+  }
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const mics = devices.filter((d) => d.kind === "audioinput");
+    microphoneSelect.innerHTML = '<option value="">Микрофон по умолчанию</option>';
+    for (const mic of mics) {
+      const opt = document.createElement("option");
+      opt.value = mic.deviceId;
+      opt.textContent = mic.label || `Микрофон ${microphoneSelect.options.length}`;
+      microphoneSelect.appendChild(opt);
+    }
+    microphoneSelect.value = state.ui.microphoneId || "";
+  } catch {
+  }
+}
+
+function getAudioConstraints() {
+  const id = state.ui.microphoneId;
+  return id ? { audio: { deviceId: { exact: id } } } : { audio: true };
 }
 
 function updateVigenereToggle() {
@@ -1332,6 +1410,9 @@ function updateVigenereToggle() {
 function setSettingsPanelOpen(isOpen) {
   const shouldOpen = Boolean(isOpen) && !state.chatLocked;
   settingsPanel.classList.toggle("hidden", !shouldOpen);
+  if (shouldOpen) {
+    loadMicrophoneDevices();
+  }
 }
 
 function quoteText(text) {
@@ -1568,17 +1649,27 @@ function renderConversationList() {
       button.classList.add("active");
     }
 
-    const title = conversation.participant
-      ? conversation.participant.username
-      : "Диалог";
-    const isOnline = Boolean(conversation.participant?.online);
+    const isGroup = conversation.type === "group";
+    const title = isGroup ? (conversation.name || "Группа") : (conversation.participant ? conversation.participant.username : "Диалог");
+    const avatarUrl = !isGroup ? conversation.participant?.avatarUrl : null;
+    const isOnline = isGroup ? false : Boolean(conversation.participant?.online);
+
     let preview = conversation.lastMessage
-      ? conversation.lastMessage.text
+      ? (conversation.lastMessage.messageType === "voice" ? "🎤 Голосовое" : conversation.lastMessage.text)
       : "Сообщений еще нет";
     if (conversation.lastMessage?.senderId === state.me?.id) {
       preview = `${conversation.lastMessage.readAt ? "✓✓" : "✓"} ${preview}`;
     }
     button.dataset.initial = getInitial(title);
+
+    if (avatarUrl) {
+      button.classList.add("has-avatar");
+      const avatarImg = document.createElement("img");
+      avatarImg.src = avatarUrl;
+      avatarImg.alt = title;
+      avatarImg.className = "list-item-avatar";
+      button.appendChild(avatarImg);
+    }
 
     const row = document.createElement("div");
     row.className = "item-row";
@@ -1586,19 +1677,28 @@ function renderConversationList() {
     const titleWrap = document.createElement("div");
     titleWrap.className = "item-title-wrap";
 
-    const presenceDot = document.createElement("span");
-    presenceDot.className = `presence-dot ${isOnline ? "online" : "offline"}`;
+    if (!isGroup) {
+      const presenceDot = document.createElement("span");
+      presenceDot.className = `presence-dot ${isOnline ? "online" : "offline"}`;
+      titleWrap.appendChild(presenceDot);
+    }
 
     const titleEl = document.createElement("p");
     titleEl.className = "item-title";
     titleEl.textContent = title;
+    titleWrap.appendChild(titleEl);
+
+    if (isGroup) {
+      const badge = document.createElement("span");
+      badge.className = "group-badge";
+      badge.textContent = `👥 ${conversation.participants?.length || 0}`;
+      titleWrap.appendChild(badge);
+    }
 
     const timeEl = document.createElement("p");
     timeEl.className = "item-time";
     timeEl.textContent = formatTime(conversation.updatedAt);
 
-    titleWrap.appendChild(presenceDot);
-    titleWrap.appendChild(titleEl);
     row.appendChild(titleWrap);
     row.appendChild(timeEl);
 
@@ -1654,25 +1754,96 @@ function createMessageRow(message, deletingIds = new Set()) {
   const bubble = document.createElement("div");
   bubble.className = "bubble";
 
-  const originalText = String(message.text || "");
-  const isVigenereEncrypted = message.encryption?.type === "vigenere";
-
-  const text = document.createElement("p");
-  text.textContent = originalText;
-  bubble.appendChild(text);
-
-  let translationSourceText = originalText;
-  if (isVigenereEncrypted) {
-    const decryptedText = vigenereDecrypt(originalText, state.ui.vigenereKey);
-    bubble.appendChild(createAuxLine(decryptedText));
-    translationSourceText = decryptedText;
+  // Reply badge
+  if (message.replyToId) {
+    const messages = state.messagesByConversation.get(message.conversationId) || [];
+    const original = messages.find((m) => m.id === message.replyToId);
+    const replyBadge = document.createElement("span");
+    replyBadge.className = "bubble-reply-badge";
+    replyBadge.textContent = `↩ ${original ? (original.messageType === "voice" ? "🎤 Голосовое" : (original.text || "").slice(0, 50)) : "Сообщение"}`;
+    replyBadge.addEventListener("click", () => {
+      const el = messagesEl.querySelector(`[data-message-id="${message.replyToId}"]`);
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.style.outline = "2px solid var(--accent)"; setTimeout(() => { el.style.outline = ""; }, 1500); }
+    });
+    bubble.appendChild(replyBadge);
   }
 
-  if (state.ui.targetLanguage !== "off") {
-    const language = state.ui.targetLanguage;
-    const translationLine = createAuxLine("Перевод...");
-    bubble.appendChild(translationLine);
-    hydrateTranslationLine(translationSourceText, language, translationLine);
+  // Forward badge
+  if (message.forwardFromId) {
+    const fwdBadge = document.createElement("span");
+    fwdBadge.className = "bubble-forward-badge";
+    fwdBadge.textContent = "↗ Пересланное сообщение";
+    bubble.appendChild(fwdBadge);
+  }
+
+  // Voice message
+  if (message.messageType === "voice" && message.voiceData) {
+    const player = document.createElement("div");
+    player.className = "voice-message-player";
+    const playBtn = document.createElement("button");
+    playBtn.type = "button";
+    playBtn.className = "voice-play-btn";
+    playBtn.innerHTML = "▶";
+    const dur = document.createElement("span");
+    dur.className = "voice-duration";
+    dur.textContent = "Голосовое";
+    let audio = null;
+    playBtn.addEventListener("click", () => {
+      if (!audio) {
+        audio = new Audio(message.voiceData);
+        audio.addEventListener("ended", () => { playBtn.innerHTML = "▶"; });
+      }
+      if (audio.paused) { audio.play(); playBtn.innerHTML = "⏸"; }
+      else { audio.pause(); playBtn.innerHTML = "▶"; }
+    });
+    player.appendChild(playBtn);
+    player.appendChild(dur);
+    bubble.appendChild(player);
+  } else {
+    const originalText = String(message.text || "");
+    const isVigenereEncrypted = message.encryption?.type === "vigenere";
+
+    const text = document.createElement("p");
+    text.textContent = originalText;
+    bubble.appendChild(text);
+
+    let translationSourceText = originalText;
+    if (isVigenereEncrypted) {
+      const decryptedText = vigenereDecrypt(originalText, state.ui.vigenereKey);
+      bubble.appendChild(createAuxLine(decryptedText));
+      translationSourceText = decryptedText;
+    }
+
+    if (state.ui.targetLanguage !== "off") {
+      const language = state.ui.targetLanguage;
+      const translationLine = createAuxLine("Перевод...");
+      bubble.appendChild(translationLine);
+      hydrateTranslationLine(translationSourceText, language, translationLine);
+    }
+  }
+
+  // Reactions
+  const reactions = message.reactions || [];
+  if (reactions.length > 0) {
+    const reactionsEl = document.createElement("div");
+    reactionsEl.className = "bubble-reactions";
+    const grouped = {};
+    for (const r of reactions) {
+      if (!grouped[r.emoji]) grouped[r.emoji] = [];
+      grouped[r.emoji].push(r.userId);
+    }
+    for (const [emoji, userIds] of Object.entries(grouped)) {
+      const badge = document.createElement("span");
+      badge.className = "reaction-badge" + (userIds.includes(state.me?.id) ? " mine" : "");
+      badge.innerHTML = `${emoji} <span class="reaction-count">${userIds.length}</span>`;
+      badge.addEventListener("click", async () => {
+        try {
+          await api(`/api/conversations/${message.conversationId}/messages/${message.id}/reactions`, { method: "POST", body: { emoji } });
+        } catch { }
+      });
+      reactionsEl.appendChild(badge);
+    }
+    bubble.appendChild(reactionsEl);
   }
 
   const meta = document.createElement("div");
@@ -1684,6 +1855,12 @@ function createMessageRow(message, deletingIds = new Set()) {
     meta.textContent = `${message.sender?.username || "Пользователь"}, ${formatDateTime(
       message.createdAt
     )}`;
+  }
+  if (message.editedAt) {
+    const editedSpan = document.createElement("span");
+    editedSpan.className = "bubble-edited";
+    editedSpan.textContent = "(ред.)";
+    meta.appendChild(editedSpan);
   }
   bubble.appendChild(meta);
 
@@ -1869,12 +2046,17 @@ function connectSocket() {
       const added = addMessage(payload.message);
       if (payload.message.senderId !== state.me?.id) {
         playIncomingMessageSound();
+        const conv = getConversationById(payload.message.conversationId);
+        const senderName = payload.message.sender?.username || "Новое сообщение";
+        const previewText = payload.message.messageType === "voice" ? "🎤 Голосовое" : (payload.message.text || "").slice(0, 60);
+        showPushNotification(senderName, previewText);
       }
       if (payload.message.conversationId === state.activeConversationId) {
         if (added) {
           appendMessageToActiveView(payload.message);
         }
         markConversationAsRead(payload.message.conversationId);
+        hideTypingIndicator();
       }
     }
 
@@ -1903,7 +2085,37 @@ function connectSocket() {
       }
     }
 
+    if (payload.type === "typing" && payload.conversationId === state.activeConversationId && payload.userId !== state.me?.id) {
+      showTypingIndicator(payload.username || "Кто-то");
+      clearTimeout(state.typingTimers.get(payload.userId));
+      state.typingTimers.set(payload.userId, setTimeout(() => { hideTypingIndicator(); state.typingTimers.delete(payload.userId); }, 3000));
+    }
+
+    if (payload.type === "message:edited" && payload.message) {
+      const msgs = state.messagesByConversation.get(payload.message.conversationId) || [];
+      const idx = msgs.findIndex((m) => m.id === payload.message.id);
+      if (idx >= 0) { msgs[idx] = { ...msgs[idx], text: payload.message.text, editedAt: payload.message.editedAt }; }
+      if (payload.message.conversationId === state.activeConversationId) renderMessages();
+    }
+
+    if (payload.type === "message:reactions" && payload.conversationId && payload.messageId) {
+      const msgs = state.messagesByConversation.get(payload.conversationId) || [];
+      const msg = msgs.find((m) => m.id === payload.messageId);
+      if (msg) { msg.reactions = payload.reactions || []; }
+      if (payload.conversationId === state.activeConversationId) renderMessages();
+    }
+
     if (payload.type === "presence:update" && payload.userId) {
+      // Update lastSeenAt in conversations
+      for (const conv of state.conversations) {
+        if (conv.participant && conv.participant.id === payload.userId) {
+          conv.participant.lastSeenAt = payload.lastSeenAt || null;
+        }
+        if (conv.participants) {
+          const p = conv.participants.find((pp) => pp.id === payload.userId);
+          if (p) p.lastSeenAt = payload.lastSeenAt || null;
+        }
+      }
       if (updateParticipantPresence(payload.userId, payload.online)) {
         renderConversationList();
         renderActiveConversationHeader();
@@ -1955,6 +2167,7 @@ async function bootstrapSession(user) {
   authStatus.textContent = "";
   resetLoginTwoFactorStep();
   renderSearchResults([]);
+  updateAvatarPreview();
   await refreshTwoFaStatus();
   await loadConversations();
   connectSocket();
@@ -2080,6 +2293,12 @@ settingsBtn.addEventListener("click", () => {
 
 closeSettingsBtn.addEventListener("click", () => {
   setSettingsPanelOpen(false);
+});
+
+settingsPanel.addEventListener("click", (event) => {
+  if (event.target === settingsPanel) {
+    setSettingsPanelOpen(false);
+  }
 });
 
 deleteAccountBtn.addEventListener("click", async () => {
@@ -2359,6 +2578,11 @@ vigenereKeyInput.addEventListener("input", () => {
   renderMessages();
 });
 
+microphoneSelect.addEventListener("change", () => {
+  state.ui.microphoneId = microphoneSelect.value;
+  saveUiSettings();
+});
+
 vigenereToggle.addEventListener("click", () => {
   state.ui.vigenereEnabled = !state.ui.vigenereEnabled;
   updateVigenereToggle();
@@ -2402,12 +2626,13 @@ messageForm.addEventListener("submit", async (event) => {
   const text = encrypted ? vigenereEncrypt(plainText, state.ui.vigenereKey) : plainText;
 
   try {
+    const body = encrypted ? { text, encryption: { type: "vigenere" } } : { text };
+    if (state.replyToMessage) {
+      body.replyToId = state.replyToMessage.id;
+    }
     const payload = await api(
       `/api/conversations/${state.activeConversationId}/messages`,
-      {
-        method: "POST",
-        body: encrypted ? { text, encryption: { type: "vigenere" } } : { text },
-      }
+      { method: "POST", body }
     );
 
     upsertConversation(payload.conversation);
@@ -2418,6 +2643,8 @@ messageForm.addEventListener("submit", async (event) => {
     }
     messageInput.value = "";
     messageInput.style.height = "auto";
+    state.replyToMessage = null;
+    replyBar.classList.add("hidden");
   } catch (error) {
     authStatus.textContent = error.message;
   }
@@ -2441,6 +2668,314 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+// ========================
+// TYPING INDICATOR
+// ========================
+function sendTypingEvent() {
+  if (!state.socket || !state.activeConversationId) return;
+  state.socket.send(JSON.stringify({ type: "typing", conversationId: state.activeConversationId }));
+}
+
+function showTypingIndicator(username) {
+  typingIndicator.textContent = `${username} печатает...`;
+  typingIndicator.classList.remove("hidden");
+}
+
+function hideTypingIndicator() {
+  typingIndicator.classList.add("hidden");
+  typingIndicator.textContent = "";
+}
+
+messageInput.addEventListener("input", () => {
+  messageInput.style.height = "auto";
+  messageInput.style.height = `${Math.min(messageInput.scrollHeight, 130)}px`;
+  clearTimeout(state.typingDebounce);
+  state.typingDebounce = setTimeout(sendTypingEvent, 300);
+});
+
+// ========================
+// FORMAT LAST SEEN
+// ========================
+function formatLastSeen(isoDate) {
+  if (!isoDate) return "";
+  const diff = Math.floor((Date.now() - new Date(isoDate).getTime()) / 60000);
+  if (diff < 1) return "был(а) только что";
+  if (diff < 60) return `был(а) ${diff} мин. назад`;
+  if (diff < 1440) return `был(а) ${Math.floor(diff / 60)} ч. назад`;
+  return `был(а) ${Math.floor(diff / 1440)} дн. назад`;
+}
+
+// ========================
+// CONTEXT MENU / REPLY / EDIT / FORWARD / REACT
+// ========================
+function hideContextMenu() {
+  messageContextMenu.classList.add("hidden");
+  reactionPicker.classList.add("hidden");
+  state.contextMenuMessageId = null;
+}
+
+document.addEventListener("click", (e) => {
+  if (!messageContextMenu.contains(e.target) && !reactionPicker.contains(e.target)) {
+    hideContextMenu();
+  }
+});
+
+document.addEventListener("contextmenu", (e) => {
+  const row = e.target.closest(".message-row");
+  if (!row || state.deleteMode) return;
+  e.preventDefault();
+  const msgId = row.dataset.messageId;
+  state.contextMenuMessageId = msgId;
+  const messages = state.messagesByConversation.get(state.activeConversationId) || [];
+  const msg = messages.find((m) => m.id === msgId);
+  const isMine = msg && msg.senderId === state.me?.id;
+  ctxEdit.style.display = isMine && msg.messageType !== "voice" ? "" : "none";
+  messageContextMenu.style.left = `${Math.min(e.clientX, window.innerWidth - 190)}px`;
+  messageContextMenu.style.top = `${Math.min(e.clientY, window.innerHeight - 200)}px`;
+  messageContextMenu.classList.remove("hidden");
+  reactionPicker.classList.add("hidden");
+});
+
+ctxReply.addEventListener("click", () => {
+  const messages = state.messagesByConversation.get(state.activeConversationId) || [];
+  const msg = messages.find((m) => m.id === state.contextMenuMessageId);
+  if (!msg) { hideContextMenu(); return; }
+  state.replyToMessage = msg;
+  replyBarText.textContent = msg.messageType === "voice" ? "🎤 Голосовое сообщение" : (msg.text || "").slice(0, 80);
+  replyBar.classList.remove("hidden");
+  messageInput.focus();
+  hideContextMenu();
+});
+
+replyBarCancel.addEventListener("click", () => {
+  state.replyToMessage = null;
+  replyBar.classList.add("hidden");
+});
+
+ctxEdit.addEventListener("click", async () => {
+  const messages = state.messagesByConversation.get(state.activeConversationId) || [];
+  const msg = messages.find((m) => m.id === state.contextMenuMessageId);
+  if (!msg) { hideContextMenu(); return; }
+  hideContextMenu();
+  const newText = prompt("Редактировать сообщение:", msg.text);
+  if (newText === null || newText.trim() === "" || newText.trim() === msg.text) return;
+  try {
+    await api(`/api/conversations/${state.activeConversationId}/messages/${msg.id}`, { method: "PATCH", body: { text: newText.trim() } });
+  } catch (e) { authStatus.textContent = e.message; }
+});
+
+ctxForward.addEventListener("click", () => {
+  const messages = state.messagesByConversation.get(state.activeConversationId) || [];
+  const msg = messages.find((m) => m.id === state.contextMenuMessageId);
+  if (!msg) { hideContextMenu(); return; }
+  hideContextMenu();
+  const convNames = state.conversations.filter((c) => c.id !== state.activeConversationId).map((c, i) => `${i + 1}. ${c.type === "group" ? c.name : (c.participant?.username || "Чат")}`);
+  if (convNames.length === 0) { alert("Нет других чатов для пересылки"); return; }
+  const choice = prompt("Переслать в чат:\n" + convNames.join("\n") + "\n\nВведите номер:");
+  const idx = parseInt(choice, 10) - 1;
+  const targets = state.conversations.filter((c) => c.id !== state.activeConversationId);
+  if (isNaN(idx) || idx < 0 || idx >= targets.length) return;
+  const targetConv = targets[idx];
+  const fwdText = msg.messageType === "voice" ? "🎤 Голосовое (пересланное)" : (msg.text || "");
+  api(`/api/conversations/${targetConv.id}/messages`, {
+    method: "POST",
+    body: { text: fwdText, forwardFromId: msg.id },
+  }).catch((e) => { authStatus.textContent = e.message; });
+});
+
+ctxReact.addEventListener("click", () => {
+  const rect = messageContextMenu.getBoundingClientRect();
+  reactionPicker.style.left = `${rect.left}px`;
+  reactionPicker.style.top = `${rect.top - 48}px`;
+  reactionPicker.classList.remove("hidden");
+  messageContextMenu.classList.add("hidden");
+});
+
+reactionPicker.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-emoji]");
+  if (!btn) return;
+  const emoji = btn.dataset.emoji;
+  const msgId = state.contextMenuMessageId;
+  hideContextMenu();
+  if (!msgId || !state.activeConversationId) return;
+  try {
+    await api(`/api/conversations/${state.activeConversationId}/messages/${msgId}/reactions`, { method: "POST", body: { emoji } });
+  } catch (e) { console.error(e); }
+});
+
+// ========================
+// VOICE MESSAGES
+// ========================
+voiceRecordBtn.addEventListener("click", async () => {
+  if (state.voiceRecording) {
+    if (state.voiceRecorder && state.voiceRecorder.state === "recording") {
+      state.voiceRecorder.stop();
+    }
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      state.voiceRecording = false;
+      voiceRecordBtn.classList.remove("recording");
+      const blob = new Blob(chunks, { type: "audio/webm" });
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result;
+        if (!state.activeConversationId) return;
+        try {
+          const body = { text: "🎤 Голосовое сообщение", voiceData: base64 };
+          if (state.replyToMessage) { body.replyToId = state.replyToMessage.id; state.replyToMessage = null; replyBar.classList.add("hidden"); }
+          const payload = await api(`/api/conversations/${state.activeConversationId}/messages`, { method: "POST", body });
+          upsertConversation(payload.conversation);
+          const added = addMessage(payload.message);
+          renderConversationList();
+          if (!added || !appendMessageToActiveView(payload.message)) renderMessages();
+        } catch (e) { authStatus.textContent = e.message; }
+      };
+      reader.readAsDataURL(blob);
+    };
+    recorder.start();
+    state.voiceRecorder = recorder;
+    state.voiceRecording = true;
+    voiceRecordBtn.classList.add("recording");
+  } catch { alert("Не удалось получить доступ к микрофону"); }
+});
+
+// ========================
+// AVATAR
+// ========================
+avatarUploadBtn.addEventListener("click", () => avatarFileInput.click());
+avatarFileInput.addEventListener("change", async () => {
+  const file = avatarFileInput.files[0];
+  if (!file) return;
+  if (file.size > 1.5 * 1024 * 1024) { alert("Файл слишком большой (макс 1.5MB)"); return; }
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const payload = await api("/api/auth/avatar", { method: "POST", body: { avatar: reader.result } });
+      if (state.me) state.me.avatarUrl = payload.avatarUrl;
+      updateAvatarPreview();
+    } catch (e) { alert(e.message); }
+  };
+  reader.readAsDataURL(file);
+});
+
+function updateAvatarPreview() {
+  avatarPreview.innerHTML = "";
+  if (state.me?.avatarUrl) {
+    const img = document.createElement("img");
+    img.src = state.me.avatarUrl;
+    img.alt = "Avatar";
+    avatarPreview.appendChild(img);
+  }
+}
+
+// ========================
+// GROUP CHATS
+// ========================
+createGroupBtn.addEventListener("click", () => {
+  state.groupSelectedMembers = [];
+  groupNameInput.value = "";
+  groupMemberSearch.value = "";
+  groupMemberResults.innerHTML = "";
+  groupCreateStatus.textContent = "";
+  renderGroupSelectedMembers();
+  createGroupModal.classList.remove("hidden");
+});
+
+closeGroupModalBtn.addEventListener("click", () => createGroupModal.classList.add("hidden"));
+createGroupModal.addEventListener("click", (e) => { if (e.target === createGroupModal) createGroupModal.classList.add("hidden"); });
+
+groupMemberSearch.addEventListener("input", () => {
+  const q = groupMemberSearch.value.trim();
+  clearTimeout(state._groupSearchTimeout);
+  if (q.length < 2) { groupMemberResults.innerHTML = ""; return; }
+  state._groupSearchTimeout = setTimeout(async () => {
+    try {
+      const payload = await api(`/api/users?search=${encodeURIComponent(q)}`);
+      const users = (payload.users || []).filter((u) => u.id !== state.me?.id && !state.groupSelectedMembers.some((m) => m.id === u.id));
+      groupMemberResults.innerHTML = "";
+      for (const u of users) {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "list-item";
+        btn.dataset.initial = getInitial(u.username);
+        btn.innerHTML = `<div class="item-row"><p class="item-title">${u.username}</p></div><p class="item-sub">${u.email}</p>`;
+        btn.addEventListener("click", () => { state.groupSelectedMembers.push(u); renderGroupSelectedMembers(); groupMemberSearch.value = ""; groupMemberResults.innerHTML = ""; });
+        li.appendChild(btn);
+        groupMemberResults.appendChild(li);
+      }
+    } catch { }
+  }, 250);
+});
+
+function renderGroupSelectedMembers() {
+  groupSelectedMembers.innerHTML = "";
+  for (const m of state.groupSelectedMembers) {
+    const chip = document.createElement("span");
+    chip.className = "group-member-chip";
+    chip.innerHTML = `${m.username} <button type="button">&times;</button>`;
+    chip.querySelector("button").addEventListener("click", () => { state.groupSelectedMembers = state.groupSelectedMembers.filter((x) => x.id !== m.id); renderGroupSelectedMembers(); });
+    groupSelectedMembers.appendChild(chip);
+  }
+}
+
+groupCreateBtn.addEventListener("click", async () => {
+  const name = groupNameInput.value.trim();
+  if (!name) { groupCreateStatus.textContent = "Введите название"; return; }
+  if (state.groupSelectedMembers.length === 0) { groupCreateStatus.textContent = "Добавьте участников"; return; }
+  try {
+    const payload = await api("/api/conversations/group", { method: "POST", body: { name, memberIds: state.groupSelectedMembers.map((m) => m.id) } });
+    upsertConversation(payload.conversation);
+    renderConversationList();
+    await selectConversation(payload.conversation.id);
+    createGroupModal.classList.add("hidden");
+  } catch (e) { groupCreateStatus.textContent = e.message; }
+});
+
+// ========================
+// PUSH NOTIFICATIONS
+// ========================
+notifToggleBtn.addEventListener("click", async () => {
+  if (!("Notification" in window)) { alert("Браузер не поддерживает уведомления"); return; }
+  if (Notification.permission === "granted") { notifToggleBtn.textContent = "Включены ✓"; return; }
+  const perm = await Notification.requestPermission();
+  notifToggleBtn.textContent = perm === "granted" ? "Включены ✓" : "Отклонено";
+});
+
+function showPushNotification(title, body) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (!document.hidden) return;
+  try { new Notification(title, { body, icon: "/favicon.ico", tag: "wave-msg" }); } catch { }
+}
+
+// ========================
+// UPDATED RENDER FOR CONVERSATION LIST (groups + avatars)
+// ========================
+function getConversationTitle(conversation) {
+  if (conversation.type === "group") return conversation.name || "Группа";
+  return conversation.participant ? conversation.participant.username : "Диалог";
+}
+
+function getConversationAvatar(conversation) {
+  if (conversation.type === "group") return null;
+  return conversation.participant?.avatarUrl || null;
+}
+
+// ========================
+// OVERRIDE MESSAGE FORM SUBMIT TO INCLUDE REPLY
+// ========================
+const _origSubmitHandler = messageForm.onsubmit;
+
+// ========================
+// UPDATED INIT
+// ========================
 async function init() {
   loadUiSettings();
   resetVigenereKey();
@@ -2455,6 +2990,9 @@ async function init() {
   setSettingsPanelOpen(false);
   setAuthTab("login");
   renderSearchResults([]);
+  if ("Notification" in window && Notification.permission === "granted") {
+    notifToggleBtn.textContent = "Включены ✓";
+  }
 
   try {
     const payload = await api("/api/auth/me");
@@ -2465,7 +3003,3 @@ async function init() {
 }
 
 init();
-
-
-
-
