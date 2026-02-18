@@ -2720,20 +2720,53 @@ document.addEventListener("click", (e) => {
   }
 });
 
-document.addEventListener("contextmenu", (e) => {
-  const row = e.target.closest(".message-row");
-  if (!row || state.deleteMode) return;
-  e.preventDefault();
-  const msgId = row.dataset.messageId;
+function openMessageContextMenu(msgId, x, y) {
   state.contextMenuMessageId = msgId;
   const messages = state.messagesByConversation.get(state.activeConversationId) || [];
   const msg = messages.find((m) => m.id === msgId);
   const isMine = msg && msg.senderId === state.me?.id;
   ctxEdit.style.display = isMine && msg.messageType !== "voice" ? "" : "none";
-  messageContextMenu.style.left = `${Math.min(e.clientX, window.innerWidth - 190)}px`;
-  messageContextMenu.style.top = `${Math.min(e.clientY, window.innerHeight - 200)}px`;
+  messageContextMenu.style.left = `${Math.min(x, window.innerWidth - 190)}px`;
+  messageContextMenu.style.top = `${Math.min(y, window.innerHeight - 200)}px`;
   messageContextMenu.classList.remove("hidden");
   reactionPicker.classList.add("hidden");
+}
+
+document.addEventListener("contextmenu", (e) => {
+  const row = e.target.closest(".message-row");
+  if (!row || state.deleteMode) return;
+  e.preventDefault();
+  openMessageContextMenu(row.dataset.messageId, e.clientX, e.clientY);
+});
+
+// Long-press for mobile (touch hold 500ms)
+let _longPressTimer = null;
+let _longPressTriggered = false;
+
+messagesEl.addEventListener("touchstart", (e) => {
+  const row = e.target.closest(".message-row");
+  if (!row || state.deleteMode) return;
+  _longPressTriggered = false;
+  const touch = e.touches[0];
+  const startX = touch.clientX;
+  const startY = touch.clientY;
+  _longPressTimer = setTimeout(() => {
+    _longPressTriggered = true;
+    openMessageContextMenu(row.dataset.messageId, startX, startY);
+    if (navigator.vibrate) navigator.vibrate(30);
+  }, 500);
+}, { passive: true });
+
+messagesEl.addEventListener("touchmove", () => {
+  clearTimeout(_longPressTimer);
+}, { passive: true });
+
+messagesEl.addEventListener("touchend", (e) => {
+  clearTimeout(_longPressTimer);
+  if (_longPressTriggered) {
+    e.preventDefault();
+    _longPressTriggered = false;
+  }
 });
 
 ctxReply.addEventListener("click", () => {
