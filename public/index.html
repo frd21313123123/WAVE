@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wave Messenger</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-layer"></div>
+    <div class="app-shell">
+      <section class="auth-view" id="authView">
+        <div class="auth-card">
+          <p class="auth-kicker">Wave Messenger</p>
+          <h1>Быстрый личный чат с авторизацией</h1>
+          <p class="auth-caption">Регистрация, вход и переписка в реальном времени.</p>
+
+          <div class="auth-tabs">
+            <button class="auth-tab active" data-tab="login" id="tabLogin">
+              Вход
+            </button>
+            <button class="auth-tab" data-tab="register" id="tabRegister">
+              Регистрация
+            </button>
+          </div>
+
+          <form id="loginForm" class="auth-form">
+            <label class="field-label">
+              Логин или email
+              <input type="text" name="login" autocomplete="username" required />
+            </label>
+            <label class="field-label">
+              Пароль
+              <input
+                type="password"
+                name="password"
+                autocomplete="current-password"
+                required
+              />
+            </label>
+            <button type="submit" class="primary-btn">Войти</button>
+          </form>
+
+          <form id="registerForm" class="auth-form hidden">
+            <label class="field-label">
+              Логин
+              <input type="text" name="username" minlength="3" maxlength="24" required />
+            </label>
+            <label class="field-label">
+              Email
+              <input type="email" name="email" autocomplete="email" required />
+            </label>
+            <label class="field-label">
+              Пароль
+              <input
+                type="password"
+                name="password"
+                minlength="6"
+                autocomplete="new-password"
+                required
+              />
+            </label>
+            <button type="submit" class="primary-btn">Создать аккаунт</button>
+          </form>
+
+          <p class="status-text" id="authStatus"></p>
+        </div>
+      </section>
+
+      <section class="chat-view hidden" id="chatView">
+        <aside class="sidebar">
+          <header class="sidebar-header">
+            <div>
+              <p class="mini-label">Аккаунт</p>
+              <h2 id="meName">...</h2>
+            </div>
+            <button id="logoutBtn" class="ghost-btn">Выйти</button>
+          </header>
+
+          <div class="search-box">
+            <input
+              id="userSearch"
+              type="text"
+              placeholder="Найти пользователя по логину/email"
+            />
+          </div>
+
+          <p class="mini-label section-label">Найденные пользователи</p>
+          <ul id="searchResults" class="list"></ul>
+
+          <p class="mini-label section-label">Диалоги</p>
+          <ul id="conversationList" class="list"></ul>
+        </aside>
+
+        <main class="chat-main">
+          <header class="chat-header">
+            <button id="mobileBack" class="mobile-back">Назад</button>
+            <div>
+              <p class="mini-label">Текущий чат</p>
+              <h3 id="chatTitle">Выберите диалог слева</h3>
+            </div>
+          </header>
+
+          <section id="messages" class="messages"></section>
+
+          <form id="messageForm" class="message-form">
+            <textarea
+              id="messageInput"
+              placeholder="Напишите сообщение..."
+              rows="1"
+              maxlength="2000"
+            ></textarea>
+            <button type="submit" class="primary-btn">Отправить</button>
+          </form>
+        </main>
+      </section>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
+
