@@ -11,10 +11,74 @@ const userSearch = document.getElementById("userSearch");
 const searchResults = document.getElementById("searchResults");
 const conversationList = document.getElementById("conversationList");
 const chatTitle = document.getElementById("chatTitle");
+const chatPresence = document.getElementById("chatPresence");
+const callStatus = document.getElementById("callStatus");
 const messagesEl = document.getElementById("messages");
 const messageForm = document.getElementById("messageForm");
 const messageInput = document.getElementById("messageInput");
 const mobileBack = document.getElementById("mobileBack");
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsPanel = document.getElementById("settingsPanel");
+const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+const translationLanguage = document.getElementById("translationLanguage");
+const themeSelect = document.getElementById("themeSelect");
+const vigenereKeyInput = document.getElementById("vigenereKeyInput");
+const vigenereToggle = document.getElementById("vigenereToggle");
+const loginOtpLabel = document.getElementById("loginOtpLabel");
+const loginOtpInput = document.getElementById("loginOtpInput");
+const loginOtpCancelBtn = document.getElementById("loginOtpCancelBtn");
+const loginSubmitBtn = document.getElementById("loginSubmitBtn");
+const twoFaStatus = document.getElementById("twoFaStatus");
+const twoFaSetupBtn = document.getElementById("twoFaSetupBtn");
+const twoFaSetupPanel = document.getElementById("twoFaSetupPanel");
+const twoFaQr = document.getElementById("twoFaQr");
+const twoFaSecret = document.getElementById("twoFaSecret");
+const twoFaEnableCodeInput = document.getElementById("twoFaEnableCodeInput");
+const twoFaEnableBtn = document.getElementById("twoFaEnableBtn");
+const twoFaDisablePanel = document.getElementById("twoFaDisablePanel");
+const twoFaDisableCodeInput = document.getElementById("twoFaDisableCodeInput");
+const twoFaDisableBtn = document.getElementById("twoFaDisableBtn");
+const deleteModeBtn = document.getElementById("deleteModeBtn");
+const deleteToolbar = document.getElementById("deleteToolbar");
+const deleteSelectionInfo = document.getElementById("deleteSelectionInfo");
+const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
+const deleteConversationBtn = document.getElementById("deleteConversationBtn");
+const deleteCancelBtn = document.getElementById("deleteCancelBtn");
+const chatLockBtn = document.getElementById("chatLockBtn");
+const blockUserBtn = document.getElementById("blockUserBtn");
+const callBtn = document.getElementById("callBtn");
+const chatLockOverlay = document.getElementById("chatLockOverlay");
+const chatLockCodeInput = document.getElementById("chatLockCodeInput");
+const chatUnlockBtn = document.getElementById("chatUnlockBtn");
+const chatLockStatus = document.getElementById("chatLockStatus");
+const deleteAccountBtn = document.getElementById("deleteAccountBtn");
+const remoteAudio = document.getElementById("remoteAudio");
+const chatMain = document.querySelector(".chat-main");
+const sidebarResizeHandle = document.getElementById("sidebarResizeHandle");
+const sendMessageBtn = messageForm.querySelector('button[type="submit"]');
+
+const UI_SETTINGS_KEY = "messenger_ui_settings_v1";
+const DEFAULT_VIGENERE_KEY = "WAVE";
+const DEFAULT_MESSAGE_PLACEHOLDER = "Напишите сообщение...";
+const MESSAGE_DELETE_ANIMATION_MS = 240;
+const SIDEBAR_DEFAULT_WIDTH = 336;
+const SIDEBAR_MIN_WIDTH = 260;
+const SIDEBAR_MAIN_MIN_WIDTH = 420;
+const SIDEBAR_HANDLE_WIDTH = 10;
+const SIDEBAR_MAX_WIDTH = 560;
+const ALLOWED_TRANSLATION_LANGS = new Set([
+  "off",
+  "en",
+  "ru",
+  "de",
+  "fr",
+  "es",
+  "it",
+  "tr",
+  "uk",
+  "pl",
+]);
+const ALLOWED_THEMES = new Set(["light", "dark"]);
 
 const state = {
   me: null,
@@ -23,7 +87,896 @@ const state = {
   messagesByConversation: new Map(),
   socket: null,
   searchDebounce: null,
+  translationCache: new Map(),
+  translationRequests: new Map(),
+  loginChallengeToken: null,
+  twoFa: {
+    enabled: false,
+    setupSecret: "",
+    setupOtpAuthUrl: "",
+  },
+  deletingMessageIdsByConversation: new Map(),
+  readRequestsInFlight: new Set(),
+  incomingSoundContext: null,
+  chatLocked: false,
+  blockActionInFlight: false,
+  call: {
+    active: false,
+    targetUserId: "",
+    conversationId: "",
+    peer: null,
+    localStream: null,
+  },
+  deleteMode: false,
+  selectedMessageIds: new Set(),
+  ui: {
+    theme: "light",
+    targetLanguage: "off",
+    vigenereEnabled: false,
+    vigenereKey: DEFAULT_VIGENERE_KEY,
+    sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+  },
 };
+
+function normalizeOtpToken(value) {
+  return String(value || "")
+    .replace(/\D+/g, "")
+    .slice(0, 6);
+}
+
+function resetLoginTwoFactorStep() {
+  state.loginChallengeToken = null;
+  loginOtpLabel.classList.add("hidden");
+  loginOtpCancelBtn.classList.add("hidden");
+  loginOtpInput.value = "";
+  loginForm.elements.login.disabled = false;
+  loginForm.elements.password.disabled = false;
+  loginSubmitBtn.textContent = "\u0412\u043e\u0439\u0442\u0438";
+}
+
+function startLoginTwoFactorStep(challengeToken) {
+  state.loginChallengeToken = String(challengeToken || "");
+  loginOtpLabel.classList.remove("hidden");
+  loginOtpCancelBtn.classList.remove("hidden");
+  loginForm.elements.login.disabled = true;
+  loginForm.elements.password.disabled = true;
+  loginSubmitBtn.textContent = "\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c \u043a\u043e\u0434";
+  loginOtpInput.focus();
+}
+
+function clearTwoFaSetup() {
+  state.twoFa.setupSecret = "";
+  state.twoFa.setupOtpAuthUrl = "";
+  twoFaSetupPanel.classList.add("hidden");
+  twoFaSecret.textContent = "";
+  twoFaEnableCodeInput.value = "";
+  twoFaQr.removeAttribute("src");
+}
+
+function setTwoFaStatusText(text, isError = false) {
+  twoFaStatus.textContent = String(text || "");
+  twoFaStatus.style.color = isError ? "var(--danger)" : "var(--text-subtle)";
+}
+
+function renderTwoFaState() {
+  if (state.twoFa.enabled) {
+    setTwoFaStatusText("2FA is enabled for this account.");
+    twoFaSetupBtn.textContent = "Rotate 2FA secret";
+    twoFaDisablePanel.classList.remove("hidden");
+  } else {
+    setTwoFaStatusText("2FA is disabled.");
+    twoFaSetupBtn.textContent = "Enable 2FA";
+    twoFaDisablePanel.classList.add("hidden");
+    twoFaDisableCodeInput.value = "";
+  }
+
+  if (state.twoFa.setupSecret && state.twoFa.setupOtpAuthUrl) {
+    twoFaSetupPanel.classList.remove("hidden");
+    twoFaSecret.textContent = `Secret: ${state.twoFa.setupSecret}`;
+    twoFaQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=156x156&data=${encodeURIComponent(
+      state.twoFa.setupOtpAuthUrl
+    )}`;
+  } else {
+    twoFaSetupPanel.classList.add("hidden");
+    twoFaSecret.textContent = "";
+    twoFaQr.removeAttribute("src");
+  }
+
+  updateChatLockUi();
+}
+
+async function refreshTwoFaStatus() {
+  try {
+    const payload = await api("/api/auth/2fa/status");
+    state.twoFa.enabled = Boolean(payload.enabled);
+    if (!state.twoFa.enabled) {
+      clearTwoFaSetup();
+      for (const conversation of state.conversations) {
+        conversation.chatProtected = false;
+      }
+      setChatLocked(false);
+    }
+    renderTwoFaState();
+  } catch {
+    setTwoFaStatusText("Failed to load 2FA status.", true);
+  }
+}
+
+function setChatLockStatus(text, isError = false) {
+  chatLockStatus.textContent = String(text || "");
+  chatLockStatus.style.color = isError ? "var(--danger)" : "var(--text-subtle)";
+}
+
+function getActiveConversation() {
+  return getConversationById(state.activeConversationId);
+}
+
+function getConversationByParticipantId(userId) {
+  return state.conversations.find((conversation) => conversation.participant?.id === userId);
+}
+
+function sendSocketPayload(payload) {
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+
+  state.socket.send(JSON.stringify(payload));
+  return true;
+}
+
+function setCallStatus(text, isError = false) {
+  callStatus.textContent = String(text || "");
+  callStatus.style.color = isError ? "var(--danger)" : "var(--text-subtle)";
+}
+
+function getPeerConnectionConstructor() {
+  return window.RTCPeerConnection || window.webkitRTCPeerConnection || null;
+}
+
+function canUseAudioCalls() {
+  return Boolean(
+    getPeerConnectionConstructor() &&
+      navigator.mediaDevices &&
+      typeof navigator.mediaDevices.getUserMedia === "function"
+  );
+}
+
+function updateCallUi() {
+  const conversation = getActiveConversation();
+  const callActive = Boolean(state.call.active);
+  const callsSupported = canUseAudioCalls();
+  const disabledByContext =
+    !conversation || state.chatLocked || Boolean(conversation?.blockedMe) || !callsSupported;
+
+  callBtn.disabled = disabledByContext && !callActive;
+  callBtn.classList.toggle("active", callActive);
+  callBtn.textContent = callActive ? "Завершить" : "Позвонить";
+  callBtn.title = callsSupported
+    ? ""
+    : "Звонки недоступны: браузер не поддерживает доступ к микрофону.";
+}
+
+function cleanupCallState() {
+  if (state.call.peer) {
+    try {
+      state.call.peer.close();
+    } catch {
+    }
+  }
+
+  if (state.call.localStream) {
+    for (const track of state.call.localStream.getTracks()) {
+      track.stop();
+    }
+  }
+
+  state.call.active = false;
+  state.call.targetUserId = "";
+  state.call.conversationId = "";
+  state.call.peer = null;
+  state.call.localStream = null;
+
+  remoteAudio.srcObject = null;
+  updateCallUi();
+}
+
+function endCall(notifyPeer = true, statusText = "Звонок завершен.") {
+  const targetUserId = state.call.targetUserId;
+  if (notifyPeer && targetUserId) {
+    sendSocketPayload({
+      type: "call:signal",
+      targetUserId,
+      signalType: "end",
+      conversationId: state.call.conversationId || state.activeConversationId,
+    });
+  }
+
+  cleanupCallState();
+  setCallStatus(statusText);
+}
+
+async function createCallPeer(targetUserId, conversationId, localStream) {
+  const PeerConnection = getPeerConnectionConstructor();
+  if (!PeerConnection) {
+    throw new Error("Звонки недоступны в этом браузере.");
+  }
+
+  const peer = new PeerConnection({
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  });
+
+  for (const track of localStream.getTracks()) {
+    peer.addTrack(track, localStream);
+  }
+
+  peer.onicecandidate = (event) => {
+    if (!event.candidate || !state.call.targetUserId) {
+      return;
+    }
+    sendSocketPayload({
+      type: "call:signal",
+      targetUserId: state.call.targetUserId,
+      signalType: "ice",
+      conversationId,
+      data: { candidate: event.candidate },
+    });
+  };
+
+  peer.ontrack = (event) => {
+    const [stream] = event.streams || [];
+    if (!stream) {
+      return;
+    }
+    remoteAudio.srcObject = stream;
+    remoteAudio
+      .play()
+      .then(() => {})
+      .catch(() => {});
+  };
+
+  peer.onconnectionstatechange = () => {
+    if (!state.call.active) {
+      return;
+    }
+    if (["failed", "disconnected", "closed"].includes(peer.connectionState)) {
+      endCall(false, "Соединение прервано.");
+    }
+  };
+
+  state.call.active = true;
+  state.call.targetUserId = targetUserId;
+  state.call.conversationId = conversationId;
+  state.call.peer = peer;
+  state.call.localStream = localStream;
+  updateCallUi();
+  return peer;
+}
+
+async function startOutgoingCall() {
+  if (!canUseAudioCalls()) {
+    setCallStatus("Звонки недоступны в этом браузере.", true);
+    return;
+  }
+
+  const conversation = getActiveConversation();
+  const targetUserId = conversation?.participant?.id;
+  if (!targetUserId) {
+    return;
+  }
+
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    setCallStatus("Нет соединения с сервером.", true);
+    return;
+  }
+
+  if (state.call.active) {
+    endCall(true, "Звонок завершен.");
+    return;
+  }
+
+  try {
+    const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const peer = await createCallPeer(
+      targetUserId,
+      state.activeConversationId,
+      localStream
+    );
+
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+
+    sendSocketPayload({
+      type: "call:signal",
+      targetUserId,
+      signalType: "offer",
+      conversationId: state.activeConversationId,
+      data: { sdp: peer.localDescription },
+    });
+
+    setCallStatus("Звоним...");
+  } catch (error) {
+    cleanupCallState();
+    setCallStatus(error?.message || "Не удалось начать звонок.", true);
+  }
+}
+
+async function handleCallSignal(payload) {
+  if (!payload?.fromUserId || !payload?.signalType) {
+    return;
+  }
+
+  const signalType = String(payload.signalType);
+  const fromUserId = String(payload.fromUserId);
+  const conversationId = String(payload.conversationId || "");
+  const data = payload.data || {};
+
+  if (signalType === "offer") {
+    if (state.call.active) {
+      sendSocketPayload({
+        type: "call:signal",
+        targetUserId: fromUserId,
+        signalType: "busy",
+        conversationId,
+      });
+      return;
+    }
+
+    if (!canUseAudioCalls()) {
+      sendSocketPayload({
+        type: "call:signal",
+        targetUserId: fromUserId,
+        signalType: "reject",
+        conversationId,
+      });
+      setCallStatus("Входящий звонок отклонен: звонки недоступны в этом браузере.", true);
+      return;
+    }
+
+    const callerConversation =
+      getConversationById(conversationId) || getConversationByParticipantId(fromUserId);
+    const callerName = callerConversation?.participant?.username || "Собеседник";
+    const accepted = window.confirm(`Входящий звонок от ${callerName}. Принять?`);
+    if (!accepted) {
+      sendSocketPayload({
+        type: "call:signal",
+        targetUserId: fromUserId,
+        signalType: "reject",
+        conversationId,
+      });
+      setCallStatus("Входящий звонок отклонен.");
+      return;
+    }
+
+    try {
+      if (callerConversation && callerConversation.id !== state.activeConversationId) {
+        await selectConversation(callerConversation.id);
+      }
+
+      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const peer = await createCallPeer(
+        fromUserId,
+        callerConversation?.id || conversationId,
+        localStream
+      );
+
+      if (!data.sdp) {
+        throw new Error("Некорректный входящий offer.");
+      }
+
+      await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+
+      sendSocketPayload({
+        type: "call:signal",
+        targetUserId: fromUserId,
+        signalType: "answer",
+        conversationId: callerConversation?.id || conversationId,
+        data: { sdp: peer.localDescription },
+      });
+
+      setCallStatus("В звонке.");
+    } catch (error) {
+      cleanupCallState();
+      setCallStatus(error?.message || "Не удалось принять звонок.", true);
+      sendSocketPayload({
+        type: "call:signal",
+        targetUserId: fromUserId,
+        signalType: "reject",
+        conversationId,
+      });
+    }
+    return;
+  }
+
+  if (!state.call.active || fromUserId !== state.call.targetUserId || !state.call.peer) {
+    return;
+  }
+
+  if (signalType === "answer") {
+    if (!data.sdp) {
+      return;
+    }
+    await state.call.peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    setCallStatus("В звонке.");
+    return;
+  }
+
+  if (signalType === "ice") {
+    if (!data.candidate) {
+      return;
+    }
+    try {
+      await state.call.peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+    } catch {
+    }
+    return;
+  }
+
+  if (signalType === "reject") {
+    endCall(false, "Собеседник отклонил звонок.");
+    return;
+  }
+
+  if (signalType === "busy") {
+    endCall(false, "Собеседник сейчас в другом звонке.");
+    return;
+  }
+
+  if (signalType === "end") {
+    endCall(false, "Собеседник завершил звонок.");
+  }
+}
+
+function updateBlockUserUi() {
+  const conversation = getActiveConversation();
+  const blockedByMe = Boolean(conversation?.blockedByMe);
+  const canToggle = Boolean(
+    state.me && conversation?.participant?.id && !state.chatLocked
+  );
+
+  blockUserBtn.disabled = !canToggle || state.blockActionInFlight;
+  blockUserBtn.classList.toggle("active", blockedByMe);
+  blockUserBtn.textContent = blockedByMe ? "Разблокировать" : "Заблокировать";
+}
+
+function updateComposerUi() {
+  const conversation = getActiveConversation();
+  const blockedMe = Boolean(conversation?.blockedMe);
+  const disabled = state.chatLocked || !conversation || blockedMe;
+
+  messageInput.disabled = disabled;
+  vigenereToggle.disabled = disabled;
+  if (sendMessageBtn) {
+    sendMessageBtn.disabled = disabled;
+  }
+
+  messageInput.placeholder = blockedMe
+    ? "Вы заблокированы в этом чате."
+    : DEFAULT_MESSAGE_PLACEHOLDER;
+}
+
+function updateChatLockUi() {
+  const hasConversation = Boolean(state.activeConversationId);
+  const canLock = Boolean(state.me && state.twoFa.enabled && hasConversation);
+  const locked = state.chatLocked;
+
+  chatLockBtn.disabled = !canLock;
+  chatLockBtn.classList.toggle("active", locked);
+  chatLockBtn.textContent = locked ? "Чат защищен" : "Защитить чат";
+
+  chatLockOverlay.classList.toggle("hidden", !locked);
+  chatMain.classList.toggle("chat-locked", locked);
+
+  updateComposerUi();
+  updateBlockUserUi();
+  updateCallUi();
+  settingsBtn.disabled = locked;
+
+  if (!locked) {
+    chatLockCodeInput.value = "";
+    setChatLockStatus("");
+  }
+}
+
+function setChatLocked(locked) {
+  const shouldLock =
+    Boolean(locked) &&
+    Boolean(state.me) &&
+    Boolean(state.twoFa.enabled) &&
+    Boolean(state.activeConversationId);
+
+  if (shouldLock === state.chatLocked) {
+    updateDeleteUi();
+    updateChatLockUi();
+    return;
+  }
+
+  state.chatLocked = shouldLock;
+  if (state.chatLocked) {
+    setSettingsPanelOpen(false);
+    state.deleteMode = false;
+    state.selectedMessageIds.clear();
+    setChatLockStatus("Введите 6-значный код из Google Authenticator.");
+  } else {
+    setChatLockStatus("");
+  }
+
+  updateDeleteUi();
+  updateChatLockUi();
+  renderMessages();
+
+  if (state.chatLocked) {
+    chatLockCodeInput.focus();
+  } else {
+    if (!messageInput.disabled) {
+      messageInput.focus();
+    }
+    markConversationAsRead(state.activeConversationId);
+  }
+}
+
+async function persistChatProtection(locked) {
+  if (!state.activeConversationId) {
+    return null;
+  }
+
+  const payload = await api(`/api/conversations/${state.activeConversationId}/protection`, {
+    method: "POST",
+    body: { locked: Boolean(locked) },
+  });
+
+  if (payload.conversation) {
+    upsertConversation(payload.conversation);
+  }
+
+  const active = getActiveConversation();
+  state.chatLocked = Boolean(active?.chatProtected && state.twoFa.enabled);
+  renderConversationList();
+  renderActiveConversationHeader();
+  updateDeleteUi();
+  updateChatLockUi();
+  return payload;
+}
+
+async function verifyAndUnlockChat() {
+  if (!state.chatLocked) {
+    return;
+  }
+
+  const token = normalizeOtpToken(chatLockCodeInput.value);
+  if (token.length !== 6) {
+    setChatLockStatus("Введите корректный 6-значный код.", true);
+    return;
+  }
+
+  chatUnlockBtn.disabled = true;
+  setChatLockStatus("Проверка кода...");
+
+  try {
+    await api("/api/auth/2fa/verify", {
+      method: "POST",
+      body: { token },
+    });
+    await persistChatProtection(false);
+    setChatLocked(false);
+  } catch (error) {
+    setChatLockStatus(error.message, true);
+    chatLockCodeInput.focus();
+    chatLockCodeInput.select();
+  } finally {
+    chatUnlockBtn.disabled = false;
+  }
+}
+
+function updateDeleteUi() {
+  const selectedCount = state.selectedMessageIds.size;
+  const hasConversation = Boolean(state.activeConversationId);
+  const locked = state.chatLocked;
+  const isDeleteModeVisible = state.deleteMode && !locked;
+
+  deleteToolbar.classList.toggle("hidden", !isDeleteModeVisible);
+  deleteModeBtn.classList.toggle("active", state.deleteMode);
+  deleteModeBtn.disabled = !hasConversation || locked;
+  deleteModeBtn.textContent = "Удаление";
+  deleteSelectionInfo.textContent = `Выбрано: ${selectedCount}`;
+  deleteSelectedBtn.disabled = selectedCount === 0 || locked;
+  deleteConversationBtn.disabled = !hasConversation || locked;
+  deleteCancelBtn.disabled = locked;
+}
+
+function setDeleteMode(enabled) {
+  state.deleteMode =
+    Boolean(enabled) && Boolean(state.activeConversationId) && !state.chatLocked;
+  if (!state.deleteMode) {
+    state.selectedMessageIds.clear();
+  }
+  updateDeleteUi();
+  renderMessages();
+}
+
+function toggleMessageSelection(messageId, rowElement = null) {
+  if (!state.deleteMode) {
+    return;
+  }
+
+  if (rowElement?.classList.contains("deleting")) {
+    return;
+  }
+
+  if (state.selectedMessageIds.has(messageId)) {
+    state.selectedMessageIds.delete(messageId);
+  } else {
+    state.selectedMessageIds.add(messageId);
+  }
+
+  updateDeleteUi();
+
+  if (rowElement) {
+    rowElement.classList.toggle(
+      "selected-for-delete",
+      state.selectedMessageIds.has(messageId)
+    );
+    return;
+  }
+
+  renderMessages();
+}
+
+function removeMessagesFromState(conversationId, messageIds) {
+  const idsSet = new Set(messageIds || []);
+  if (idsSet.size === 0) {
+    return;
+  }
+
+  const existing = state.messagesByConversation.get(conversationId) || [];
+  const next = existing.filter((message) => !idsSet.has(message.id));
+  state.messagesByConversation.set(conversationId, next);
+
+  for (const messageId of idsSet) {
+    state.selectedMessageIds.delete(messageId);
+  }
+
+  const deletingIds = state.deletingMessageIdsByConversation.get(conversationId);
+  if (deletingIds) {
+    for (const messageId of idsSet) {
+      deletingIds.delete(messageId);
+    }
+    if (deletingIds.size === 0) {
+      state.deletingMessageIdsByConversation.delete(conversationId);
+    }
+  }
+}
+
+function getDeletingMessageSet(conversationId) {
+  let ids = state.deletingMessageIdsByConversation.get(conversationId);
+  if (!ids) {
+    ids = new Set();
+    state.deletingMessageIdsByConversation.set(conversationId, ids);
+  }
+  return ids;
+}
+
+function animateMessageDeletion(conversationId, messageIds) {
+  const uniqueIds = [...new Set((messageIds || []).map((id) => String(id || "")))].filter(
+    Boolean
+  );
+  if (uniqueIds.length === 0) {
+    return;
+  }
+
+  const existingIds = new Set(
+    (state.messagesByConversation.get(conversationId) || []).map((message) => message.id)
+  );
+  const deletingIds = getDeletingMessageSet(conversationId);
+  const idsForAnimation = uniqueIds.filter(
+    (id) => existingIds.has(id) && !deletingIds.has(id)
+  );
+  if (idsForAnimation.length === 0) {
+    return;
+  }
+
+  for (const messageId of idsForAnimation) {
+    deletingIds.add(messageId);
+  }
+
+  const isActiveConversation = state.activeConversationId === conversationId;
+  if (isActiveConversation) {
+    for (const messageId of idsForAnimation) {
+      const row = messagesEl.querySelector(`[data-message-id="${messageId}"]`);
+      if (row) {
+        row.classList.add("deleting");
+      }
+    }
+  }
+
+  const finalizeDeletion = () => {
+    removeMessagesFromState(conversationId, idsForAnimation);
+    updateDeleteUi();
+    if (conversationId === state.activeConversationId) {
+      renderMessages();
+    }
+  };
+
+  if (isActiveConversation) {
+    window.setTimeout(finalizeDeletion, MESSAGE_DELETE_ANIMATION_MS);
+  } else {
+    finalizeDeletion();
+  }
+}
+
+function applyReadState(conversationId, messageIds, readAt) {
+  const idsSet = new Set((messageIds || []).map((id) => String(id || "")));
+  if (idsSet.size === 0) {
+    return false;
+  }
+
+  const messages = state.messagesByConversation.get(conversationId) || [];
+  let changed = false;
+
+  for (const message of messages) {
+    if (!idsSet.has(message.id) || message.readAt) {
+      continue;
+    }
+    message.readAt = String(readAt || new Date().toISOString());
+    changed = true;
+  }
+
+  return changed;
+}
+
+async function markConversationAsRead(conversationId) {
+  if (!conversationId || !state.me || state.chatLocked || document.hidden) {
+    return;
+  }
+
+  if (state.readRequestsInFlight.has(conversationId)) {
+    return;
+  }
+
+  const messages = state.messagesByConversation.get(conversationId) || [];
+  const hasUnreadIncoming = messages.some(
+    (message) => message.senderId !== state.me.id && !message.readAt
+  );
+  if (!hasUnreadIncoming) {
+    return;
+  }
+
+  state.readRequestsInFlight.add(conversationId);
+  try {
+    const payload = await api(`/api/conversations/${conversationId}/read`, {
+      method: "POST",
+    });
+
+    if (payload.readMessageIds?.length) {
+      applyReadState(conversationId, payload.readMessageIds, payload.readAt);
+    }
+
+    if (payload.conversation) {
+      upsertConversation(payload.conversation);
+      renderConversationList();
+      renderActiveConversationHeader();
+      updateChatLockUi();
+    }
+
+    if (conversationId === state.activeConversationId) {
+      renderMessages();
+    }
+  } catch {
+  } finally {
+    state.readRequestsInFlight.delete(conversationId);
+  }
+}
+
+function setNoConversationHeader() {
+  chatTitle.textContent = "Выберите диалог слева";
+  chatPresence.textContent = "";
+  chatPresence.classList.remove("online", "offline");
+  if (!state.call.active) {
+    setCallStatus("");
+  }
+  updateBlockUserUi();
+  updateComposerUi();
+  updateCallUi();
+}
+
+function renderActiveConversationHeader() {
+  const conversation = getConversationById(state.activeConversationId);
+  if (!conversation) {
+    setNoConversationHeader();
+    return;
+  }
+
+  chatTitle.textContent = conversation.participant?.username || "Диалог";
+  const isOnline = Boolean(conversation.participant?.online);
+  chatPresence.textContent = isOnline ? "онлайн" : "оффлайн";
+  chatPresence.classList.toggle("online", isOnline);
+  chatPresence.classList.toggle("offline", !isOnline);
+  updateBlockUserUi();
+  updateComposerUi();
+  updateCallUi();
+}
+
+function updateParticipantPresence(userId, online) {
+  let changed = false;
+  for (const conversation of state.conversations) {
+    if (conversation.participant?.id !== userId) {
+      continue;
+    }
+    if (Boolean(conversation.participant.online) === Boolean(online)) {
+      continue;
+    }
+    conversation.participant.online = Boolean(online);
+    changed = true;
+  }
+  return changed;
+}
+
+function playIncomingMessageSound() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+      return;
+    }
+
+    if (!state.incomingSoundContext) {
+      state.incomingSoundContext = new AudioCtx();
+    }
+
+    const context = state.incomingSoundContext;
+    if (context.state === "suspended") {
+      context.resume().catch(() => {});
+    }
+
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(900, now);
+    oscillator.frequency.exponentialRampToValueAtTime(650, now + 0.14);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.08, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.17);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.18);
+  } catch {
+  }
+}
+
+async function removeConversationFromState(conversationId) {
+  if (state.call.active && state.call.conversationId === conversationId) {
+    endCall(false, "Звонок завершен.");
+  }
+
+  state.conversations = state.conversations.filter(
+    (conversation) => conversation.id !== conversationId
+  );
+  state.messagesByConversation.delete(conversationId);
+  state.deletingMessageIdsByConversation.delete(conversationId);
+  state.readRequestsInFlight.delete(conversationId);
+
+  if (state.activeConversationId === conversationId) {
+    state.activeConversationId = null;
+    if (state.conversations.length > 0) {
+      await selectConversation(state.conversations[0].id);
+      return;
+    }
+
+    setChatLocked(false);
+    setNoConversationHeader();
+    renderConversationList();
+    renderMessages();
+    resetMobileChatState();
+    updateChatLockUi();
+    return;
+  }
+
+  renderConversationList();
+  renderActiveConversationHeader();
+  updateChatLockUi();
+}
 
 function setAuthTab(tab) {
   const isLogin = tab === "login";
@@ -31,6 +984,9 @@ function setAuthTab(tab) {
   tabRegister.classList.toggle("active", !isLogin);
   loginForm.classList.toggle("hidden", !isLogin);
   registerForm.classList.toggle("hidden", isLogin);
+  if (isLogin) {
+    resetLoginTwoFactorStep();
+  }
   authStatus.textContent = "";
 }
 
@@ -61,16 +1017,44 @@ async function api(path, options = {}) {
 function showAuth() {
   chatView.classList.add("hidden");
   authView.classList.remove("hidden");
+  setSettingsPanelOpen(false);
+  if (state.call.active) {
+    endCall(true, "Звонок завершен.");
+  } else {
+    cleanupCallState();
+  }
+  setCallStatus("");
+  state.chatLocked = false;
+  state.blockActionInFlight = false;
+  state.deleteMode = false;
+  state.selectedMessageIds.clear();
+  resetVigenereKey();
+  saveUiSettings();
+  resetLoginTwoFactorStep();
+  clearTwoFaSetup();
+  state.twoFa.enabled = false;
+  renderTwoFaState();
   closeSocket();
   state.me = null;
   state.conversations = [];
   state.activeConversationId = null;
   state.messagesByConversation = new Map();
+  state.translationCache = new Map();
+  state.translationRequests = new Map();
+  state.deletingMessageIdsByConversation = new Map();
+  state.readRequestsInFlight = new Set();
+  deleteAccountBtn.disabled = false;
+  setNoConversationHeader();
+  updateDeleteUi();
+  updateChatLockUi();
 }
 
 function showChat() {
   authView.classList.add("hidden");
   chatView.classList.remove("hidden");
+  applySidebarWidth(state.ui.sidebarWidth);
+  renderActiveConversationHeader();
+  updateChatLockUi();
 }
 
 function resetMobileChatState() {
@@ -79,6 +1063,330 @@ function resetMobileChatState() {
 
 function openMobileChatState() {
   chatView.classList.add("chat-open");
+}
+
+function normalizeTranslationLanguage(value) {
+  const language = String(value || "").trim().toLowerCase();
+  if (!ALLOWED_TRANSLATION_LANGS.has(language)) {
+    return "off";
+  }
+  return language;
+}
+
+function normalizeTheme(value) {
+  const theme = String(value || "").trim().toLowerCase();
+  if (!ALLOWED_THEMES.has(theme)) {
+    return "light";
+  }
+  return theme;
+}
+
+function normalizeVigenereKey(value) {
+  const key = String(value || "").trim();
+  return key || DEFAULT_VIGENERE_KEY;
+}
+
+function normalizeSidebarWidth(value) {
+  const width = Number(value);
+  if (!Number.isFinite(width)) {
+    return SIDEBAR_DEFAULT_WIDTH;
+  }
+
+  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, Math.round(width)));
+}
+
+function getSidebarMaxWidth() {
+  const containerWidth = chatView.clientWidth || window.innerWidth || SIDEBAR_DEFAULT_WIDTH;
+  const maxByLayout = containerWidth - SIDEBAR_MAIN_MIN_WIDTH - SIDEBAR_HANDLE_WIDTH;
+  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, maxByLayout));
+}
+
+function applySidebarWidth(width, persist = false) {
+  const maxWidth = getSidebarMaxWidth();
+  const normalized = normalizeSidebarWidth(width);
+  const clamped = Math.max(SIDEBAR_MIN_WIDTH, Math.min(normalized, maxWidth));
+
+  state.ui.sidebarWidth = clamped;
+  chatView.style.setProperty("--sidebar-width", `${clamped}px`);
+
+  if (persist) {
+    saveUiSettings();
+  }
+}
+
+function initializeSidebarResize() {
+  if (!sidebarResizeHandle) {
+    return;
+  }
+
+  let dragStartX = 0;
+  let dragStartWidth = state.ui.sidebarWidth;
+
+  const stopDragging = () => {
+    chatView.classList.remove("resizing");
+    document.removeEventListener("pointermove", handlePointerMove);
+    document.removeEventListener("pointerup", stopDragging);
+    document.removeEventListener("pointercancel", stopDragging);
+    saveUiSettings();
+  };
+
+  const handlePointerMove = (event) => {
+    if (!chatView.classList.contains("resizing")) {
+      return;
+    }
+
+    const delta = event.clientX - dragStartX;
+    applySidebarWidth(dragStartWidth + delta);
+  };
+
+  sidebarResizeHandle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || window.matchMedia("(max-width: 950px)").matches) {
+      return;
+    }
+
+    event.preventDefault();
+    dragStartX = event.clientX;
+    dragStartWidth = state.ui.sidebarWidth;
+    chatView.classList.add("resizing");
+    sidebarResizeHandle.setPointerCapture?.(event.pointerId);
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", stopDragging);
+    document.addEventListener("pointercancel", stopDragging);
+  });
+
+  sidebarResizeHandle.addEventListener("keydown", (event) => {
+    if (window.matchMedia("(max-width: 950px)").matches) {
+      return;
+    }
+
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return;
+    }
+
+    event.preventDefault();
+    const delta = event.key === "ArrowLeft" ? -24 : 24;
+    applySidebarWidth(state.ui.sidebarWidth + delta, true);
+  });
+}
+
+function resetVigenereKey() {
+  state.ui.vigenereKey = DEFAULT_VIGENERE_KEY;
+  if (vigenereKeyInput) {
+    vigenereKeyInput.value = DEFAULT_VIGENERE_KEY;
+  }
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = normalizeTheme(state.ui.theme);
+}
+
+function saveUiSettings() {
+  try {
+    localStorage.setItem(
+      UI_SETTINGS_KEY,
+      JSON.stringify({
+        theme: state.ui.theme,
+        targetLanguage: state.ui.targetLanguage,
+        vigenereEnabled: state.ui.vigenereEnabled,
+        sidebarWidth: normalizeSidebarWidth(state.ui.sidebarWidth),
+      })
+    );
+  } catch {
+  }
+}
+
+function loadUiSettings() {
+  try {
+    const raw = localStorage.getItem(UI_SETTINGS_KEY);
+    if (!raw) {
+      return;
+    }
+
+    const parsed = JSON.parse(raw);
+    state.ui.theme = normalizeTheme(parsed.theme);
+    state.ui.targetLanguage = normalizeTranslationLanguage(parsed.targetLanguage);
+    state.ui.vigenereEnabled = Boolean(parsed.vigenereEnabled);
+    state.ui.sidebarWidth = normalizeSidebarWidth(parsed.sidebarWidth);
+    state.ui.vigenereKey = DEFAULT_VIGENERE_KEY;
+  } catch {
+  }
+}
+
+function syncUiControls() {
+  themeSelect.value = normalizeTheme(state.ui.theme);
+  translationLanguage.value = normalizeTranslationLanguage(state.ui.targetLanguage);
+  vigenereKeyInput.value = normalizeVigenereKey(state.ui.vigenereKey);
+  updateVigenereToggle();
+}
+
+function updateVigenereToggle() {
+  const enabled = state.ui.vigenereEnabled;
+  vigenereToggle.classList.toggle("active", enabled);
+  vigenereToggle.textContent = enabled ? "Encrypt send: ON" : "Encrypt send: OFF";
+}
+
+function setSettingsPanelOpen(isOpen) {
+  const shouldOpen = Boolean(isOpen) && !state.chatLocked;
+  settingsPanel.classList.toggle("hidden", !shouldOpen);
+}
+
+function quoteText(text) {
+  return `"${String(text || "")}"`;
+}
+
+const EN_LOWER = "abcdefghijklmnopqrstuvwxyz";
+const EN_UPPER = EN_LOWER.toUpperCase();
+const RU_LOWER = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя";
+const RU_UPPER = RU_LOWER.toUpperCase();
+
+function buildVigenereShifts(key) {
+  const shifts = { en: [], ru: [] };
+  for (const char of normalizeVigenereKey(key).toLowerCase()) {
+    const enIndex = EN_LOWER.indexOf(char);
+    if (enIndex >= 0) {
+      shifts.en.push(enIndex);
+      continue;
+    }
+
+    const ruIndex = RU_LOWER.indexOf(char);
+    if (ruIndex >= 0) {
+      shifts.ru.push(ruIndex);
+    }
+  }
+  return shifts;
+}
+
+function transformWithVigenere(text, key, decrypt = false) {
+  const shifts = buildVigenereShifts(key);
+  if (shifts.en.length === 0 && shifts.ru.length === 0) {
+    return String(text || "");
+  }
+
+  const direction = decrypt ? -1 : 1;
+  const counters = { en: 0, ru: 0 };
+  const source = String(text || "");
+  let output = "";
+
+  for (const char of source) {
+    const enLowerIndex = EN_LOWER.indexOf(char);
+    if (enLowerIndex >= 0) {
+      if (shifts.en.length === 0) {
+        output += char;
+        continue;
+      }
+      const shift = shifts.en[counters.en % shifts.en.length];
+      const nextIndex =
+        (enLowerIndex + direction * shift + EN_LOWER.length) % EN_LOWER.length;
+      output += EN_LOWER[nextIndex];
+      counters.en += 1;
+      continue;
+    }
+
+    const enUpperIndex = EN_UPPER.indexOf(char);
+    if (enUpperIndex >= 0) {
+      if (shifts.en.length === 0) {
+        output += char;
+        continue;
+      }
+      const shift = shifts.en[counters.en % shifts.en.length];
+      const nextIndex =
+        (enUpperIndex + direction * shift + EN_UPPER.length) % EN_UPPER.length;
+      output += EN_UPPER[nextIndex];
+      counters.en += 1;
+      continue;
+    }
+
+    const ruLowerIndex = RU_LOWER.indexOf(char);
+    if (ruLowerIndex >= 0) {
+      if (shifts.ru.length === 0) {
+        output += char;
+        continue;
+      }
+      const shift = shifts.ru[counters.ru % shifts.ru.length];
+      const nextIndex =
+        (ruLowerIndex + direction * shift + RU_LOWER.length) % RU_LOWER.length;
+      output += RU_LOWER[nextIndex];
+      counters.ru += 1;
+      continue;
+    }
+
+    const ruUpperIndex = RU_UPPER.indexOf(char);
+    if (ruUpperIndex >= 0) {
+      if (shifts.ru.length === 0) {
+        output += char;
+        continue;
+      }
+      const shift = shifts.ru[counters.ru % shifts.ru.length];
+      const nextIndex =
+        (ruUpperIndex + direction * shift + RU_UPPER.length) % RU_UPPER.length;
+      output += RU_UPPER[nextIndex];
+      counters.ru += 1;
+      continue;
+    }
+
+    output += char;
+  }
+
+  return output;
+}
+
+function vigenereEncrypt(text, key) {
+  return transformWithVigenere(text, key, false);
+}
+
+function vigenereDecrypt(text, key) {
+  return transformWithVigenere(text, key, true);
+}
+
+function createAuxLine(text) {
+  const line = document.createElement("p");
+  line.className = "bubble-aux";
+  line.textContent = quoteText(text);
+  return line;
+}
+
+function translationCacheKey(sourceText, language) {
+  return `${language}:${sourceText}`;
+}
+
+async function getTranslatedText(sourceText, language) {
+  const cacheKey = translationCacheKey(sourceText, language);
+  if (state.translationCache.has(cacheKey)) {
+    return state.translationCache.get(cacheKey);
+  }
+
+  if (state.translationRequests.has(cacheKey)) {
+    return state.translationRequests.get(cacheKey);
+  }
+
+  const request = api("/api/translate", {
+    method: "POST",
+    body: {
+      text: sourceText,
+      targetLang: language,
+    },
+  })
+    .then((payload) => {
+      const translated = String(payload.translatedText || "").trim();
+      return translated || sourceText;
+    })
+    .catch(() => sourceText)
+    .finally(() => {
+      state.translationRequests.delete(cacheKey);
+    });
+
+  state.translationRequests.set(cacheKey, request);
+  const translated = await request;
+  state.translationCache.set(cacheKey, translated);
+  return translated;
+}
+
+async function hydrateTranslationLine(sourceText, language, element) {
+  const translated = await getTranslatedText(sourceText, language);
+  if (!element.isConnected || state.ui.targetLanguage !== language) {
+    return;
+  }
+  element.textContent = quoteText(translated);
 }
 
 function formatTime(dateString) {
@@ -105,6 +1413,15 @@ function formatDateTime(dateString) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function getInitial(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    return "?";
+  }
+
+  return Array.from(trimmed)[0].toUpperCase();
 }
 
 function createEmptyListNote(text) {
@@ -150,12 +1467,23 @@ function renderConversationList() {
     const title = conversation.participant
       ? conversation.participant.username
       : "Диалог";
-    const preview = conversation.lastMessage
+    const isOnline = Boolean(conversation.participant?.online);
+    let preview = conversation.lastMessage
       ? conversation.lastMessage.text
       : "Сообщений еще нет";
+    if (conversation.lastMessage?.senderId === state.me?.id) {
+      preview = `${conversation.lastMessage.readAt ? "✓✓" : "✓"} ${preview}`;
+    }
+    button.dataset.initial = getInitial(title);
 
     const row = document.createElement("div");
     row.className = "item-row";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "item-title-wrap";
+
+    const presenceDot = document.createElement("span");
+    presenceDot.className = `presence-dot ${isOnline ? "online" : "offline"}`;
 
     const titleEl = document.createElement("p");
     titleEl.className = "item-title";
@@ -165,7 +1493,9 @@ function renderConversationList() {
     timeEl.className = "item-time";
     timeEl.textContent = formatTime(conversation.updatedAt);
 
-    row.appendChild(titleEl);
+    titleWrap.appendChild(presenceDot);
+    titleWrap.appendChild(titleEl);
+    row.appendChild(titleWrap);
     row.appendChild(timeEl);
 
     const previewEl = document.createElement("p");
@@ -187,11 +1517,99 @@ function renderConversationList() {
 
 function addMessage(message) {
   const existing = state.messagesByConversation.get(message.conversationId) || [];
-  if (!existing.some((item) => item.id === message.id)) {
-    existing.push(message);
-    existing.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    state.messagesByConversation.set(message.conversationId, existing);
+  if (existing.some((item) => item.id === message.id)) {
+    return false;
   }
+
+  existing.push(message);
+  existing.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  state.messagesByConversation.set(message.conversationId, existing);
+  return true;
+}
+
+function createMessageRow(message, deletingIds = new Set()) {
+  const row = document.createElement("article");
+  const mine = message.senderId === state.me.id;
+  row.className = `message-row ${mine ? "mine" : "their"}`;
+  row.dataset.messageId = message.id;
+  if (deletingIds.has(message.id)) {
+    row.classList.add("deleting");
+  }
+
+  if (state.deleteMode) {
+    row.classList.add("selectable");
+    if (state.selectedMessageIds.has(message.id)) {
+      row.classList.add("selected-for-delete");
+    }
+
+    row.addEventListener("click", () => {
+      toggleMessageSelection(message.id, row);
+    });
+  }
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+
+  const originalText = String(message.text || "");
+  const isVigenereEncrypted = message.encryption?.type === "vigenere";
+
+  const text = document.createElement("p");
+  text.textContent = originalText;
+  bubble.appendChild(text);
+
+  let translationSourceText = originalText;
+  if (isVigenereEncrypted) {
+    const decryptedText = vigenereDecrypt(originalText, state.ui.vigenereKey);
+    bubble.appendChild(createAuxLine(decryptedText));
+    translationSourceText = decryptedText;
+  }
+
+  if (state.ui.targetLanguage !== "off") {
+    const language = state.ui.targetLanguage;
+    const translationLine = createAuxLine("Перевод...");
+    bubble.appendChild(translationLine);
+    hydrateTranslationLine(translationSourceText, language, translationLine);
+  }
+
+  const meta = document.createElement("div");
+  meta.className = "bubble-meta";
+  if (mine) {
+    const readMarker = message.readAt ? "прочитано" : "доставлено";
+    meta.textContent = `Вы, ${formatDateTime(message.createdAt)} · ${readMarker}`;
+  } else {
+    meta.textContent = `${message.sender?.username || "Пользователь"}, ${formatDateTime(
+      message.createdAt
+    )}`;
+  }
+  bubble.appendChild(meta);
+
+  row.appendChild(bubble);
+  return row;
+}
+
+function appendMessageToActiveView(message) {
+  if (!state.activeConversationId || message.conversationId !== state.activeConversationId) {
+    return false;
+  }
+
+  if (messagesEl.querySelector(`[data-message-id="${message.id}"]`)) {
+    return true;
+  }
+
+  const emptyNote = messagesEl.querySelector(".empty-note");
+  if (emptyNote) {
+    messagesEl.innerHTML = "";
+  }
+
+  const deletingIds =
+    state.deletingMessageIdsByConversation.get(state.activeConversationId) || new Set();
+  messagesEl.appendChild(createMessageRow(message, deletingIds));
+
+  if (!state.deleteMode) {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  return true;
 }
 
 function renderMessages() {
@@ -203,37 +1621,20 @@ function renderMessages() {
   }
 
   const messages = state.messagesByConversation.get(state.activeConversationId) || [];
+  const deletingIds =
+    state.deletingMessageIdsByConversation.get(state.activeConversationId) || new Set();
   if (messages.length === 0) {
     messagesEl.appendChild(createEmptyListNote("Напишите первое сообщение в этом диалоге."));
     return;
   }
 
   for (const message of messages) {
-    const row = document.createElement("article");
-    const mine = message.senderId === state.me.id;
-    row.className = `message-row ${mine ? "mine" : "their"}`;
-
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-
-    const text = document.createElement("p");
-    text.textContent = message.text;
-    bubble.appendChild(text);
-
-    const meta = document.createElement("div");
-    meta.className = "bubble-meta";
-    meta.textContent = mine
-      ? `Вы, ${formatDateTime(message.createdAt)}`
-      : `${message.sender?.username || "Пользователь"}, ${formatDateTime(
-          message.createdAt
-        )}`;
-    bubble.appendChild(meta);
-
-    row.appendChild(bubble);
-    messagesEl.appendChild(row);
+    messagesEl.appendChild(createMessageRow(message, deletingIds));
   }
 
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  if (!state.deleteMode) {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
 }
 
 function renderSearchResults(users) {
@@ -249,6 +1650,7 @@ function renderSearchResults(users) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "list-item";
+    button.dataset.initial = getInitial(user.username);
 
     const row = document.createElement("div");
     row.className = "item-row";
@@ -285,7 +1687,6 @@ function renderSearchResults(users) {
     searchResults.appendChild(wrapper);
   }
 }
-
 async function loadMessages(conversationId) {
   if (state.messagesByConversation.has(conversationId)) {
     return;
@@ -297,13 +1698,18 @@ async function loadMessages(conversationId) {
 
 async function selectConversation(conversationId) {
   state.activeConversationId = conversationId;
+  const activeConversation = getConversationById(conversationId);
+  state.chatLocked = Boolean(activeConversation?.chatProtected && state.twoFa.enabled);
+  state.deleteMode = false;
+  state.selectedMessageIds.clear();
+  updateDeleteUi();
+  updateChatLockUi();
   renderConversationList();
-
-  const conversation = getConversationById(conversationId);
-  chatTitle.textContent = conversation?.participant?.username || "Диалог";
+  renderActiveConversationHeader();
 
   await loadMessages(conversationId);
   renderMessages();
+  markConversationAsRead(conversationId);
 
   if (window.matchMedia("(max-width: 950px)").matches) {
     openMobileChatState();
@@ -314,16 +1720,24 @@ async function loadConversations() {
   const payload = await api("/api/conversations");
   state.conversations = payload.conversations || [];
   state.conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  state.activeConversationId = null;
+  state.deletingMessageIdsByConversation = new Map();
+  state.readRequestsInFlight = new Set();
+  state.deleteMode = false;
+  state.selectedMessageIds.clear();
+  updateDeleteUi();
 
   renderConversationList();
   if (state.conversations.length > 0) {
     await selectConversation(state.conversations[0].id);
   } else {
+    setChatLocked(false);
     state.activeConversationId = null;
-    chatTitle.textContent = "Выберите диалог слева";
+    setNoConversationHeader();
     renderMessages();
     resetMobileChatState();
   }
+  updateChatLockUi();
 }
 
 function closeSocket() {
@@ -348,24 +1762,69 @@ function connectSocket() {
     }
 
     if (payload.type === "message:new" && payload.message) {
-      addMessage(payload.message);
+      const added = addMessage(payload.message);
+      if (payload.message.senderId !== state.me?.id) {
+        playIncomingMessageSound();
+      }
       if (payload.message.conversationId === state.activeConversationId) {
-        renderMessages();
+        if (added) {
+          appendMessageToActiveView(payload.message);
+        }
+        markConversationAsRead(payload.message.conversationId);
       }
     }
 
     if (payload.type === "conversation:update" && payload.conversation) {
       upsertConversation(payload.conversation);
-      renderConversationList();
       if (payload.conversation.id === state.activeConversationId) {
-        chatTitle.textContent =
-          payload.conversation.participant?.username || "Диалог";
+        state.chatLocked = Boolean(payload.conversation.chatProtected && state.twoFa.enabled);
       }
+      renderConversationList();
+      renderActiveConversationHeader();
+      updateDeleteUi();
+      updateChatLockUi();
+    }
+
+    if (payload.type === "message:read" && payload.conversationId) {
+      const changed = applyReadState(
+        payload.conversationId,
+        payload.messageIds || [],
+        payload.readAt
+      );
+      if (changed) {
+        renderConversationList();
+        if (payload.conversationId === state.activeConversationId) {
+          renderMessages();
+        }
+      }
+    }
+
+    if (payload.type === "presence:update" && payload.userId) {
+      if (updateParticipantPresence(payload.userId, payload.online)) {
+        renderConversationList();
+        renderActiveConversationHeader();
+      }
+    }
+
+    if (payload.type === "message:deleted" && payload.conversationId) {
+      animateMessageDeletion(payload.conversationId, payload.messageIds || []);
+    }
+
+    if (payload.type === "conversation:deleted" && payload.conversationId) {
+      await removeConversationFromState(payload.conversationId);
+      updateDeleteUi();
+    }
+
+    if (payload.type === "call:signal") {
+      await handleCallSignal(payload);
     }
   });
 
   socket.addEventListener("close", () => {
     state.socket = null;
+    if (state.call.active) {
+      endCall(false, "Соединение с сервером потеряно.");
+    }
     if (state.me) {
       setTimeout(() => {
         if (!state.socket && state.me) {
@@ -378,16 +1837,26 @@ function connectSocket() {
 
 async function bootstrapSession(user) {
   state.me = user;
+  state.chatLocked = false;
+  resetVigenereKey();
+  saveUiSettings();
+  setChatLockStatus("");
   meName.textContent = `${user.username} (${user.email})`;
   showChat();
   authStatus.textContent = "";
+  resetLoginTwoFactorStep();
   renderSearchResults([]);
+  await refreshTwoFaStatus();
   await loadConversations();
   connectSocket();
 }
 
 tabLogin.addEventListener("click", () => setAuthTab("login"));
 tabRegister.addEventListener("click", () => setAuthTab("register"));
+loginOtpCancelBtn.addEventListener("click", () => {
+  resetLoginTwoFactorStep();
+  authStatus.textContent = "";
+});
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -396,12 +1865,38 @@ loginForm.addEventListener("submit", async (event) => {
   const formData = new FormData(loginForm);
   const login = String(formData.get("login") || "");
   const password = String(formData.get("password") || "");
+  const otpToken = normalizeOtpToken(formData.get("otp"));
 
   try {
+    if (state.loginChallengeToken) {
+      if (otpToken.length !== 6) {
+        throw new Error("Enter 6-digit code from Google Authenticator");
+      }
+
+      const payload = await api("/api/auth/login/2fa", {
+        method: "POST",
+        body: {
+          challengeToken: state.loginChallengeToken,
+          token: otpToken,
+        },
+      });
+
+      loginForm.reset();
+      await bootstrapSession(payload.user);
+      return;
+    }
+
     const payload = await api("/api/auth/login", {
       method: "POST",
       body: { login, password },
     });
+
+    if (payload.requires2fa) {
+      startLoginTwoFactorStep(payload.challengeToken);
+      authStatus.textContent = "Enter 6-digit code from Google Authenticator";
+      return;
+    }
+
     loginForm.reset();
     await bootstrapSession(payload.user);
   } catch (error) {
@@ -459,36 +1954,346 @@ userSearch.addEventListener("input", () => {
   }, 250);
 });
 
-messageInput.addEventListener("input", () => {
-  messageInput.style.height = "auto";
-  messageInput.style.height = `${Math.min(messageInput.scrollHeight, 130)}px`;
+settingsBtn.addEventListener("click", () => {
+  if (state.chatLocked) {
+    return;
+  }
+
+  const willOpen = settingsPanel.classList.contains("hidden");
+  if (willOpen && state.deleteMode) {
+    setDeleteMode(false);
+  }
+  setSettingsPanelOpen(willOpen);
+  if (willOpen && state.me) {
+    refreshTwoFaStatus();
+  }
 });
 
-messageForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
+closeSettingsBtn.addEventListener("click", () => {
+  setSettingsPanelOpen(false);
+});
+
+deleteAccountBtn.addEventListener("click", async () => {
+  if (!state.me) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "Удалить аккаунт? Это действие необратимо и удалит ваши чаты."
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  deleteAccountBtn.disabled = true;
+  try {
+    await api("/api/auth/account", { method: "DELETE" });
+    showAuth();
+    setAuthTab("login");
+    authStatus.textContent = "Аккаунт удален.";
+  } catch (error) {
+    authStatus.textContent = error.message;
+  } finally {
+    deleteAccountBtn.disabled = false;
+  }
+});
+
+deleteModeBtn.addEventListener("click", () => {
+  if (state.chatLocked) {
+    return;
+  }
 
   if (!state.activeConversationId) {
     return;
   }
 
-  const text = messageInput.value.trim();
-  if (!text) {
+  if (state.deleteMode) {
+    setDeleteMode(false);
     return;
   }
+
+  setSettingsPanelOpen(false);
+  setDeleteMode(true);
+});
+
+deleteCancelBtn.addEventListener("click", () => {
+  setDeleteMode(false);
+});
+
+deleteSelectedBtn.addEventListener("click", async () => {
+  if (!state.activeConversationId) {
+    return;
+  }
+
+  const messageIds = Array.from(state.selectedMessageIds);
+  if (messageIds.length === 0) {
+    return;
+  }
+
+  if (!window.confirm(`Удалить ${messageIds.length} сообщени(е/я) для всех участников?`)) {
+    return;
+  }
+
+  try {
+    const payload = await api(`/api/conversations/${state.activeConversationId}/messages`, {
+      method: "DELETE",
+      body: { messageIds },
+    });
+
+    const deleted = payload.deletedMessageIds || messageIds;
+    animateMessageDeletion(state.activeConversationId, deleted);
+    if (payload.conversation) {
+      upsertConversation(payload.conversation);
+      renderConversationList();
+    }
+    renderActiveConversationHeader();
+    setDeleteMode(false);
+  } catch (error) {
+    authStatus.textContent = error.message;
+  }
+});
+
+deleteConversationBtn.addEventListener("click", async () => {
+  if (!state.activeConversationId) {
+    return;
+  }
+
+  if (!window.confirm("Удалить весь чат и все сообщения для обоих участников?")) {
+    return;
+  }
+
+  const deletingId = state.activeConversationId;
+
+  try {
+    const payload = await api(`/api/conversations/${deletingId}`, {
+      method: "DELETE",
+    });
+
+    await removeConversationFromState(payload.deletedConversationId || deletingId);
+    setDeleteMode(false);
+  } catch (error) {
+    authStatus.textContent = error.message;
+  }
+});
+
+blockUserBtn.addEventListener("click", async () => {
+  if (state.chatLocked || !state.me) {
+    return;
+  }
+
+  const conversation = getActiveConversation();
+  const partnerId = conversation?.participant?.id;
+  if (!partnerId || state.blockActionInFlight) {
+    return;
+  }
+
+  state.blockActionInFlight = true;
+  updateBlockUserUi();
+
+  const shouldBlock = !conversation.blockedByMe;
+  const endpoint = shouldBlock ? "block" : "unblock";
+
+  try {
+    const payload = await api(`/api/users/${partnerId}/${endpoint}`, {
+      method: "POST",
+    });
+
+    if (payload.conversation) {
+      upsertConversation(payload.conversation);
+    } else {
+      conversation.blockedByMe = shouldBlock;
+    }
+
+    renderConversationList();
+    renderActiveConversationHeader();
+    updateChatLockUi();
+  } catch (error) {
+    authStatus.textContent = error.message;
+  } finally {
+    state.blockActionInFlight = false;
+    updateBlockUserUi();
+  }
+});
+
+callBtn.addEventListener("click", async () => {
+  if (state.call.active) {
+    endCall(true, "Звонок завершен.");
+    return;
+  }
+
+  await startOutgoingCall();
+});
+
+chatLockBtn.addEventListener("click", async () => {
+  if (!state.activeConversationId || !state.twoFa.enabled || !state.me) {
+    return;
+  }
+
+  if (state.chatLocked) {
+    chatLockCodeInput.focus();
+    return;
+  }
+
+  setDeleteMode(false);
+  setSettingsPanelOpen(false);
+  setChatLocked(true);
+  try {
+    await persistChatProtection(true);
+  } catch (error) {
+    setChatLocked(false);
+    authStatus.textContent = error.message;
+  }
+});
+
+chatUnlockBtn.addEventListener("click", () => {
+  verifyAndUnlockChat();
+});
+
+chatLockCodeInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+  event.preventDefault();
+  verifyAndUnlockChat();
+});
+
+twoFaSetupBtn.addEventListener("click", async () => {
+  if (!state.me) {
+    return;
+  }
+
+  try {
+    const payload = await api("/api/auth/2fa/setup", { method: "POST" });
+    state.twoFa.setupSecret = String(payload.secret || "");
+    state.twoFa.setupOtpAuthUrl = String(payload.otpauthUrl || "");
+    renderTwoFaState();
+    setTwoFaStatusText("Scan QR and confirm with a 6-digit code.");
+  } catch (error) {
+    setTwoFaStatusText(error.message, true);
+  }
+});
+
+twoFaEnableBtn.addEventListener("click", async () => {
+  const token = normalizeOtpToken(twoFaEnableCodeInput.value);
+  if (token.length !== 6) {
+    setTwoFaStatusText("Enter a valid 6-digit code.", true);
+    return;
+  }
+
+  try {
+    await api("/api/auth/2fa/enable", {
+      method: "POST",
+      body: { token },
+    });
+    clearTwoFaSetup();
+    state.twoFa.enabled = true;
+    renderTwoFaState();
+    setTwoFaStatusText("2FA has been enabled.");
+  } catch (error) {
+    setTwoFaStatusText(error.message, true);
+  }
+});
+
+twoFaDisableBtn.addEventListener("click", async () => {
+  const token = normalizeOtpToken(twoFaDisableCodeInput.value);
+  if (token.length !== 6) {
+    setTwoFaStatusText("Enter a valid 6-digit code.", true);
+    return;
+  }
+
+  try {
+    await api("/api/auth/2fa/disable", {
+      method: "POST",
+      body: { token },
+    });
+    clearTwoFaSetup();
+    state.twoFa.enabled = false;
+    for (const conversation of state.conversations) {
+      conversation.chatProtected = false;
+    }
+    setChatLocked(false);
+    renderTwoFaState();
+    setTwoFaStatusText("2FA has been disabled.");
+  } catch (error) {
+    setTwoFaStatusText(error.message, true);
+  }
+});
+
+themeSelect.addEventListener("change", () => {
+  state.ui.theme = normalizeTheme(themeSelect.value);
+  applyTheme();
+  saveUiSettings();
+});
+
+translationLanguage.addEventListener("change", () => {
+  state.ui.targetLanguage = normalizeTranslationLanguage(translationLanguage.value);
+  saveUiSettings();
+  renderMessages();
+});
+
+vigenereKeyInput.addEventListener("input", () => {
+  state.ui.vigenereKey = normalizeVigenereKey(vigenereKeyInput.value);
+  saveUiSettings();
+  renderMessages();
+});
+
+vigenereToggle.addEventListener("click", () => {
+  state.ui.vigenereEnabled = !state.ui.vigenereEnabled;
+  updateVigenereToggle();
+  saveUiSettings();
+  renderMessages();
+});
+
+messageInput.addEventListener("input", () => {
+  messageInput.style.height = "auto";
+  messageInput.style.height = `${Math.min(messageInput.scrollHeight, 130)}px`;
+});
+
+messageInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) {
+    return;
+  }
+
+  event.preventDefault();
+  messageForm.requestSubmit();
+});
+
+messageForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const activeConversation = getActiveConversation();
+  if (
+    !state.activeConversationId ||
+    state.chatLocked ||
+    !activeConversation ||
+    activeConversation.blockedMe
+  ) {
+    return;
+  }
+
+  const plainText = messageInput.value.trim();
+  if (!plainText) {
+    return;
+  }
+
+  const encrypted = state.ui.vigenereEnabled;
+  const text = encrypted ? vigenereEncrypt(plainText, state.ui.vigenereKey) : plainText;
 
   try {
     const payload = await api(
       `/api/conversations/${state.activeConversationId}/messages`,
       {
         method: "POST",
-        body: { text },
+        body: encrypted ? { text, encryption: { type: "vigenere" } } : { text },
       }
     );
 
     upsertConversation(payload.conversation);
-    addMessage(payload.message);
+    const added = addMessage(payload.message);
     renderConversationList();
-    renderMessages();
+    if (!added || !appendMessageToActiveView(payload.message)) {
+      renderMessages();
+    }
     messageInput.value = "";
     messageInput.style.height = "auto";
   } catch (error) {
@@ -497,6 +2302,7 @@ messageForm.addEventListener("submit", async (event) => {
 });
 
 mobileBack.addEventListener("click", () => {
+  setDeleteMode(false);
   resetMobileChatState();
 });
 
@@ -504,9 +2310,27 @@ window.addEventListener("resize", () => {
   if (!window.matchMedia("(max-width: 950px)").matches) {
     chatView.classList.remove("chat-open");
   }
+  applySidebarWidth(state.ui.sidebarWidth);
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    markConversationAsRead(state.activeConversationId);
+  }
 });
 
 async function init() {
+  loadUiSettings();
+  resetVigenereKey();
+  saveUiSettings();
+  applySidebarWidth(state.ui.sidebarWidth);
+  initializeSidebarResize();
+  applyTheme();
+  syncUiControls();
+  renderTwoFaState();
+  updateDeleteUi();
+  updateChatLockUi();
+  setSettingsPanelOpen(false);
   setAuthTab("login");
   renderSearchResults([]);
 
@@ -519,3 +2343,7 @@ async function init() {
 }
 
 init();
+
+
+
+

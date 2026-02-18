@@ -44,7 +44,21 @@
                 required
               />
             </label>
-            <button type="submit" class="primary-btn">Войти</button>
+            <label id="loginOtpLabel" class="field-label hidden">
+              Google Authenticator code
+              <input
+                id="loginOtpInput"
+                type="text"
+                name="otp"
+                inputmode="numeric"
+                maxlength="6"
+                autocomplete="one-time-code"
+              />
+            </label>
+            <button id="loginSubmitBtn" type="submit" class="primary-btn">Войти</button>
+            <button id="loginOtpCancelBtn" type="button" class="ghost-btn hidden">
+              Back to password login
+            </button>
           </form>
 
           <form id="registerForm" class="auth-form hidden">
@@ -97,6 +111,14 @@
           <p class="mini-label section-label">Диалоги</p>
           <ul id="conversationList" class="list"></ul>
         </aside>
+        <div
+          id="sidebarResizeHandle"
+          class="sidebar-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Изменить ширину списка чатов"
+          tabindex="0"
+        ></div>
 
         <main class="chat-main">
           <header class="chat-header">
@@ -104,8 +126,149 @@
             <div>
               <p class="mini-label">Текущий чат</p>
               <h3 id="chatTitle">Выберите диалог слева</h3>
+              <p id="chatPresence" class="chat-presence"></p>
+              <p id="callStatus" class="chat-call-status"></p>
             </div>
+            <button id="deleteModeBtn" class="ghost-btn delete-mode-btn" type="button">
+              Удаление
+            </button>
+            <button id="chatLockBtn" class="ghost-btn chat-lock-btn" type="button">
+              Защитить чат
+            </button>
+            <button id="blockUserBtn" class="ghost-btn block-user-btn" type="button">
+              Заблокировать
+            </button>
+            <button id="callBtn" class="ghost-btn call-btn" type="button">
+              Позвонить
+            </button>
+            <button id="settingsBtn" class="ghost-btn settings-btn" type="button">
+              Настройки
+            </button>
           </header>
+
+          <section id="settingsPanel" class="settings-panel hidden">
+            <div class="settings-row">
+              <label for="themeSelect">Тема</label>
+              <select id="themeSelect">
+                <option value="light">Светлая</option>
+                <option value="dark">Темная</option>
+              </select>
+            </div>
+
+            <div class="settings-row">
+              <label for="translationLanguage">Язык перевода</label>
+              <select id="translationLanguage">
+                <option value="off">Не переводить</option>
+                <option value="en">English</option>
+                <option value="ru">Русский</option>
+                <option value="de">Deutsch</option>
+                <option value="fr">Francais</option>
+                <option value="es">Espanol</option>
+                <option value="it">Italiano</option>
+                <option value="tr">Turkce</option>
+                <option value="uk">Украинский</option>
+                <option value="pl">Polski</option>
+              </select>
+            </div>
+
+            <div class="settings-row">
+              <label for="vigenereKeyInput">Vigenere key</label>
+              <input
+                id="vigenereKeyInput"
+                type="text"
+                maxlength="64"
+                placeholder="WAVE"
+                autocomplete="off"
+              />
+            </div>
+
+
+            <div class="settings-row twofa-card">
+              <label>Google Authenticator (2FA)</label>
+              <p id="twoFaStatus" class="settings-hint">Loading 2FA status...</p>
+
+              <button id="twoFaSetupBtn" type="button" class="ghost-btn">
+                Enable 2FA
+              </button>
+
+              <div id="twoFaSetupPanel" class="twofa-setup hidden">
+                <p class="settings-hint">Scan QR in Google Authenticator or add key manually.</p>
+                <img id="twoFaQr" class="twofa-qr" alt="2FA QR" />
+                <p id="twoFaSecret" class="twofa-secret"></p>
+                <input
+                  id="twoFaEnableCodeInput"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="6"
+                  placeholder="6-digit code"
+                  autocomplete="one-time-code"
+                />
+                <button id="twoFaEnableBtn" type="button" class="ghost-btn">
+                  Confirm and enable
+                </button>
+              </div>
+
+              <div id="twoFaDisablePanel" class="twofa-disable hidden">
+                <input
+                  id="twoFaDisableCodeInput"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="6"
+                  placeholder="6-digit code to disable"
+                  autocomplete="one-time-code"
+                />
+                <button id="twoFaDisableBtn" type="button" class="ghost-btn">
+                  Disable 2FA
+                </button>
+              </div>
+            </div>
+            <p class="settings-hint">
+              Перевод и расшифровка показываются ниже оригинала, в кавычках и
+              более прозрачно.
+            </p>
+
+            <button id="deleteAccountBtn" class="ghost-btn danger-btn settings-danger" type="button">
+              Удалить аккаунт
+            </button>
+
+            <button id="closeSettingsBtn" class="ghost-btn settings-close" type="button">
+              Закрыть
+            </button>
+          </section>
+
+          <section id="deleteToolbar" class="delete-toolbar hidden">
+            <p id="deleteSelectionInfo" class="delete-selection-info">0</p>
+            <div class="delete-toolbar-actions">
+              <button id="deleteSelectedBtn" type="button" class="ghost-btn danger-btn">
+                Удалить выбранные
+              </button>
+              <button id="deleteConversationBtn" type="button" class="ghost-btn danger-btn">
+                Удалить чат
+              </button>
+              <button id="deleteCancelBtn" type="button" class="ghost-btn">
+                Отмена
+              </button>
+            </div>
+          </section>
+
+          <section id="chatLockOverlay" class="chat-lock-overlay hidden">
+            <div class="chat-lock-card">
+              <h4>Чат заблокирован</h4>
+              <p>Введите код из Google Authenticator, чтобы разблокировать чат.</p>
+              <input
+                id="chatLockCodeInput"
+                type="text"
+                inputmode="numeric"
+                maxlength="6"
+                placeholder="6-digit code"
+                autocomplete="one-time-code"
+              />
+              <button id="chatUnlockBtn" type="button" class="primary-btn">
+                Разблокировать
+              </button>
+              <p id="chatLockStatus" class="status-text chat-lock-status"></p>
+            </div>
+          </section>
 
           <section id="messages" class="messages"></section>
 
@@ -116,13 +279,21 @@
               rows="1"
               maxlength="2000"
             ></textarea>
-            <button type="submit" class="primary-btn">Отправить</button>
+            <div class="message-actions">
+              <button id="vigenereToggle" type="button" class="ghost-btn secondary-btn">
+                Encrypt send: OFF
+              </button>
+              <button type="submit" class="primary-btn">Отправить</button>
+            </div>
           </form>
         </main>
       </section>
     </div>
 
+    <audio id="remoteAudio" autoplay playsinline class="hidden-media"></audio>
     <script src="./app.js"></script>
   </body>
 </html>
+
+
 
