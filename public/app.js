@@ -13,6 +13,10 @@ const conversationList = document.getElementById("conversationList");
 const chatTitle = document.getElementById("chatTitle");
 const chatPresence = document.getElementById("chatPresence");
 const callStatus = document.getElementById("callStatus");
+const incomingCallPanel = document.getElementById("incomingCallPanel");
+const incomingCallText = document.getElementById("incomingCallText");
+const acceptCallBtn = document.getElementById("acceptCallBtn");
+const rejectCallBtn = document.getElementById("rejectCallBtn");
 const messagesEl = document.getElementById("messages");
 const messageForm = document.getElementById("messageForm");
 const messageInput = document.getElementById("messageInput");
@@ -66,6 +70,8 @@ const SIDEBAR_MIN_WIDTH = 260;
 const SIDEBAR_MAIN_MIN_WIDTH = 420;
 const SIDEBAR_HANDLE_WIDTH = 10;
 const SIDEBAR_MAX_WIDTH = 560;
+const CALL_RINGTONE_VIDEO_ID = "tGLg27Qj_pM";
+const CALL_RINGTONE_URL = `https://www.youtube.com/embed/${CALL_RINGTONE_VIDEO_ID}?autoplay=1&controls=0&disablekb=1&loop=1&modestbranding=1&playsinline=1&rel=0&playlist=${CALL_RINGTONE_VIDEO_ID}`;
 const ALLOWED_TRANSLATION_LANGS = new Set([
   "off",
   "en",
@@ -106,6 +112,9 @@ const state = {
     conversationId: "",
     peer: null,
     localStream: null,
+    pendingIncoming: null,
+    ringtoneFrame: null,
+    incomingActionInFlight: false,
   },
   deleteMode: false,
   selectedMessageIds: new Set(),
@@ -229,6 +238,54 @@ function setCallStatus(text, isError = false) {
   callStatus.style.color = isError ? "var(--danger)" : "var(--text-subtle)";
 }
 
+function setIncomingCallActionInFlight(inFlight) {
+  state.call.incomingActionInFlight = Boolean(inFlight);
+  acceptCallBtn.disabled = state.call.incomingActionInFlight;
+  rejectCallBtn.disabled = state.call.incomingActionInFlight;
+}
+
+function clearIncomingCallUi() {
+  incomingCallPanel.classList.add("hidden");
+  incomingCallText.textContent = "";
+  setIncomingCallActionInFlight(false);
+}
+
+function clearPendingIncomingCall() {
+  state.call.pendingIncoming = null;
+  clearIncomingCallUi();
+  updateCallUi();
+}
+
+function showIncomingCallUi(callerName) {
+  incomingCallText.textContent = `Входящий звонок от ${callerName}`;
+  incomingCallPanel.classList.remove("hidden");
+  setIncomingCallActionInFlight(false);
+}
+
+function startCallRingtone() {
+  if (state.call.ringtoneFrame) {
+    return;
+  }
+
+  const iframe = document.createElement("iframe");
+  iframe.className = "hidden-media call-ringtone-frame";
+  iframe.title = "Call ringtone";
+  iframe.tabIndex = -1;
+  iframe.allow = "autoplay";
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.src = CALL_RINGTONE_URL;
+  document.body.appendChild(iframe);
+  state.call.ringtoneFrame = iframe;
+}
+
+function stopCallRingtone() {
+  if (!state.call.ringtoneFrame) {
+    return;
+  }
+  state.call.ringtoneFrame.remove();
+  state.call.ringtoneFrame = null;
+}
+
 function getPeerConnectionConstructor() {
   return window.RTCPeerConnection || window.webkitRTCPeerConnection || null;
 }
@@ -245,10 +302,11 @@ function updateCallUi() {
   const conversation = getActiveConversation();
   const callActive = Boolean(state.call.active);
   const callsSupported = canUseAudioCalls();
+  const hasPendingIncoming = Boolean(state.call.pendingIncoming);
   const disabledByContext =
     !conversation || state.chatLocked || Boolean(conversation?.blockedMe) || !callsSupported;
 
-  callBtn.disabled = disabledByContext && !callActive;
+  callBtn.disabled = (disabledByContext || hasPendingIncoming) && !callActive;
   callBtn.classList.toggle("active", callActive);
   callBtn.textContent = callActive ? "Завершить" : "Позвонить";
   callBtn.title = callsSupported
@@ -257,6 +315,9 @@ function updateCallUi() {
 }
 
 function cleanupCallState() {
+  stopCallRingtone();
+  clearPendingIncomingCall();
+
   if (state.call.peer) {
     try {
       state.call.peer.close();
@@ -293,6 +354,80 @@ function endCall(notifyPeer = true, statusText = "Звонок завершен.
 
   cleanupCallState();
   setCallStatus(statusText);
+}
+
+function rejectPendingIncomingCall(statusText = "Входящий звонок отклонен.") {
+  const pendingCall = state.call.pendingIncoming;
+  if (!pendingCall) {
+    return;
+  }
+
+  sendSocketPayload({
+    type: "call:signal",
+    targetUserId: pendingCall.fromUserId,
+    signalType: "reject",
+    conversationId: pendingCall.conversationId,
+  });
+
+  stopCallRingtone();
+  clearPendingIncomingCall();
+  setCallStatus(statusText);
+}
+
+async function acceptPendingIncomingCall() {
+  const pendingCall = state.call.pendingIncoming;
+  if (!pendingCall || state.call.active || state.call.incomingActionInFlight) {
+    return;
+  }
+
+  if (!canUseAudioCalls()) {
+    rejectPendingIncomingCall("Входящий звонок отклонен: звонки недоступны в этом браузере.");
+    return;
+  }
+
+  setIncomingCallActionInFlight(true);
+  stopCallRingtone();
+
+  try {
+    const callerConversation =
+      getConversationById(pendingCall.conversationId) ||
+      getConversationByParticipantId(pendingCall.fromUserId);
+
+    if (callerConversation && callerConversation.id !== state.activeConversationId) {
+      await selectConversation(callerConversation.id);
+    }
+
+    const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const peer = await createCallPeer(
+      pendingCall.fromUserId,
+      callerConversation?.id || pendingCall.conversationId,
+      localStream
+    );
+
+    await peer.setRemoteDescription(new RTCSessionDescription(pendingCall.offerSdp));
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+
+    sendSocketPayload({
+      type: "call:signal",
+      targetUserId: pendingCall.fromUserId,
+      signalType: "answer",
+      conversationId: callerConversation?.id || pendingCall.conversationId,
+      data: { sdp: peer.localDescription },
+    });
+
+    clearPendingIncomingCall();
+    setCallStatus("В звонке.");
+  } catch (error) {
+    sendSocketPayload({
+      type: "call:signal",
+      targetUserId: pendingCall.fromUserId,
+      signalType: "reject",
+      conversationId: pendingCall.conversationId,
+    });
+    cleanupCallState();
+    setCallStatus(error?.message || "Не удалось принять звонок.", true);
+  }
 }
 
 async function createCallPeer(targetUserId, conversationId, localStream) {
@@ -339,7 +474,7 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
       return;
     }
     if (["failed", "disconnected", "closed"].includes(peer.connectionState)) {
-      endCall(false, "Соединение прервано.");
+      endCall(true, "Соединение прервано.");
     }
   };
 
@@ -374,6 +509,11 @@ async function startOutgoingCall() {
     return;
   }
 
+  if (state.call.pendingIncoming) {
+    setCallStatus("Сначала ответьте на входящий звонок.");
+    return;
+  }
+
   try {
     const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const peer = await createCallPeer(
@@ -394,6 +534,7 @@ async function startOutgoingCall() {
     });
 
     setCallStatus("Звоним...");
+    startCallRingtone();
   } catch (error) {
     cleanupCallState();
     setCallStatus(error?.message || "Не удалось начать звонок.", true);
@@ -432,64 +573,56 @@ async function handleCallSignal(payload) {
       return;
     }
 
-    const callerConversation =
-      getConversationById(conversationId) || getConversationByParticipantId(fromUserId);
-    const callerName = callerConversation?.participant?.username || "Собеседник";
-    const accepted = window.confirm(`Входящий звонок от ${callerName}. Принять?`);
-    if (!accepted) {
+    if (state.call.pendingIncoming && state.call.pendingIncoming.fromUserId !== fromUserId) {
       sendSocketPayload({
         type: "call:signal",
         targetUserId: fromUserId,
-        signalType: "reject",
+        signalType: "busy",
         conversationId,
       });
-      setCallStatus("Входящий звонок отклонен.");
       return;
     }
 
-    try {
-      if (callerConversation && callerConversation.id !== state.activeConversationId) {
-        await selectConversation(callerConversation.id);
-      }
-
-      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const peer = await createCallPeer(
-        fromUserId,
-        callerConversation?.id || conversationId,
-        localStream
-      );
-
-      if (!data.sdp) {
-        throw new Error("Некорректный входящий offer.");
-      }
-
-      await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-      const answer = await peer.createAnswer();
-      await peer.setLocalDescription(answer);
-
-      sendSocketPayload({
-        type: "call:signal",
-        targetUserId: fromUserId,
-        signalType: "answer",
-        conversationId: callerConversation?.id || conversationId,
-        data: { sdp: peer.localDescription },
-      });
-
-      setCallStatus("В звонке.");
-    } catch (error) {
-      cleanupCallState();
-      setCallStatus(error?.message || "Не удалось принять звонок.", true);
+    if (!data.sdp) {
       sendSocketPayload({
         type: "call:signal",
         targetUserId: fromUserId,
         signalType: "reject",
         conversationId,
       });
+      setCallStatus("Некорректный входящий offer.", true);
+      return;
     }
+
+    const callerConversation =
+      getConversationById(conversationId) || getConversationByParticipantId(fromUserId);
+    const resolvedConversationId = callerConversation?.id || conversationId;
+    const callerName = callerConversation?.participant?.username || "Собеседник";
+    state.call.pendingIncoming = {
+      fromUserId,
+      conversationId: resolvedConversationId,
+      offerSdp: data.sdp,
+      callerName,
+    };
+
+    showIncomingCallUi(callerName);
+    setCallStatus(`Входящий звонок от ${callerName}.`);
+    startCallRingtone();
+    updateCallUi();
     return;
   }
 
   if (!state.call.active || fromUserId !== state.call.targetUserId || !state.call.peer) {
+    if (
+      signalType === "end" &&
+      state.call.pendingIncoming &&
+      state.call.pendingIncoming.fromUserId === fromUserId
+    ) {
+      stopCallRingtone();
+      clearPendingIncomingCall();
+      updateCallUi();
+      setCallStatus("Собеседник отменил звонок.");
+    }
     return;
   }
 
@@ -498,6 +631,7 @@ async function handleCallSignal(payload) {
       return;
     }
     await state.call.peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    stopCallRingtone();
     setCallStatus("В звонке.");
     return;
   }
@@ -872,7 +1006,7 @@ function setNoConversationHeader() {
   chatTitle.textContent = "Выберите диалог слева";
   chatPresence.textContent = "";
   chatPresence.classList.remove("online", "offline");
-  if (!state.call.active) {
+  if (!state.call.active && !state.call.pendingIncoming) {
     setCallStatus("");
   }
   updateBlockUserUi();
@@ -1824,6 +1958,11 @@ function connectSocket() {
     state.socket = null;
     if (state.call.active) {
       endCall(false, "Соединение с сервером потеряно.");
+    } else if (state.call.pendingIncoming) {
+      stopCallRingtone();
+      clearPendingIncomingCall();
+      updateCallUi();
+      setCallStatus("Соединение с сервером потеряно.");
     }
     if (state.me) {
       setTimeout(() => {
@@ -2121,7 +2260,20 @@ callBtn.addEventListener("click", async () => {
     return;
   }
 
+  if (state.call.pendingIncoming) {
+    setCallStatus("Сначала ответьте на входящий звонок.");
+    return;
+  }
+
   await startOutgoingCall();
+});
+
+acceptCallBtn.addEventListener("click", async () => {
+  await acceptPendingIncomingCall();
+});
+
+rejectCallBtn.addEventListener("click", () => {
+  rejectPendingIncomingCall();
 });
 
 chatLockBtn.addEventListener("click", async () => {

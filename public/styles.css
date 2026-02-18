@@ -524,6 +524,50 @@ textarea:focus {
   color: var(--text-subtle);
 }
 
+.incoming-call-panel {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(42, 171, 238, 0.28);
+  border-radius: 10px;
+  background: rgba(42, 171, 238, 0.08);
+  display: grid;
+  gap: 6px;
+  width: fit-content;
+  max-width: min(100%, 340px);
+}
+
+.incoming-call-text {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-main);
+}
+
+.incoming-call-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.incoming-call-actions .ghost-btn {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.incoming-call-accept {
+  border-color: rgba(56, 193, 114, 0.55);
+  background: rgba(56, 193, 114, 0.14);
+  color: #236b3f;
+}
+
+.incoming-call-reject {
+  border-color: rgba(210, 70, 70, 0.55);
+  background: rgba(210, 70, 70, 0.12);
+  color: #8a2323;
+}
+
 .delete-mode-btn {
   margin-left: auto;
   white-space: nowrap;
@@ -946,6 +990,11 @@ textarea:focus {
 
   .messages {
     padding: 12px 12px 14px;
+  }
+
+  .incoming-call-panel {
+    width: 100%;
+    max-width: 100%;
   }
 
   .settings-panel {
