@@ -139,6 +139,9 @@ const SIDEBAR_MAX_WIDTH = 560;
 const CALL_RINGTONE_SRC = "/sound-call.mp3";
 const CALL_REJECTED_SOUND_SRC = "/call-rejected.mp3";
 const CALL_ENDED_SOUND_SRC = "/call-ended.mp3";
+const CALL_RECOVERY_STORAGE_KEY = "messenger_call_recovery_v1";
+const CALL_RECOVERY_MAX_AGE_MS = 45 * 1000;
+const CALL_DISCONNECT_GRACE_MS = 15 * 1000;
 const MESSAGE_SOUND_SRC = "/sound-message.mp3";
 const OUTGOING_MESSAGE_SOUND_SRC = "/zvukovoe-uvedomlenie-kontakta.mp3";
 const ALLOWED_TRANSLATION_LANGS = new Set([
@@ -161,6 +164,7 @@ const state = {
   activeConversationId: null,
   messagesByConversation: new Map(),
   socket: null,
+  pageUnloading: false,
   searchDebounce: null,
   translationCache: new Map(),
   translationRequests: new Map(),
@@ -182,6 +186,9 @@ const state = {
     peer: null,
     localStream: null,
     pendingIncoming: null,
+    pendingRemoteIceCandidates: [],
+    disconnectTimer: null,
+    recoveryInFlight: false,
     ringtoneFrame: null,
     incomingActionInFlight: false,
     muted: false,
@@ -345,6 +352,93 @@ function clearPendingIncomingCall() {
   state.call.pendingIncoming = null;
   clearIncomingCallUi();
   updateCallUi();
+}
+
+function clearCallRecoveryState() {
+  try {
+    sessionStorage.removeItem(CALL_RECOVERY_STORAGE_KEY);
+  } catch {
+  }
+}
+
+function saveCallRecoveryState() {
+  if (
+    !state.me?.id ||
+    !state.call.active ||
+    !state.call.targetUserId ||
+    !state.call.conversationId
+  ) {
+    clearCallRecoveryState();
+    return;
+  }
+
+  try {
+    sessionStorage.setItem(
+      CALL_RECOVERY_STORAGE_KEY,
+      JSON.stringify({
+        userId: state.me.id,
+        targetUserId: state.call.targetUserId,
+        conversationId: state.call.conversationId,
+        savedAt: Date.now(),
+      })
+    );
+  } catch {
+  }
+}
+
+function readCallRecoveryState() {
+  try {
+    const raw = sessionStorage.getItem(CALL_RECOVERY_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      clearCallRecoveryState();
+      return null;
+    }
+
+    const userId = String(parsed.userId || "");
+    const targetUserId = String(parsed.targetUserId || "");
+    const conversationId = String(parsed.conversationId || "");
+    const savedAt = Number(parsed.savedAt || 0);
+    const ageMs = Date.now() - savedAt;
+
+    if (
+      !userId ||
+      !targetUserId ||
+      !conversationId ||
+      !Number.isFinite(savedAt) ||
+      ageMs < 0 ||
+      ageMs > CALL_RECOVERY_MAX_AGE_MS
+    ) {
+      clearCallRecoveryState();
+      return null;
+    }
+
+    if (state.me?.id && userId !== state.me.id) {
+      clearCallRecoveryState();
+      return null;
+    }
+
+    return {
+      userId,
+      targetUserId,
+      conversationId,
+      savedAt,
+    };
+  } catch {
+    clearCallRecoveryState();
+    return null;
+  }
+}
+
+function markPageUnloading() {
+  state.pageUnloading = true;
+  if (state.call.active) {
+    saveCallRecoveryState();
+  }
 }
 
 function isIncomingCallChatOpen() {
@@ -673,12 +767,21 @@ function updateCallUi() {
   renderActiveCallOverlay();
 }
 
-function cleanupCallState() {
+function cleanupCallState(options = {}) {
+  const preserveRecovery = Boolean(options.preserveRecovery);
   stopCallRingtone();
   stopCallTimer();
   clearPendingIncomingCall();
 
+  if (state.call.disconnectTimer) {
+    clearTimeout(state.call.disconnectTimer);
+    state.call.disconnectTimer = null;
+  }
+
   if (state.call.peer) {
+    state.call.peer.onicecandidate = null;
+    state.call.peer.ontrack = null;
+    state.call.peer.onconnectionstatechange = null;
     try {
       state.call.peer.close();
     } catch {
@@ -706,6 +809,9 @@ function cleanupCallState() {
   state.call.conversationId = "";
   state.call.peer = null;
   state.call.localStream = null;
+  state.call.pendingRemoteIceCandidates = [];
+  state.call.disconnectTimer = null;
+  state.call.recoveryInFlight = false;
   state.call.muted = false;
   state.call.outputMuted = false;
   state.call.videoEnabled = false;
@@ -730,10 +836,33 @@ function cleanupCallState() {
   if (activeCallPeerAvatar) activeCallPeerAvatar.classList.remove("hidden");
   if (activeCallMeAvatar) activeCallMeAvatar.classList.remove("hidden");
 
+  if (!preserveRecovery) {
+    clearCallRecoveryState();
+  }
+
   updateCallUi();
 }
 
-function endCall(notifyPeer = true, statusText = "Звонок завершен.", playSound = true) {
+async function flushPeerIceQueue(peer, queuedCandidates) {
+  if (!peer || !Array.isArray(queuedCandidates) || queuedCandidates.length === 0) {
+    return;
+  }
+
+  const candidates = queuedCandidates.splice(0, queuedCandidates.length);
+  for (const candidate of candidates) {
+    try {
+      await peer.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch {
+    }
+  }
+}
+
+function endCall(
+  notifyPeer = true,
+  statusText = "Звонок завершен.",
+  playSound = true,
+  options = {}
+) {
   const targetUserId = state.call.targetUserId;
   if (notifyPeer && targetUserId) {
     sendSocketPayload({
@@ -747,7 +876,7 @@ function endCall(notifyPeer = true, statusText = "Звонок завершен.
   if (playSound) {
     playCallEndedSound();
   }
-  cleanupCallState();
+  cleanupCallState(options);
   setCallStatus(statusText);
 }
 
@@ -801,6 +930,7 @@ async function acceptPendingIncomingCall() {
     );
 
     await peer.setRemoteDescription(new RTCSessionDescription(pendingCall.offerSdp));
+    await flushPeerIceQueue(peer, pendingCall.pendingIceCandidates || []);
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
 
@@ -925,13 +1055,34 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
   }, 1000);
 
   peer.onconnectionstatechange = () => {
-    if (!state.call.active) {
+    if (!state.call.active || state.call.peer !== peer) {
       clearInterval(checkRemoteVideo);
       return;
     }
+
+    if (peer.connectionState === "connected") {
+      if (state.call.disconnectTimer) {
+        clearTimeout(state.call.disconnectTimer);
+        state.call.disconnectTimer = null;
+      }
+      return;
+    }
+
     if (["failed", "disconnected", "closed"].includes(peer.connectionState)) {
-      clearInterval(checkRemoteVideo);
-      endCall(true, "Соединение прервано.");
+      if (!state.call.disconnectTimer) {
+        setCallStatus("Связь нестабильна, пытаемся восстановить...");
+        state.call.disconnectTimer = setTimeout(() => {
+          state.call.disconnectTimer = null;
+          if (!state.call.active || state.call.peer !== peer) {
+            return;
+          }
+          if (peer.connectionState === "connected") {
+            return;
+          }
+          clearInterval(checkRemoteVideo);
+          endCall(true, "Соединение прервано.");
+        }, CALL_DISCONNECT_GRACE_MS);
+      }
     }
   };
 
@@ -940,7 +1091,14 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
   state.call.conversationId = conversationId;
   state.call.peer = peer;
   state.call.localStream = localStream;
+  state.call.pendingRemoteIceCandidates = [];
+  if (state.call.disconnectTimer) {
+    clearTimeout(state.call.disconnectTimer);
+    state.call.disconnectTimer = null;
+  }
+  state.call.recoveryInFlight = false;
   applyCallAudioPreferences();
+  saveCallRecoveryState();
   loadPopoverDevices();
   updateCallUi();
   return peer;
@@ -1007,6 +1165,82 @@ async function startOutgoingCall() {
   }
 }
 
+async function restoreCallAfterReloadIfNeeded() {
+  if (
+    !state.me ||
+    state.call.active ||
+    state.call.pendingIncoming ||
+    state.call.recoveryInFlight
+  ) {
+    return;
+  }
+
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  const recovery = readCallRecoveryState();
+  if (!recovery) {
+    return;
+  }
+
+  const conversation =
+    getConversationById(recovery.conversationId) ||
+    getConversationByParticipantId(recovery.targetUserId);
+
+  if (
+    !conversation ||
+    conversation.type !== "direct" ||
+    !conversation.participant?.id ||
+    conversation.participant.id !== recovery.targetUserId ||
+    conversation.blockedMe
+  ) {
+    clearCallRecoveryState();
+    return;
+  }
+
+  state.call.recoveryInFlight = true;
+  let createdPeer = false;
+
+  try {
+    if (state.activeConversationId !== conversation.id) {
+      await selectConversation(conversation.id);
+    }
+
+    const rawStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+    const localStream = createGainProcessedStream(rawStream);
+    const peer = await createCallPeer(
+      recovery.targetUserId,
+      conversation.id,
+      localStream
+    );
+    createdPeer = true;
+
+    const offer = await peer.createOffer({ iceRestart: true });
+    await peer.setLocalDescription(offer);
+
+    sendSocketPayload({
+      type: "call:signal",
+      targetUserId: recovery.targetUserId,
+      signalType: "offer",
+      conversationId: conversation.id,
+      data: { sdp: peer.localDescription, recovery: true },
+    });
+
+    stopCallRingtone();
+    setCallStatus("Восстанавливаем звонок...");
+    saveCallRecoveryState();
+  } catch (error) {
+    if (createdPeer || state.call.active) {
+      cleanupCallState();
+    }
+    clearCallRecoveryState();
+    setCallStatus(error?.message || "Не удалось восстановить звонок.", true);
+  } finally {
+    state.call.recoveryInFlight = false;
+  }
+}
+
 async function handleCallSignal(payload) {
   if (!payload?.fromUserId || !payload?.signalType) {
     return;
@@ -1023,6 +1257,7 @@ async function handleCallSignal(payload) {
       if (fromUserId === state.call.targetUserId && state.call.peer) {
         try {
           await state.call.peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          await flushPeerIceQueue(state.call.peer, state.call.pendingRemoteIceCandidates);
           const answer = await state.call.peer.createAnswer();
           await state.call.peer.setLocalDescription(answer);
 
@@ -1089,6 +1324,7 @@ async function handleCallSignal(payload) {
       conversationId: resolvedConversationId,
       offerSdp: data.sdp,
       callerName,
+      pendingIceCandidates: [],
     };
 
     setCallStatus(`Входящий звонок от ${callerName}.`);
@@ -1099,6 +1335,16 @@ async function handleCallSignal(payload) {
   }
 
   if (!state.call.active || fromUserId !== state.call.targetUserId || !state.call.peer) {
+    if (
+      signalType === "ice" &&
+      state.call.pendingIncoming &&
+      state.call.pendingIncoming.fromUserId === fromUserId &&
+      data?.candidate
+    ) {
+      state.call.pendingIncoming.pendingIceCandidates.push(data.candidate);
+      return;
+    }
+
     if (
       signalType === "end" &&
       state.call.pendingIncoming &&
@@ -1117,6 +1363,7 @@ async function handleCallSignal(payload) {
       return;
     }
     await state.call.peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    await flushPeerIceQueue(state.call.peer, state.call.pendingRemoteIceCandidates);
     stopCallRingtone();
     setCallStatus("В звонке.");
     startCallTimer();
@@ -1127,9 +1374,16 @@ async function handleCallSignal(payload) {
     if (!data.candidate) {
       return;
     }
+
+    if (!state.call.peer.remoteDescription) {
+      state.call.pendingRemoteIceCandidates.push(data.candidate);
+      return;
+    }
+
     try {
       await state.call.peer.addIceCandidate(new RTCIceCandidate(data.candidate));
     } catch {
+      state.call.pendingRemoteIceCandidates.push(data.candidate);
     }
     return;
   }
@@ -2136,7 +2390,9 @@ function renderConversationList() {
 
     const isGroup = conversation.type === "group";
     const title = isGroup ? (conversation.name || "Группа") : (conversation.participant ? conversation.participant.username : "Диалог");
-    const avatarUrl = !isGroup ? conversation.participant?.avatarUrl : null;
+    const avatarUrl = isGroup
+      ? conversation.avatarUrl || null
+      : conversation.participant?.avatarUrl || null;
     const isOnline = isGroup ? false : Boolean(conversation.participant?.online);
 
     let preview = conversation.lastMessage
@@ -2530,9 +2786,18 @@ function closeSocket() {
 
 function connectSocket() {
   closeSocket();
+  state.pageUnloading = false;
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
   state.socket = socket;
+
+  socket.addEventListener("open", () => {
+    if (!state.me) {
+      return;
+    }
+    restoreCallAfterReloadIfNeeded().catch(() => {
+    });
+  });
 
   socket.addEventListener("message", async (event) => {
     let payload;
@@ -2638,8 +2903,11 @@ function connectSocket() {
 
   socket.addEventListener("close", () => {
     state.socket = null;
+    if (state.pageUnloading) {
+      return;
+    }
     if (state.call.active) {
-      endCall(false, "Соединение с сервером потеряно.");
+      setCallStatus("Сервер недоступен. Пытаемся переподключиться...");
     } else if (state.call.pendingIncoming) {
       stopCallRingtone();
       clearPendingIncomingCall();
@@ -3196,6 +3464,9 @@ window.addEventListener("resize", () => {
   }
   applySidebarWidth(state.ui.sidebarWidth);
 });
+
+window.addEventListener("beforeunload", markPageUnloading);
+window.addEventListener("pagehide", markPageUnloading);
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
@@ -3957,7 +4228,7 @@ function getConversationTitle(conversation) {
 }
 
 function getConversationAvatar(conversation) {
-  if (conversation.type === "group") return null;
+  if (conversation.type === "group") return conversation.avatarUrl || null;
   return conversation.participant?.avatarUrl || null;
 }
 
