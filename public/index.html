@@ -25,57 +25,246 @@
   <div class="bg-layer"></div>
   <div class="app-shell">
     <section class="auth-view" id="authView">
-      <div class="auth-card">
-        <p class="auth-kicker">Wave Messenger</p>
-        <h1>Быстрый личный чат с авторизацией</h1>
-        <p class="auth-caption">Регистрация, вход и переписка в реальном времени.</p>
+      <button class="auth-theme-toggle" id="authThemeToggleBtn" aria-label="Переключить тему" type="button">
+        <span class="auth-theme-knob">
+          <svg class="auth-theme-icon auth-theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"
+            aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2"></path>
+            <path d="M12 20v2"></path>
+            <path d="m4.93 4.93 1.41 1.41"></path>
+            <path d="m17.66 17.66 1.41 1.41"></path>
+            <path d="M2 12h2"></path>
+            <path d="M20 12h2"></path>
+            <path d="m6.34 17.66-1.41 1.41"></path>
+            <path d="m19.07 4.93-1.41 1.41"></path>
+          </svg>
+          <svg class="auth-theme-icon auth-theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"
+            aria-hidden="true">
+            <path d="M12 3a8.6 8.6 0 0 0 9 9 9 9 0 1 1-9-9z"></path>
+          </svg>
+        </span>
+      </button>
 
-        <div class="auth-tabs">
-          <button class="auth-tab active" data-tab="login" id="tabLogin">
+      <div class="auth-paper-planes" aria-hidden="true">
+        <svg class="auth-plane auth-plane-1" viewBox="0 0 24 24" fill="currentColor" width="36" height="36">
+          <path d="m2.4 12.3 17.7-8.5a.9.9 0 0 1 1.2 1.1L18 12l3.3 7.1a.9.9 0 0 1-1.2 1.1L2.4 11.7a.3.3 0 0 1 0-.5z">
+          </path>
+        </svg>
+        <svg class="auth-plane auth-plane-2" viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
+          <path d="m2.4 12.3 17.7-8.5a.9.9 0 0 1 1.2 1.1L18 12l3.3 7.1a.9.9 0 0 1-1.2 1.1L2.4 11.7a.3.3 0 0 1 0-.5z">
+          </path>
+        </svg>
+        <svg class="auth-plane auth-plane-3" viewBox="0 0 24 24" fill="currentColor" width="46" height="46">
+          <path d="m2.4 12.3 17.7-8.5a.9.9 0 0 1 1.2 1.1L18 12l3.3 7.1a.9.9 0 0 1-1.2 1.1L2.4 11.7a.3.3 0 0 1 0-.5z">
+          </path>
+        </svg>
+      </div>
+
+      <div class="auth-wave-layer" aria-hidden="true">
+        <svg class="auth-wave-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 24 150 28" preserveAspectRatio="none"
+          shape-rendering="auto">
+          <defs>
+            <path id="authGentleWave"
+              d="M-160 44c30 0 58-18 88-18s58 18 88 18 58-18 88-18 58 18 88 18v44h-352z"></path>
+          </defs>
+          <g class="auth-parallax">
+            <use href="#authGentleWave" x="48" y="0"></use>
+            <use href="#authGentleWave" x="48" y="3"></use>
+            <use href="#authGentleWave" x="48" y="5"></use>
+            <use href="#authGentleWave" x="48" y="7"></use>
+          </g>
+        </svg>
+      </div>
+
+      <div class="auth-card">
+        <button id="loginOtpCancelBtn" type="button" class="auth-back-btn hidden" aria-label="Назад">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+            stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+            <path d="m15 18-6-6 6-6"></path>
+          </svg>
+        </button>
+
+        <div class="auth-header">
+          <div class="auth-logo-shell">
+            <svg id="authLogoWave" class="auth-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="30" height="30"
+              aria-hidden="true">
+              <path d="M2 15c1.4-2.4 3-3.6 4.8-3.6 1.9 0 3.4 1.2 4.8 3.6 1.4 2.4 3 3.6 4.9 3.6 1.9 0 3.5-1.2 4.9-3.6">
+              </path>
+              <path d="M2 9.1c1.4-2.4 3-3.6 4.8-3.6 1.9 0 3.4 1.2 4.8 3.6 1.4 2.4 3 3.6 4.9 3.6 1.9 0 3.5-1.2 4.9-3.6">
+              </path>
+            </svg>
+            <svg id="authLogoShield" class="auth-logo-icon hidden" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="30"
+              height="30" aria-hidden="true">
+              <path d="M12 3 5 6v6c0 5 3.3 8.7 7 10 3.7-1.3 7-5 7-10V6z"></path>
+              <path d="m9 12 2 2 4-4"></path>
+            </svg>
+          </div>
+          <p id="authBrand" class="auth-kicker">Wave</p>
+          <h1 id="authTitle">С возвращением</h1>
+          <p id="authCaption" class="auth-caption">Настройся на нашу волну общения</p>
+        </div>
+
+        <div class="auth-tabs" id="authTabs">
+          <button class="auth-tab active" data-tab="login" id="tabLogin" type="button">
             Вход
           </button>
-          <button class="auth-tab" data-tab="register" id="tabRegister">
+          <button class="auth-tab" data-tab="register" id="tabRegister" type="button">
             Регистрация
           </button>
         </div>
 
         <form id="loginForm" class="auth-form">
-          <label class="field-label">
-            Логин или email
-            <input type="text" name="login" autocomplete="username" required />
+          <div id="loginPrimaryFields" class="auth-fields">
+            <label class="field-label">
+              <span class="field-label-text">Почта или логин</span>
+              <span class="field-input-wrap">
+                <span class="field-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" width="18" height="18">
+                    <path d="M20 21a8 8 0 0 0-16 0"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                </span>
+                <input type="text" name="login" autocomplete="username" placeholder="Ваш логин или почта" required />
+              </span>
+            </label>
+
+            <label class="field-label">
+              <span class="field-row">
+                <span class="field-label-text">Пароль</span>
+                <a class="auth-link" href="#">Забыли пароль?</a>
+              </span>
+              <span class="field-input-wrap field-input-wrap-password">
+                <span class="field-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" width="18" height="18">
+                    <rect x="4" y="11" width="16" height="10" rx="2"></rect>
+                    <path d="M8 11V8a4 4 0 0 1 8 0v3"></path>
+                  </svg>
+                </span>
+                <input id="loginPasswordInput" type="password" name="password" autocomplete="current-password"
+                  placeholder="••••••••" required />
+                <button id="loginPasswordToggle" class="password-toggle" type="button" data-visible="false"
+                  aria-label="Показать пароль">
+                  <svg class="icon-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                    <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                  <svg class="icon-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                    <path d="m3 3 18 18"></path>
+                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"></path>
+                    <path
+                      d="M9.9 4.2A11.5 11.5 0 0 1 12 4c6.5 0 10 6 10 6a18.7 18.7 0 0 1-3.4 4.3M6.6 6.6C3.8 8.3 2 11.2 2 12c0 0 3.5 6 10 6 1.4 0 2.7-.3 3.9-.8">
+                    </path>
+                  </svg>
+                </button>
+              </span>
+            </label>
+          </div>
+
+          <label id="loginOtpLabel" class="field-label auth-otp-label hidden">
+            <span class="field-label-text">Код Google Authenticator</span>
+            <input id="loginOtpInput" class="otp-input" type="text" name="otp" inputmode="numeric" maxlength="6"
+              autocomplete="one-time-code" placeholder="000000" />
           </label>
-          <label class="field-label">
-            Пароль
-            <input type="password" name="password" autocomplete="current-password" required />
-          </label>
-          <label id="loginOtpLabel" class="field-label hidden">
-            Google Authenticator code
-            <input id="loginOtpInput" type="text" name="otp" inputmode="numeric" maxlength="6"
-              autocomplete="one-time-code" />
-          </label>
-          <button id="loginSubmitBtn" type="submit" class="primary-btn">Войти</button>
-          <button id="loginOtpCancelBtn" type="button" class="ghost-btn hidden">
-            Back to password login
-          </button>
+
+          <button id="loginSubmitBtn" type="submit" class="primary-btn auth-submit-btn">Войти</button>
         </form>
 
         <form id="registerForm" class="auth-form hidden">
           <label class="field-label">
-            Логин
-            <input type="text" name="username" minlength="3" maxlength="24" required />
+            <span class="field-label-text">Имя пользователя</span>
+            <span class="field-input-wrap">
+              <span class="field-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" width="18" height="18">
+                  <path d="M20 21a8 8 0 0 0-16 0"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+              </span>
+              <input type="text" name="username" minlength="3" maxlength="24" placeholder="Твой никнейм" required />
+            </span>
           </label>
+
           <label class="field-label">
-            Email
-            <input type="email" name="email" autocomplete="email" required />
+            <span class="field-label-text">Электронная почта</span>
+            <span class="field-input-wrap">
+              <span class="field-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" width="18" height="18">
+                  <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+                  <path d="m4 7 8 6 8-6"></path>
+                </svg>
+              </span>
+              <input type="email" name="email" autocomplete="email" placeholder="hello@wave.com" required />
+            </span>
           </label>
+
           <label class="field-label">
-            Пароль
-            <input type="password" name="password" minlength="6" autocomplete="new-password" required />
+            <span class="field-label-text">Пароль</span>
+            <span class="field-input-wrap field-input-wrap-password">
+              <span class="field-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" width="18" height="18">
+                  <rect x="4" y="11" width="16" height="10" rx="2"></rect>
+                  <path d="M8 11V8a4 4 0 0 1 8 0v3"></path>
+                </svg>
+              </span>
+              <input id="registerPasswordInput" type="password" name="password" minlength="6"
+                autocomplete="new-password" placeholder="••••••••" required />
+              <button id="registerPasswordToggle" class="password-toggle" type="button" data-visible="false"
+                aria-label="Показать пароль">
+                <svg class="icon-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                  <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <svg class="icon-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                  <path d="m3 3 18 18"></path>
+                  <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"></path>
+                  <path
+                    d="M9.9 4.2A11.5 11.5 0 0 1 12 4c6.5 0 10 6 10 6a18.7 18.7 0 0 1-3.4 4.3M6.6 6.6C3.8 8.3 2 11.2 2 12c0 0 3.5 6 10 6 1.4 0 2.7-.3 3.9-.8">
+                  </path>
+                </svg>
+              </button>
+            </span>
           </label>
-          <button type="submit" class="primary-btn">Создать аккаунт</button>
+
+          <button type="submit" class="primary-btn auth-submit-btn">Начать общение</button>
         </form>
 
-        <p class="status-text" id="authStatus"></p>
+        <div class="auth-social" id="authSocialSection">
+          <div class="auth-divider">
+            <span>или с помощью</span>
+          </div>
+          <button type="button" class="auth-social-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true">
+              <path
+                d="M21.35 11.1h-9.17v2.97h5.25a4.5 4.5 0 0 1-1.95 2.95v2.45h3.15c1.84-1.7 2.9-4.2 2.9-7.16 0-.4-.03-.8-.18-1.21Z">
+              </path>
+              <path
+                d="M12.18 21.5c2.63 0 4.85-.86 6.47-2.33l-3.15-2.45c-.88.58-2 .93-3.32.93-2.55 0-4.7-1.72-5.48-4.04H3.43v2.52A9.81 9.81 0 0 0 12.18 21.5Z">
+              </path>
+              <path
+                d="M6.7 13.62a5.88 5.88 0 0 1 0-3.74V7.36H3.43a9.91 9.91 0 0 0 0 8.78l3.27-2.52Z">
+              </path>
+              <path
+                d="M12.18 6.35c1.43 0 2.7.5 3.7 1.44l2.76-2.77A9.75 9.75 0 0 0 12.18 2.5 9.81 9.81 0 0 0 3.43 7.36L6.7 9.88c.77-2.32 2.93-4.03 5.48-4.03Z">
+              </path>
+            </svg>
+            Google
+          </button>
+        </div>
+
+        <p class="status-text auth-status" id="authStatus"></p>
       </div>
     </section>
 
@@ -405,31 +594,89 @@
   <!-- Group chat creation modal -->
   <div id="createGroupModal" class="settings-overlay hidden" role="dialog" aria-modal="true"
     aria-label="Создать группу">
-    <div class="settings-modal" style="max-width:440px;height:auto;max-height:90vh;border-radius:20px;margin:auto;">
-      <div class="settings-modal-header">
-        <h2 class="settings-modal-title">Создать группу</h2>
-        <button id="closeGroupModalBtn" class="ghost-btn icon-btn" type="button" title="Закрыть">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-            stroke-linejoin="round" width="20" height="20">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
+    <div class="create-group-modal">
+      <header class="create-group-header">
+        <button id="closeGroupModalBtn" class="create-group-back-btn" type="button" title="Закрыть"
+          aria-label="Закрыть">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"
+            stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
+        <h2 class="create-group-title">Новая группа</h2>
+        <span class="create-group-header-spacer" aria-hidden="true"></span>
+      </header>
+
+      <div class="create-group-body">
+        <section class="create-group-profile">
+          <button id="groupAvatarPickBtn" class="create-group-avatar-btn" type="button" aria-label="Выбрать фото группы">
+            <span id="groupAvatarPreview" class="create-group-avatar-preview">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" width="26" height="26" aria-hidden="true">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+              <span>Фото</span>
+            </span>
+            <span class="create-group-avatar-plus" aria-hidden="true">+</span>
+          </button>
+          <input id="groupAvatarFileInput" type="file" accept="image/*" class="hidden" />
+
+          <input id="groupNameInput" type="text" maxlength="64" placeholder="Название группы"
+            class="create-group-name-input" />
+          <input id="groupDescriptionInput" type="text" maxlength="140" placeholder="Описание (необязательно)"
+            class="create-group-description-input" />
+        </section>
+
+        <section class="create-group-privacy">
+          <div id="groupPrivacyToggle" class="create-group-privacy-toggle" data-mode="private">
+            <span class="create-group-privacy-thumb" aria-hidden="true"></span>
+            <button id="groupTypePrivateBtn" type="button" class="create-group-privacy-btn is-active"
+              aria-label="Частная группа">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" width="14" height="14" aria-hidden="true">
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              <span>Частная</span>
+            </button>
+            <button id="groupTypePublicBtn" type="button" class="create-group-privacy-btn"
+              aria-label="Публичная группа">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" width="14" height="14" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12h20" />
+                <path d="M12 2a15 15 0 0 1 0 20" />
+                <path d="M12 2a15 15 0 0 0 0 20" />
+              </svg>
+              <span>Публичная</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="create-group-members">
+          <h3 class="create-group-members-title">Пригласить участников</h3>
+          <label class="create-group-search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" width="18" height="18" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input id="groupMemberSearch" type="text" placeholder="Поиск контактов..." />
+          </label>
+
+          <div id="groupSelectedMembers" class="create-group-selected-strip hidden"></div>
+          <div id="groupMemberResults" class="create-group-results"></div>
+        </section>
       </div>
-      <div class="settings-modal-body" style="padding:16px 20px;">
-        <label class="field-label">Название группы
-          <input id="groupNameInput" type="text" maxlength="64" placeholder="Моя группа" />
-        </label>
-        <label class="field-label" style="margin-top:10px;">Поиск участников
-          <input id="groupMemberSearch" type="text" placeholder="Найти по логину/email" />
-        </label>
-        <ul id="groupMemberResults" class="list" style="max-height:160px;margin:8px 0;"></ul>
-        <p class="mini-label" style="margin:8px 0 4px;">Добавлены:</p>
-        <div id="groupSelectedMembers" class="group-selected-members"></div>
-        <button id="groupCreateBtn" type="button" class="primary-btn" style="margin-top:12px;width:100%;">Создать
-          группу</button>
-        <p id="groupCreateStatus" class="status-text"></p>
-      </div>
+
+      <footer class="create-group-footer">
+        <button id="groupCreateBtn" type="button" class="create-group-submit-btn" disabled>
+          <span>Создать группу</span>
+          <span id="groupCreateCount" class="create-group-submit-count hidden">0</span>
+        </button>
+        <p id="groupCreateStatus" class="status-text create-group-status"></p>
+      </footer>
     </div>
   </div>
 

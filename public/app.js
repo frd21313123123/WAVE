@@ -55,6 +55,17 @@ const loginOtpLabel = document.getElementById("loginOtpLabel");
 const loginOtpInput = document.getElementById("loginOtpInput");
 const loginOtpCancelBtn = document.getElementById("loginOtpCancelBtn");
 const loginSubmitBtn = document.getElementById("loginSubmitBtn");
+const loginPrimaryFields = document.getElementById("loginPrimaryFields");
+const authTabs = document.getElementById("authTabs");
+const authSocialSection = document.getElementById("authSocialSection");
+const authThemeToggleBtn = document.getElementById("authThemeToggleBtn");
+const authTitle = document.getElementById("authTitle");
+const authCaption = document.getElementById("authCaption");
+const authBrand = document.getElementById("authBrand");
+const authLogoWave = document.getElementById("authLogoWave");
+const authLogoShield = document.getElementById("authLogoShield");
+const loginPasswordToggle = document.getElementById("loginPasswordToggle");
+const registerPasswordToggle = document.getElementById("registerPasswordToggle");
 const twoFaStatus = document.getElementById("twoFaStatus");
 const twoFaSetupBtn = document.getElementById("twoFaSetupBtn");
 const twoFaSetupPanel = document.getElementById("twoFaSetupPanel");
@@ -103,10 +114,18 @@ const createGroupBtn = document.getElementById("createGroupBtn");
 const createGroupModal = document.getElementById("createGroupModal");
 const closeGroupModalBtn = document.getElementById("closeGroupModalBtn");
 const groupNameInput = document.getElementById("groupNameInput");
+const groupDescriptionInput = document.getElementById("groupDescriptionInput");
+const groupPrivacyToggle = document.getElementById("groupPrivacyToggle");
+const groupTypePrivateBtn = document.getElementById("groupTypePrivateBtn");
+const groupTypePublicBtn = document.getElementById("groupTypePublicBtn");
+const groupAvatarPickBtn = document.getElementById("groupAvatarPickBtn");
+const groupAvatarPreview = document.getElementById("groupAvatarPreview");
+const groupAvatarFileInput = document.getElementById("groupAvatarFileInput");
 const groupMemberSearch = document.getElementById("groupMemberSearch");
 const groupMemberResults = document.getElementById("groupMemberResults");
 const groupSelectedMembers = document.getElementById("groupSelectedMembers");
 const groupCreateBtn = document.getElementById("groupCreateBtn");
+const groupCreateCount = document.getElementById("groupCreateCount");
 const groupCreateStatus = document.getElementById("groupCreateStatus");
 const avatarPreview = document.getElementById("avatarPreview");
 const avatarFileInput = document.getElementById("avatarFileInput");
@@ -221,6 +240,8 @@ const state = {
   voiceRecorder: null,
   voiceRecording: false,
   groupSelectedMembers: [],
+  groupCreateIsPrivate: true,
+  groupCreateAvatarData: "",
   ui: {
     theme: "light",
     targetLanguage: "off",
@@ -239,23 +260,90 @@ function normalizeOtpToken(value) {
     .slice(0, 6);
 }
 
+function setupPasswordToggle(toggleButton, input) {
+  if (!toggleButton || !input) {
+    return;
+  }
+
+  toggleButton.dataset.visible = "false";
+  toggleButton.addEventListener("click", () => {
+    const shouldShowPassword = input.type === "password";
+    input.type = shouldShowPassword ? "text" : "password";
+    toggleButton.dataset.visible = shouldShowPassword ? "true" : "false";
+    toggleButton.setAttribute(
+      "aria-label",
+      shouldShowPassword ? "Скрыть пароль" : "Показать пароль"
+    );
+  });
+}
+
+function resetPasswordToggle(toggleButton, input) {
+  if (!toggleButton || !input) {
+    return;
+  }
+
+  input.type = "password";
+  toggleButton.dataset.visible = "false";
+  toggleButton.setAttribute("aria-label", "Показать пароль");
+}
+
+function renderAuthLayoutState() {
+  const isLoginTab = !loginForm.classList.contains("hidden");
+  const isTwoFactorStep = Boolean(state.loginChallengeToken);
+
+  if (loginPrimaryFields) {
+    loginPrimaryFields.classList.toggle("hidden", isTwoFactorStep);
+  }
+  loginOtpLabel.classList.toggle("hidden", !isTwoFactorStep);
+  loginOtpCancelBtn.classList.toggle("hidden", !isTwoFactorStep);
+  if (authTabs) {
+    authTabs.classList.toggle("hidden", isTwoFactorStep);
+  }
+  if (authSocialSection) {
+    authSocialSection.classList.toggle("hidden", isTwoFactorStep);
+  }
+  if (authBrand) {
+    authBrand.classList.toggle("hidden", isTwoFactorStep);
+  }
+  if (authLogoWave) {
+    authLogoWave.classList.toggle("hidden", isTwoFactorStep);
+  }
+  if (authLogoShield) {
+    authLogoShield.classList.toggle("hidden", !isTwoFactorStep);
+  }
+
+  loginOtpInput.required = isTwoFactorStep;
+  loginForm.elements.login.disabled = isTwoFactorStep;
+  loginForm.elements.password.disabled = isTwoFactorStep;
+  loginSubmitBtn.textContent = isTwoFactorStep ? "Подтвердить код" : "Войти";
+
+  if (authTitle) {
+    authTitle.textContent = isTwoFactorStep
+      ? "Защита аккаунта"
+      : isLoginTab
+        ? "С возвращением"
+        : "Создать аккаунт";
+  }
+
+  if (authCaption) {
+    authCaption.textContent = isTwoFactorStep
+      ? "Откройте приложение Google Authenticator и введите 6-значный код"
+      : isLoginTab
+        ? "Настройся на нашу волну общения"
+        : "Поймай свою волну - присоединяйся к нам";
+  }
+}
+
 function resetLoginTwoFactorStep() {
   state.loginChallengeToken = null;
-  loginOtpLabel.classList.add("hidden");
-  loginOtpCancelBtn.classList.add("hidden");
   loginOtpInput.value = "";
-  loginForm.elements.login.disabled = false;
-  loginForm.elements.password.disabled = false;
-  loginSubmitBtn.textContent = "\u0412\u043e\u0439\u0442\u0438";
+  resetPasswordToggle(loginPasswordToggle, loginForm.elements.password);
+  renderAuthLayoutState();
 }
 
 function startLoginTwoFactorStep(challengeToken) {
   state.loginChallengeToken = String(challengeToken || "");
-  loginOtpLabel.classList.remove("hidden");
-  loginOtpCancelBtn.classList.remove("hidden");
-  loginForm.elements.login.disabled = true;
-  loginForm.elements.password.disabled = true;
-  loginSubmitBtn.textContent = "\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c \u043a\u043e\u0434";
+  renderAuthLayoutState();
   loginOtpInput.focus();
 }
 
@@ -1886,12 +1974,18 @@ async function removeConversationFromState(conversationId) {
 
 function setAuthTab(tab) {
   const isLogin = tab === "login";
+  resetPasswordToggle(loginPasswordToggle, loginForm.elements.password);
+  resetPasswordToggle(registerPasswordToggle, registerForm.elements.password);
   tabLogin.classList.toggle("active", isLogin);
   tabRegister.classList.toggle("active", !isLogin);
   loginForm.classList.toggle("hidden", !isLogin);
   registerForm.classList.toggle("hidden", isLogin);
   if (isLogin) {
     resetLoginTwoFactorStep();
+  } else {
+    state.loginChallengeToken = null;
+    loginOtpInput.value = "";
+    renderAuthLayoutState();
   }
   authStatus.textContent = "";
 }
@@ -2117,6 +2211,30 @@ function resetVigenereKey() {
 
 function applyTheme() {
   document.documentElement.dataset.theme = normalizeTheme(state.ui.theme);
+}
+
+function toggleThemeFromButton(triggerButton) {
+  const isDark = state.ui.theme !== "dark";
+  state.ui.theme = isDark ? "dark" : "light";
+
+  const rect = triggerButton?.getBoundingClientRect?.();
+  const x = rect ? Math.round(rect.left + rect.width / 2) : Math.round(window.innerWidth / 2);
+  const y = rect ? Math.round(rect.top + rect.height / 2) : 0;
+  document.documentElement.style.setProperty("--vt-x", `${x}px`);
+  document.documentElement.style.setProperty("--vt-y", `${y}px`);
+
+  if (!document.startViewTransition) {
+    document.documentElement.classList.add("theme-changing");
+    applyTheme();
+    saveUiSettings();
+    setTimeout(() => document.documentElement.classList.remove("theme-changing"), 700);
+    return;
+  }
+
+  document.startViewTransition(() => {
+    applyTheme();
+    saveUiSettings();
+  });
 }
 
 function saveUiSettings() {
@@ -3495,6 +3613,13 @@ async function bootstrapSession(user) {
   connectSocket();
 }
 
+setupPasswordToggle(loginPasswordToggle, loginForm.elements.password);
+setupPasswordToggle(registerPasswordToggle, registerForm.elements.password);
+
+loginOtpInput.addEventListener("input", () => {
+  loginOtpInput.value = normalizeOtpToken(loginOtpInput.value);
+});
+
 tabLogin.addEventListener("click", () => setAuthTab("login"));
 tabRegister.addEventListener("click", () => setAuthTab("register"));
 loginOtpCancelBtn.addEventListener("click", () => {
@@ -3514,7 +3639,7 @@ loginForm.addEventListener("submit", async (event) => {
   try {
     if (state.loginChallengeToken) {
       if (otpToken.length !== 6) {
-        throw new Error("Enter 6-digit code from Google Authenticator");
+        throw new Error("Введите 6-значный код из Google Authenticator");
       }
 
       const payload = await api("/api/auth/login/2fa", {
@@ -3537,7 +3662,7 @@ loginForm.addEventListener("submit", async (event) => {
 
     if (payload.requires2fa) {
       startLoginTwoFactorStep(payload.challengeToken);
-      authStatus.textContent = "Enter 6-digit code from Google Authenticator";
+      authStatus.textContent = "Введите 6-значный код из Google Authenticator";
       return;
     }
 
@@ -3913,30 +4038,14 @@ twoFaDisableBtn.addEventListener("click", async () => {
 });
 
 themeToggleBtn.addEventListener("click", () => {
-  const isDark = state.ui.theme !== "dark";
-  state.ui.theme = isDark ? "dark" : "light";
-
-  // Pass the toggle button center as the circle origin
-  const rect = themeToggleBtn.getBoundingClientRect();
-  const x = Math.round(rect.left + rect.width / 2);
-  const y = Math.round(rect.top + rect.height / 2);
-  document.documentElement.style.setProperty("--vt-x", `${x}px`);
-  document.documentElement.style.setProperty("--vt-y", `${y}px`);
-
-  if (!document.startViewTransition) {
-    // Fallback: CSS color transitions for older browsers
-    document.documentElement.classList.add("theme-changing");
-    applyTheme();
-    saveUiSettings();
-    setTimeout(() => document.documentElement.classList.remove("theme-changing"), 700);
-    return;
-  }
-
-  document.startViewTransition(() => {
-    applyTheme();
-    saveUiSettings();
-  });
+  toggleThemeFromButton(themeToggleBtn);
 });
+
+if (authThemeToggleBtn) {
+  authThemeToggleBtn.addEventListener("click", () => {
+    toggleThemeFromButton(authThemeToggleBtn);
+  });
+}
 
 fullscreenToggleBtn.addEventListener("click", () => {
   state.ui.fullscreen = !state.ui.fullscreen;
@@ -4425,65 +4534,359 @@ function updateAvatarPreview() {
 // ========================
 // GROUP CHATS
 // ========================
-createGroupBtn.addEventListener("click", () => {
-  state.groupSelectedMembers = [];
-  groupNameInput.value = "";
-  groupMemberSearch.value = "";
-  groupMemberResults.innerHTML = "";
-  groupCreateStatus.textContent = "";
-  renderGroupSelectedMembers();
-  createGroupModal.classList.remove("hidden");
-});
+const GROUP_AVATAR_MAX_BYTES = 1.5 * 1024 * 1024;
 
-closeGroupModalBtn.addEventListener("click", () => createGroupModal.classList.add("hidden"));
-createGroupModal.addEventListener("click", (e) => { if (e.target === createGroupModal) createGroupModal.classList.add("hidden"); });
+function getTwoInitials(value) {
+  const text = String(value || "").trim();
+  if (!text) return "?";
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 1) {
+    const chars = Array.from(words[0].toUpperCase());
+    return `${chars[0] || "?"}${chars[1] || ""}`;
+  }
+  const first = Array.from(words[0].toUpperCase())[0] || "?";
+  const second = Array.from(words[1].toUpperCase())[0] || "";
+  return `${first}${second}`;
+}
 
-groupMemberSearch.addEventListener("input", () => {
-  const q = groupMemberSearch.value.trim();
-  clearTimeout(state._groupSearchTimeout);
-  if (q.length < 2) { groupMemberResults.innerHTML = ""; return; }
-  state._groupSearchTimeout = setTimeout(async () => {
-    try {
-      const payload = await api(`/api/users?search=${encodeURIComponent(q)}`);
-      const users = (payload.users || []).filter((u) => u.id !== state.me?.id && !state.groupSelectedMembers.some((m) => m.id === u.id));
-      groupMemberResults.innerHTML = "";
-      for (const u of users) {
-        const li = document.createElement("li");
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "list-item";
-        btn.dataset.initial = getInitial(u.username);
-        btn.innerHTML = `<div class="item-row"><p class="item-title">${u.username}</p></div><p class="item-sub">${u.email}</p>`;
-        btn.addEventListener("click", () => { state.groupSelectedMembers.push(u); renderGroupSelectedMembers(); groupMemberSearch.value = ""; groupMemberResults.innerHTML = ""; });
-        li.appendChild(btn);
-        groupMemberResults.appendChild(li);
-      }
-    } catch { }
-  }, 250);
-});
+function hashText(value) {
+  let hash = 0;
+  for (const ch of String(value || "")) {
+    hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
+  }
+  return Math.abs(hash);
+}
 
-function renderGroupSelectedMembers() {
-  groupSelectedMembers.innerHTML = "";
-  for (const m of state.groupSelectedMembers) {
-    const chip = document.createElement("span");
-    chip.className = "group-member-chip";
-    chip.innerHTML = `${m.username} <button type="button">&times;</button>`;
-    chip.querySelector("button").addEventListener("click", () => { state.groupSelectedMembers = state.groupSelectedMembers.filter((x) => x.id !== m.id); renderGroupSelectedMembers(); });
-    groupSelectedMembers.appendChild(chip);
+function getAvatarGradient(value) {
+  const hue = hashText(value) % 360;
+  return `linear-gradient(145deg, hsl(${hue} 68% 48%), hsl(${(hue + 28) % 360} 72% 58%))`;
+}
+
+function createGroupUserAvatar(user, className) {
+  const avatar = document.createElement("span");
+  avatar.className = className;
+  avatar.textContent = getTwoInitials(user.username || user.email || "U");
+  avatar.style.background = getAvatarGradient(user.id || user.username || user.email || "");
+  return avatar;
+}
+
+function setGroupStatus(text = "") {
+  groupCreateStatus.textContent = text;
+}
+
+function renderGroupAvatarPreview() {
+  if (!groupAvatarPreview) return;
+  groupAvatarPreview.innerHTML = "";
+  if (state.groupCreateAvatarData) {
+    const img = document.createElement("img");
+    img.src = state.groupCreateAvatarData;
+    img.alt = "Фото группы";
+    groupAvatarPreview.appendChild(img);
+    groupAvatarPreview.classList.add("has-image");
+    return;
+  }
+
+  groupAvatarPreview.classList.remove("has-image");
+  groupAvatarPreview.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="26" height="26" aria-hidden="true">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+      <circle cx="12" cy="13" r="4"></circle>
+    </svg>
+    <span>Фото</span>
+  `;
+}
+
+function setGroupPrivacyMode(isPrivate) {
+  state.groupCreateIsPrivate = Boolean(isPrivate);
+  const mode = state.groupCreateIsPrivate ? "private" : "public";
+  if (groupPrivacyToggle) {
+    groupPrivacyToggle.dataset.mode = mode;
+  }
+  groupTypePrivateBtn.classList.toggle("is-active", state.groupCreateIsPrivate);
+  groupTypePublicBtn.classList.toggle("is-active", !state.groupCreateIsPrivate);
+}
+
+function renderGroupCreateBtnState() {
+  const hasName = Boolean(groupNameInput.value.trim());
+  groupCreateBtn.disabled = !hasName;
+  const memberCount = state.groupSelectedMembers.length;
+  if (groupCreateCount) {
+    groupCreateCount.textContent = String(memberCount);
+    groupCreateCount.classList.toggle("hidden", memberCount === 0);
   }
 }
 
+function renderGroupMemberResults(users = [], query = "") {
+  groupMemberResults.innerHTML = "";
+
+  if (query === "__loading__") {
+    const note = document.createElement("p");
+    note.className = "create-group-empty-note";
+    note.textContent = "Поиск...";
+    groupMemberResults.appendChild(note);
+    return;
+  }
+
+  if (!query || query.length < 2) {
+    const note = document.createElement("p");
+    note.className = "create-group-empty-note";
+    note.textContent = "Введите минимум 2 символа для поиска";
+    groupMemberResults.appendChild(note);
+    return;
+  }
+
+  if (!users.length) {
+    const note = document.createElement("p");
+    note.className = "create-group-empty-note";
+    note.textContent = "Пользователи не найдены";
+    groupMemberResults.appendChild(note);
+    return;
+  }
+
+  for (const user of users) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "create-group-contact-item";
+
+    const avatar = createGroupUserAvatar(user, "create-group-contact-avatar");
+
+    const info = document.createElement("span");
+    info.className = "create-group-contact-info";
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "create-group-contact-name";
+    nameEl.textContent = user.username || "Пользователь";
+
+    const handleEl = document.createElement("span");
+    handleEl.className = "create-group-contact-handle";
+    handleEl.textContent = user.email || "";
+
+    info.append(nameEl, handleEl);
+
+    const marker = document.createElement("span");
+    marker.className = "create-group-contact-check";
+    marker.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5"></path>
+      </svg>
+    `;
+
+    row.append(avatar, info, marker);
+    row.addEventListener("click", () => {
+      if (state.groupSelectedMembers.some((member) => member.id === user.id)) return;
+      state.groupSelectedMembers.push(user);
+      groupMemberSearch.value = "";
+      renderGroupSelectedMembers();
+      renderGroupMemberResults([], "");
+      setGroupStatus("");
+      groupMemberSearch.focus();
+    });
+
+    groupMemberResults.appendChild(row);
+  }
+}
+
+function renderGroupSelectedMembers() {
+  groupSelectedMembers.innerHTML = "";
+  const members = state.groupSelectedMembers || [];
+  groupSelectedMembers.classList.toggle("hidden", members.length === 0);
+
+  for (const member of members) {
+    const item = document.createElement("div");
+    item.className = "create-group-selected-item";
+
+    const avatar = createGroupUserAvatar(member, "create-group-selected-avatar");
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "create-group-selected-remove";
+    removeBtn.setAttribute("aria-label", `Удалить ${member.username || "участника"}`);
+    removeBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" aria-hidden="true">
+        <path d="M18 6 6 18"></path>
+        <path d="M6 6l12 12"></path>
+      </svg>
+    `;
+    removeBtn.addEventListener("click", () => {
+      state.groupSelectedMembers = state.groupSelectedMembers.filter((entry) => entry.id !== member.id);
+      renderGroupSelectedMembers();
+      setGroupStatus("");
+    });
+
+    const name = document.createElement("span");
+    name.className = "create-group-selected-name";
+    const firstName = String(member.username || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)[0];
+    name.textContent = firstName || member.username || "Участник";
+
+    item.append(avatar, removeBtn, name);
+    groupSelectedMembers.appendChild(item);
+  }
+
+  renderGroupCreateBtnState();
+}
+
+function resetCreateGroupModal() {
+  state.groupSelectedMembers = [];
+  state.groupCreateIsPrivate = true;
+  state.groupCreateAvatarData = "";
+
+  groupNameInput.value = "";
+  if (groupDescriptionInput) {
+    groupDescriptionInput.value = "";
+  }
+  groupMemberSearch.value = "";
+  if (groupAvatarFileInput) {
+    groupAvatarFileInput.value = "";
+  }
+
+  renderGroupAvatarPreview();
+  renderGroupSelectedMembers();
+  renderGroupMemberResults([], "");
+  setGroupPrivacyMode(true);
+  setGroupStatus("");
+  renderGroupCreateBtnState();
+}
+
+createGroupBtn.addEventListener("click", () => {
+  resetCreateGroupModal();
+  createGroupModal.classList.remove("hidden");
+  setTimeout(() => groupNameInput.focus(), 10);
+});
+
+closeGroupModalBtn.addEventListener("click", () => createGroupModal.classList.add("hidden"));
+createGroupModal.addEventListener("click", (e) => {
+  if (e.target === createGroupModal) {
+    createGroupModal.classList.add("hidden");
+  }
+});
+
+groupNameInput.addEventListener("input", () => {
+  setGroupStatus("");
+  renderGroupCreateBtnState();
+});
+
+if (groupDescriptionInput) {
+  groupDescriptionInput.addEventListener("input", () => setGroupStatus(""));
+}
+
+if (groupTypePrivateBtn && groupTypePublicBtn) {
+  groupTypePrivateBtn.addEventListener("click", () => setGroupPrivacyMode(true));
+  groupTypePublicBtn.addEventListener("click", () => setGroupPrivacyMode(false));
+}
+
+if (groupAvatarPickBtn && groupAvatarFileInput) {
+  groupAvatarPickBtn.addEventListener("click", () => groupAvatarFileInput.click());
+  groupAvatarFileInput.addEventListener("change", () => {
+    const file = groupAvatarFileInput.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setGroupStatus("Можно выбрать только изображение");
+      return;
+    }
+    if (file.size > GROUP_AVATAR_MAX_BYTES) {
+      setGroupStatus("Файл слишком большой (макс 1.5MB)");
+      groupAvatarFileInput.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      state.groupCreateAvatarData = String(reader.result || "");
+      renderGroupAvatarPreview();
+      setGroupStatus("");
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+groupMemberSearch.addEventListener("input", () => {
+  const query = groupMemberSearch.value.trim();
+  clearTimeout(state._groupSearchTimeout);
+  setGroupStatus("");
+
+  if (query.length < 2) {
+    renderGroupMemberResults([], query);
+    return;
+  }
+
+  renderGroupMemberResults([], "__loading__");
+  const searchToken = Symbol("group-search");
+  state._groupSearchToken = searchToken;
+
+  state._groupSearchTimeout = setTimeout(async () => {
+    try {
+      const payload = await api(`/api/users?search=${encodeURIComponent(query)}`);
+      if (state._groupSearchToken !== searchToken) return;
+
+      const users = (payload.users || []).filter(
+        (user) => user.id !== state.me?.id && !state.groupSelectedMembers.some((selected) => selected.id === user.id),
+      );
+      renderGroupMemberResults(users, query);
+    } catch {
+      if (state._groupSearchToken !== searchToken) return;
+      groupMemberResults.innerHTML = "";
+      const note = document.createElement("p");
+      note.className = "create-group-empty-note";
+      note.textContent = "Не удалось выполнить поиск";
+      groupMemberResults.appendChild(note);
+    }
+  }, 250);
+});
+
 groupCreateBtn.addEventListener("click", async () => {
   const name = groupNameInput.value.trim();
-  if (!name) { groupCreateStatus.textContent = "Введите название"; return; }
-  if (state.groupSelectedMembers.length === 0) { groupCreateStatus.textContent = "Добавьте участников"; return; }
+  if (!name) {
+    setGroupStatus("Введите название группы");
+    return;
+  }
+  if (state.groupSelectedMembers.length === 0) {
+    setGroupStatus("Добавьте участников");
+    return;
+  }
+
+  setGroupStatus("");
+  groupCreateBtn.disabled = true;
+
   try {
-    const payload = await api("/api/conversations/group", { method: "POST", body: { name, memberIds: state.groupSelectedMembers.map((m) => m.id) } });
-    upsertConversation(payload.conversation);
+    const payload = await api("/api/conversations/group", {
+      method: "POST",
+      body: {
+        name,
+        description: groupDescriptionInput ? groupDescriptionInput.value.trim() : "",
+        isPrivate: state.groupCreateIsPrivate,
+        memberIds: state.groupSelectedMembers.map((member) => member.id),
+      },
+    });
+
+    let conversation = payload.conversation;
+    upsertConversation(conversation);
+
+    if (state.groupCreateAvatarData) {
+      try {
+        const avatarPayload = await api(`/api/conversations/${conversation.id}/group`, {
+          method: "PATCH",
+          body: { avatarUrl: state.groupCreateAvatarData },
+        });
+        if (avatarPayload?.conversation) {
+          conversation = avatarPayload.conversation;
+          upsertConversation(conversation);
+        }
+      } catch (avatarError) {
+        console.warn("Failed to apply group avatar during create flow", avatarError);
+      }
+    }
+
     renderConversationList();
-    await selectConversation(payload.conversation.id);
+    await selectConversation(conversation.id);
     createGroupModal.classList.add("hidden");
-  } catch (e) { groupCreateStatus.textContent = e.message; }
+  } catch (e) {
+    setGroupStatus(e.message);
+  } finally {
+    renderGroupCreateBtnState();
+  }
 });
 
 // ========================
