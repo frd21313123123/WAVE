@@ -680,6 +680,177 @@ textarea:focus {
   transform: none;
 }
 
+.active-call-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(48, 74, 118, 0.28), transparent 42%),
+    radial-gradient(circle at 84% 78%, rgba(35, 86, 145, 0.2), transparent 44%),
+    linear-gradient(180deg, #04070d, #060a11 52%, #05070d);
+  color: #f2f6ff;
+  animation: call-overlay-in 0.2s ease;
+}
+
+.active-call-panel.hidden {
+  display: none;
+}
+
+.active-call-content {
+  width: min(980px, 100vw);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 30px 20px 124px;
+}
+
+.active-call-label {
+  margin: 0;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(223, 233, 250, 0.72);
+}
+
+.active-call-name {
+  margin: 8px 0 2px;
+  font-size: clamp(1.34rem, 3.1vw, 2.2rem);
+  font-weight: 700;
+  color: #f8fbff;
+}
+
+.active-call-status {
+  margin: 0;
+  min-height: 22px;
+  font-size: 0.96rem;
+  color: rgba(210, 223, 245, 0.78);
+}
+
+.active-call-avatars {
+  margin-top: 20px;
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+}
+
+.active-call-avatar {
+  position: relative;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: linear-gradient(145deg, rgba(161, 182, 214, 0.4), rgba(80, 107, 146, 0.46));
+  box-shadow: 0 24px 42px -28px rgba(0, 0, 0, 0.86);
+}
+
+.active-call-avatar::before {
+  content: attr(data-initial);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  font-weight: 700;
+  color: rgba(245, 250, 255, 0.94);
+}
+
+.active-call-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: relative;
+  z-index: 1;
+}
+
+.active-call-avatar-peer {
+  width: 156px;
+  height: 156px;
+}
+
+.active-call-avatar-me {
+  width: 94px;
+  height: 94px;
+  margin-bottom: -8px;
+}
+
+.active-call-controls {
+  position: fixed;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(9, 14, 25, 0.62);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.active-call-control {
+  width: 90px;
+  min-height: 72px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f2f6ff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease, background-color 120ms ease;
+}
+
+.active-call-control:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+.active-call-control svg {
+  width: 20px;
+  height: 20px;
+}
+
+.active-call-control-text {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.active-call-control.active {
+  background: rgba(42, 171, 238, 0.3);
+  border-color: rgba(42, 171, 238, 0.72);
+}
+
+.active-call-control-accept {
+  background: linear-gradient(140deg, #39c573, #2fa65f);
+  border-color: rgba(96, 231, 146, 0.8);
+  color: #fff;
+}
+
+.active-call-control-accept:hover {
+  filter: brightness(1.05);
+}
+
+.active-call-control-end {
+  width: 122px;
+  background: linear-gradient(140deg, #ea4d4d, #d83d3d);
+  border-color: rgba(255, 95, 95, 0.8);
+  color: #fff;
+}
+
+.active-call-control-end:hover {
+  filter: brightness(1.05);
+}
+
 .delete-mode-btn {
   margin-left: auto;
   white-space: nowrap;
@@ -701,25 +872,25 @@ textarea:focus {
 .delete-mode-btn.active {
   border-color: rgba(210, 70, 70, 0.55);
   background: rgba(210, 70, 70, 0.12);
-  color: #8a2323;
+  color: var(--danger);
 }
 
 .chat-lock-btn.active {
   border-color: rgba(42, 171, 238, 0.52);
   background: var(--accent-soft);
-  color: #0f4059;
+  color: var(--accent-strong);
 }
 
 .block-user-btn.active {
   border-color: rgba(210, 70, 70, 0.55);
   background: rgba(210, 70, 70, 0.12);
-  color: #8a2323;
+  color: var(--danger);
 }
 
 .call-btn.active {
   border-color: rgba(56, 193, 114, 0.55);
   background: rgba(56, 193, 114, 0.14);
-  color: #236b3f;
+  color: #38c172;
 }
 
 .mobile-back {
@@ -1148,7 +1319,7 @@ textarea:focus {
 .secondary-btn.active {
   border-color: rgba(42, 171, 238, 0.52);
   background: var(--accent-soft);
-  color: #0f4059;
+  color: var(--accent-strong);
 }
 
 @media (max-width: 1100px) {
@@ -1471,6 +1642,44 @@ textarea:focus {
   .incoming-call-reject {
     padding: 12px 20px;
     font-size: 0.86rem;
+  }
+
+  .active-call-content {
+    padding: 24px 14px 112px;
+  }
+
+  .active-call-name {
+    font-size: clamp(1.2rem, 4vw, 1.6rem);
+  }
+
+  .active-call-status {
+    font-size: 0.9rem;
+  }
+
+  .active-call-avatar-peer {
+    width: 132px;
+    height: 132px;
+  }
+
+  .active-call-avatar-me {
+    width: 82px;
+    height: 82px;
+  }
+
+  .active-call-controls {
+    bottom: 18px;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .active-call-control {
+    width: 82px;
+    min-height: 66px;
+    border-radius: 14px;
+  }
+
+  .active-call-control-end {
+    width: 108px;
   }
 
   /* Voice player */
@@ -1917,6 +2126,60 @@ textarea:focus {
   .incoming-call-reject svg {
     width: 15px;
     height: 15px;
+  }
+
+  .active-call-content {
+    padding: 18px 10px 102px;
+  }
+
+  .active-call-label {
+    font-size: 0.68rem;
+  }
+
+  .active-call-name {
+    font-size: 1.16rem;
+  }
+
+  .active-call-status {
+    font-size: 0.82rem;
+    min-height: 18px;
+  }
+
+  .active-call-avatars {
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  .active-call-avatar-peer {
+    width: 112px;
+    height: 112px;
+  }
+
+  .active-call-avatar-me {
+    width: 72px;
+    height: 72px;
+    margin-bottom: -5px;
+  }
+
+  .active-call-controls {
+    bottom: 12px;
+    width: calc(100vw - 18px);
+    justify-content: space-between;
+    border-radius: 16px;
+  }
+
+  .active-call-control {
+    width: calc(33.33% - 6px);
+    min-height: 60px;
+    border-radius: 12px;
+  }
+
+  .active-call-control-end {
+    width: calc(33.33% - 6px);
+  }
+
+  .active-call-control-text {
+    font-size: 0.67rem;
   }
 
   /* Chat lock */

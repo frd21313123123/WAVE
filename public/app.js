@@ -17,6 +17,20 @@ const incomingCallPanel = document.getElementById("incomingCallPanel");
 const incomingCallText = document.getElementById("incomingCallText");
 const acceptCallBtn = document.getElementById("acceptCallBtn");
 const rejectCallBtn = document.getElementById("rejectCallBtn");
+const activeCallPanel = document.getElementById("activeCallPanel");
+const activeCallName = document.getElementById("activeCallName");
+const activeCallStatus = document.getElementById("activeCallStatus");
+const activeCallPeerAvatar = document.getElementById("activeCallPeerAvatar");
+const activeCallPeerAvatarImg = document.getElementById("activeCallPeerAvatarImg");
+const activeCallMeAvatar = document.getElementById("activeCallMeAvatar");
+const activeCallMeAvatarImg = document.getElementById("activeCallMeAvatarImg");
+const activeCallMuteBtn = document.getElementById("activeCallMuteBtn");
+const activeCallMuteText = document.getElementById("activeCallMuteText");
+const activeCallSpeakerBtn = document.getElementById("activeCallSpeakerBtn");
+const activeCallSpeakerText = document.getElementById("activeCallSpeakerText");
+const activeCallAcceptBtn = document.getElementById("activeCallAcceptBtn");
+const activeCallEndBtn = document.getElementById("activeCallEndBtn");
+const activeCallEndText = document.getElementById("activeCallEndText");
 const messagesEl = document.getElementById("messages");
 const messageForm = document.getElementById("messageForm");
 const messageInput = document.getElementById("messageInput");
@@ -115,7 +129,10 @@ const SIDEBAR_MAIN_MIN_WIDTH = 420;
 const SIDEBAR_HANDLE_WIDTH = 10;
 const SIDEBAR_MAX_WIDTH = 560;
 const CALL_RINGTONE_SRC = "/sound-call.mp3";
+const CALL_REJECTED_SOUND_SRC = "/call-rejected.mp3";
+const CALL_ENDED_SOUND_SRC = "/call-ended.mp3";
 const MESSAGE_SOUND_SRC = "/sound-message.mp3";
+const OUTGOING_MESSAGE_SOUND_SRC = "/zvukovoe-uvedomlenie-kontakta.mp3";
 const ALLOWED_TRANSLATION_LANGS = new Set([
   "off",
   "en",
@@ -159,6 +176,8 @@ const state = {
     pendingIncoming: null,
     ringtoneFrame: null,
     incomingActionInFlight: false,
+    muted: false,
+    outputMuted: false,
   },
   deleteMode: false,
   selectedMessageIds: new Set(),
@@ -288,12 +307,14 @@ function sendSocketPayload(payload) {
 function setCallStatus(text, isError = false) {
   callStatus.textContent = String(text || "");
   callStatus.style.color = isError ? "var(--danger)" : "var(--text-subtle)";
+  renderActiveCallOverlay();
 }
 
 function setIncomingCallActionInFlight(inFlight) {
   state.call.incomingActionInFlight = Boolean(inFlight);
   acceptCallBtn.disabled = state.call.incomingActionInFlight;
   rejectCallBtn.disabled = state.call.incomingActionInFlight;
+  renderActiveCallOverlay();
 }
 
 function clearIncomingCallUi() {
@@ -310,8 +331,13 @@ function clearPendingIncomingCall() {
 
 function showIncomingCallUi(callerName) {
   incomingCallText.textContent = callerName;
-  incomingCallPanel.classList.remove("hidden");
+  if (activeCallPanel) {
+    incomingCallPanel.classList.add("hidden");
+  } else {
+    incomingCallPanel.classList.remove("hidden");
+  }
   setIncomingCallActionInFlight(false);
+  renderActiveCallOverlay();
 }
 
 function startCallRingtone() {
@@ -333,6 +359,145 @@ function stopCallRingtone() {
   state.call.ringtoneFrame = null;
 }
 
+function playCallRejectedSound() {
+  try {
+    const audio = new Audio(CALL_REJECTED_SOUND_SRC);
+    audio.play().catch(() => { });
+  } catch {
+  }
+}
+
+function playCallEndedSound() {
+  try {
+    const audio = new Audio(CALL_ENDED_SOUND_SRC);
+    audio.play().catch(() => { });
+  } catch {
+  }
+}
+
+function getActiveCallConversation() {
+  return (
+    getConversationById(state.call.conversationId) ||
+    getConversationByParticipantId(state.call.targetUserId) ||
+    getActiveConversation() ||
+    null
+  );
+}
+
+function setActiveCallAvatar(avatarEl, avatarImgEl, avatarUrl, displayName) {
+  if (!avatarEl || !avatarImgEl) {
+    return;
+  }
+
+  avatarEl.dataset.initial = getInitial(displayName);
+  avatarImgEl.alt = displayName;
+
+  if (!avatarUrl) {
+    avatarImgEl.removeAttribute("src");
+    avatarImgEl.classList.add("hidden");
+    return;
+  }
+
+  avatarImgEl.onerror = () => {
+    avatarImgEl.classList.add("hidden");
+  };
+  avatarImgEl.src = avatarUrl;
+  avatarImgEl.classList.remove("hidden");
+}
+
+function applyCallAudioPreferences() {
+  if (state.call.localStream) {
+    for (const track of state.call.localStream.getAudioTracks()) {
+      track.enabled = !state.call.muted;
+    }
+  }
+
+  remoteAudio.muted = Boolean(state.call.outputMuted);
+}
+
+function setCallMuted(muted) {
+  state.call.muted = Boolean(muted);
+  applyCallAudioPreferences();
+  renderActiveCallOverlay();
+}
+
+function setCallOutputMuted(muted) {
+  state.call.outputMuted = Boolean(muted);
+  applyCallAudioPreferences();
+  renderActiveCallOverlay();
+}
+
+function renderActiveCallOverlay() {
+  if (!activeCallPanel) {
+    return;
+  }
+
+  const hasIncomingPending = Boolean(state.call.pendingIncoming) && !state.call.active;
+  if (!state.call.active && !hasIncomingPending) {
+    activeCallPanel.classList.add("hidden");
+    return;
+  }
+
+  const pendingCall = state.call.pendingIncoming;
+  const callConversation = hasIncomingPending
+    ? (
+      getConversationById(pendingCall?.conversationId) ||
+      getConversationByParticipantId(pendingCall?.fromUserId) ||
+      getActiveConversation() ||
+      null
+    )
+    : getActiveCallConversation();
+  const peerName = hasIncomingPending
+    ? (pendingCall?.callerName || callConversation?.participant?.username || "Собеседник")
+    : (callConversation?.participant?.username || "Собеседник");
+  const peerAvatarUrl = callConversation?.participant?.avatarUrl || "";
+  const meName = state.me?.username || "Вы";
+  const meAvatarUrl = state.me?.avatarUrl || "";
+
+  if (activeCallName) {
+    activeCallName.textContent = peerName;
+  }
+  if (activeCallStatus) {
+    activeCallStatus.textContent = callStatus.textContent || (hasIncomingPending ? "Входящий звонок..." : "Подключение...");
+  }
+
+  setActiveCallAvatar(activeCallPeerAvatar, activeCallPeerAvatarImg, peerAvatarUrl, peerName);
+  setActiveCallAvatar(activeCallMeAvatar, activeCallMeAvatarImg, meAvatarUrl, meName);
+
+  if (activeCallMuteBtn) {
+    activeCallMuteBtn.classList.toggle("hidden", hasIncomingPending);
+    activeCallMuteBtn.classList.toggle("active", state.call.muted);
+    activeCallMuteBtn.setAttribute("aria-pressed", state.call.muted ? "true" : "false");
+  }
+  if (activeCallMuteText) {
+    activeCallMuteText.textContent = state.call.muted ? "Микро выкл" : "Микро";
+  }
+
+  if (activeCallSpeakerBtn) {
+    activeCallSpeakerBtn.classList.toggle("hidden", hasIncomingPending);
+    activeCallSpeakerBtn.classList.toggle("active", state.call.outputMuted);
+    activeCallSpeakerBtn.setAttribute("aria-pressed", state.call.outputMuted ? "true" : "false");
+  }
+  if (activeCallSpeakerText) {
+    activeCallSpeakerText.textContent = state.call.outputMuted ? "Звук выкл" : "Звук";
+  }
+
+  if (activeCallAcceptBtn) {
+    activeCallAcceptBtn.classList.toggle("hidden", !hasIncomingPending);
+    activeCallAcceptBtn.disabled = state.call.incomingActionInFlight;
+  }
+
+  if (activeCallEndBtn) {
+    activeCallEndBtn.disabled = hasIncomingPending && state.call.incomingActionInFlight;
+  }
+
+  if (activeCallEndText) {
+    activeCallEndText.textContent = hasIncomingPending ? "Отклонить" : "Завершить";
+  }
+
+  activeCallPanel.classList.remove("hidden");
+}
+
 function getPeerConnectionConstructor() {
   return window.RTCPeerConnection || window.webkitRTCPeerConnection || null;
 }
@@ -350,15 +515,36 @@ function updateCallUi() {
   const callActive = Boolean(state.call.active);
   const callsSupported = canUseAudioCalls();
   const hasPendingIncoming = Boolean(state.call.pendingIncoming);
+  const hasCallTarget = Boolean(conversation?.participant?.id);
   const disabledByContext =
-    !conversation || state.chatLocked || Boolean(conversation?.blockedMe) || !callsSupported;
+    !conversation ||
+    state.chatLocked ||
+    Boolean(conversation?.blockedMe) ||
+    !callsSupported ||
+    !hasCallTarget;
 
   callBtn.disabled = (disabledByContext || hasPendingIncoming) && !callActive;
   callBtn.classList.toggle("active", callActive);
   callBtn.textContent = callActive ? "Завершить" : "Позвонить";
-  callBtn.title = callsSupported
-    ? ""
-    : "Звонки недоступны: браузер не поддерживает доступ к микрофону.";
+  if (callActive) {
+    callBtn.title = "";
+  } else if (!conversation) {
+    callBtn.title = "Сначала выберите диалог.";
+  } else if (state.chatLocked) {
+    callBtn.title = "Разблокируйте чат, чтобы начать звонок.";
+  } else if (conversation?.blockedMe) {
+    callBtn.title = "Звонок недоступен: вы заблокированы собеседником.";
+  } else if (!hasCallTarget) {
+    callBtn.title = "Звонки доступны только в личных чатах.";
+  } else if (!callsSupported) {
+    callBtn.title = "Звонки недоступны: браузер не поддерживает доступ к микрофону.";
+  } else if (hasPendingIncoming) {
+    callBtn.title = "Сначала ответьте на входящий звонок.";
+  } else {
+    callBtn.title = "";
+  }
+
+  renderActiveCallOverlay();
 }
 
 function cleanupCallState() {
@@ -383,12 +569,15 @@ function cleanupCallState() {
   state.call.conversationId = "";
   state.call.peer = null;
   state.call.localStream = null;
+  state.call.muted = false;
+  state.call.outputMuted = false;
 
+  remoteAudio.muted = false;
   remoteAudio.srcObject = null;
   updateCallUi();
 }
 
-function endCall(notifyPeer = true, statusText = "Звонок завершен.") {
+function endCall(notifyPeer = true, statusText = "Звонок завершен.", playSound = true) {
   const targetUserId = state.call.targetUserId;
   if (notifyPeer && targetUserId) {
     sendSocketPayload({
@@ -399,6 +588,9 @@ function endCall(notifyPeer = true, statusText = "Звонок завершен.
     });
   }
 
+  if (playSound) {
+    playCallEndedSound();
+  }
   cleanupCallState();
   setCallStatus(statusText);
 }
@@ -530,6 +722,7 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
   state.call.conversationId = conversationId;
   state.call.peer = peer;
   state.call.localStream = localStream;
+  applyCallAudioPreferences();
   updateCallUi();
   return peer;
 }
@@ -541,8 +734,14 @@ async function startOutgoingCall() {
   }
 
   const conversation = getActiveConversation();
+  if (!conversation) {
+    setCallStatus("Сначала выберите диалог.", true);
+    return;
+  }
+
   const targetUserId = conversation?.participant?.id;
   if (!targetUserId) {
+    setCallStatus("Звонки доступны только в личных чатах.", true);
     return;
   }
 
@@ -695,12 +894,13 @@ async function handleCallSignal(payload) {
   }
 
   if (signalType === "reject") {
-    endCall(false, "Собеседник отклонил звонок.");
+    playCallRejectedSound();
+    endCall(false, "Собеседник отклонил звонок.", false);
     return;
   }
 
   if (signalType === "busy") {
-    endCall(false, "Собеседник сейчас в другом звонке.");
+    endCall(false, "Собеседник сейчас в другом звонке.", false);
     return;
   }
 
@@ -1117,6 +1317,14 @@ function updateParticipantPresence(userId, online) {
 function playIncomingMessageSound() {
   try {
     const audio = new Audio(MESSAGE_SOUND_SRC);
+    audio.play().catch(() => { });
+  } catch {
+  }
+}
+
+function playOutgoingMessageSound() {
+  try {
+    const audio = new Audio(OUTGOING_MESSAGE_SOUND_SRC);
     audio.play().catch(() => { });
   } catch {
   }
@@ -2479,6 +2687,40 @@ callBtn.addEventListener("click", async () => {
   await startOutgoingCall();
 });
 
+if (activeCallMuteBtn) {
+  activeCallMuteBtn.addEventListener("click", () => {
+    setCallMuted(!state.call.muted);
+  });
+}
+
+if (activeCallSpeakerBtn) {
+  activeCallSpeakerBtn.addEventListener("click", () => {
+    setCallOutputMuted(!state.call.outputMuted);
+  });
+}
+
+if (activeCallAcceptBtn) {
+  activeCallAcceptBtn.addEventListener("click", async () => {
+    if (!state.call.pendingIncoming || state.call.active) {
+      return;
+    }
+    await acceptPendingIncomingCall();
+  });
+}
+
+if (activeCallEndBtn) {
+  activeCallEndBtn.addEventListener("click", () => {
+    if (state.call.pendingIncoming && !state.call.active) {
+      rejectPendingIncomingCall("Входящий звонок отклонен.");
+      return;
+    }
+    if (!state.call.active) {
+      return;
+    }
+    endCall(true, "Звонок завершен.");
+  });
+}
+
 acceptCallBtn.addEventListener("click", async () => {
   await acceptPendingIncomingCall();
 });
@@ -2663,6 +2905,7 @@ messageForm.addEventListener("submit", async (event) => {
     if (!added || !appendMessageToActiveView(payload.message)) {
       renderMessages();
     }
+    playOutgoingMessageSound();
     messageInput.value = "";
     messageInput.style.height = "auto";
     state.replyToMessage = null;
@@ -2835,7 +3078,11 @@ ctxForward.addEventListener("click", () => {
   api(`/api/conversations/${targetConv.id}/messages`, {
     method: "POST",
     body: { text: fwdText, forwardFromId: msg.id },
-  }).catch((e) => { authStatus.textContent = e.message; });
+  })
+    .then(() => {
+      playOutgoingMessageSound();
+    })
+    .catch((e) => { authStatus.textContent = e.message; });
 });
 
 ctxReact.addEventListener("click", () => {
@@ -2890,6 +3137,7 @@ voiceRecordBtn.addEventListener("click", async () => {
           const added = addMessage(payload.message);
           renderConversationList();
           if (!added || !appendMessageToActiveView(payload.message)) renderMessages();
+          playOutgoingMessageSound();
         } catch (e) { authStatus.textContent = e.message; }
       };
       reader.readAsDataURL(blob);
@@ -3140,8 +3388,7 @@ gsNameSaveBtn.addEventListener("click", async () => {
     gsNameSaveBtn.disabled = true;
     const payload = await api(`/api/conversations/${conv.id}/group`, {
       method: "PATCH",
-      body: JSON.stringify({ name: newName }),
-      headers: { "Content-Type": "application/json" },
+      body: { name: newName },
     });
     upsertConversation(payload.conversation);
     renderConversationList();
@@ -3175,8 +3422,7 @@ gsAvatarFileInput.addEventListener("change", async () => {
     });
     const payload = await api(`/api/conversations/${conv.id}/group`, {
       method: "PATCH",
-      body: JSON.stringify({ avatarUrl: dataUrl }),
-      headers: { "Content-Type": "application/json" },
+      body: { avatarUrl: dataUrl },
     });
     upsertConversation(payload.conversation);
     renderConversationList();
@@ -3196,8 +3442,7 @@ gsAvatarRemoveBtn.addEventListener("click", async () => {
   try {
     const payload = await api(`/api/conversations/${conv.id}/group`, {
       method: "PATCH",
-      body: JSON.stringify({ avatarUrl: "" }),
-      headers: { "Content-Type": "application/json" },
+      body: { avatarUrl: "" },
     });
     upsertConversation(payload.conversation);
     renderConversationList();
@@ -3234,8 +3479,7 @@ gsAddMemberSearch.addEventListener("input", () => {
           try {
             const payload = await api(`/api/conversations/${conv.id}/members`, {
               method: "POST",
-              body: JSON.stringify({ userId: user.id }),
-              headers: { "Content-Type": "application/json" },
+              body: { userId: user.id },
             });
             upsertConversation(payload.conversation);
             renderConversationList();
