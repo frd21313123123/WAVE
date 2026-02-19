@@ -48,6 +48,7 @@ const settingsPanel = document.getElementById("settingsPanel");
 const closeSettingsBtn = document.getElementById("closeSettingsBtn");
 const translationLanguage = document.getElementById("translationLanguage");
 const themeSelect = document.getElementById("themeSelect");
+const fullscreenToggleBtn = document.getElementById("fullscreenToggleBtn");
 const vigenereKeyInput = document.getElementById("vigenereKeyInput");
 const vigenereToggle = document.getElementById("vigenereToggle");
 const loginOtpLabel = document.getElementById("loginOtpLabel");
@@ -219,6 +220,7 @@ const state = {
     vigenereKey: DEFAULT_VIGENERE_KEY,
     sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
     microphoneId: "",
+    fullscreen: true,
   },
 };
 
@@ -769,6 +771,7 @@ function updateCallUi() {
 
 function cleanupCallState(options = {}) {
   const preserveRecovery = Boolean(options.preserveRecovery);
+  stopSpeakingDetection();
   stopCallRingtone();
   stopCallTimer();
   clearPendingIncomingCall();
@@ -1006,6 +1009,9 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
 
       // Re-play if track unmutes after renegotiation
       track.onunmute = tryPlay;
+
+      // Start speaking detection once remote audio is available
+      setTimeout(() => startSpeakingDetection(), 500);
     }
 
     if (track.kind === "video") {
@@ -2070,6 +2076,7 @@ function saveUiSettings() {
         vigenereEnabled: state.ui.vigenereEnabled,
         sidebarWidth: normalizeSidebarWidth(state.ui.sidebarWidth),
         microphoneId: state.ui.microphoneId || "",
+        fullscreen: !!state.ui.fullscreen,
       })
     );
   } catch {
@@ -2090,7 +2097,15 @@ function loadUiSettings() {
     state.ui.sidebarWidth = normalizeSidebarWidth(parsed.sidebarWidth);
     state.ui.vigenereKey = DEFAULT_VIGENERE_KEY;
     state.ui.microphoneId = String(parsed.microphoneId || "");
+    state.ui.fullscreen = parsed.fullscreen !== false;
   } catch {
+  }
+}
+
+function applyFullscreen() {
+  document.documentElement.classList.toggle("windowed-mode", !state.ui.fullscreen);
+  if (fullscreenToggleBtn) {
+    fullscreenToggleBtn.textContent = state.ui.fullscreen ? "Оконный режим" : "На весь экран";
   }
 }
 
@@ -2100,6 +2115,7 @@ function syncUiControls() {
   vigenereKeyInput.value = normalizeVigenereKey(state.ui.vigenereKey);
   updateVigenereToggle();
   loadMicrophoneDevices();
+  applyFullscreen();
 }
 
 async function loadMicrophoneDevices() {
@@ -2138,6 +2154,97 @@ function createGainProcessedStream(rawStream) {
   state.call.micGainNode = gain;
   state.call.micProcessedStream = dest.stream;
   return dest.stream;
+}
+
+// ========================
+// SPEAKING DETECTION
+// ========================
+const speakingState = {
+  localAnalyser: null,
+  remoteAnalyser: null,
+  localCtx: null,
+  remoteCtx: null,
+  rafId: null,
+};
+
+const SPEAKING_THRESHOLD = 18;
+
+function startSpeakingDetection() {
+  stopSpeakingDetection();
+
+  try {
+    // Local mic analyser
+    const localStream = state.call.localStream;
+    if (localStream && localStream.getAudioTracks().length > 0) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaStreamSource(localStream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      speakingState.localAnalyser = analyser;
+      speakingState.localCtx = ctx;
+    }
+
+    // Remote audio analyser
+    const remoteStream = remoteAudio.srcObject;
+    if (remoteStream && remoteStream.getAudioTracks().length > 0) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaStreamSource(remoteStream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      speakingState.remoteAnalyser = analyser;
+      speakingState.remoteCtx = ctx;
+    }
+  } catch {}
+
+  const localData = speakingState.localAnalyser ? new Uint8Array(speakingState.localAnalyser.frequencyBinCount) : null;
+  const remoteData = speakingState.remoteAnalyser ? new Uint8Array(speakingState.remoteAnalyser.frequencyBinCount) : null;
+
+  function tick() {
+    let localSpeaking = false;
+    let remoteSpeaking = false;
+
+    if (speakingState.localAnalyser && localData) {
+      speakingState.localAnalyser.getByteFrequencyData(localData);
+      let sum = 0;
+      for (let i = 0; i < localData.length; i++) sum += localData[i];
+      localSpeaking = (sum / localData.length) > SPEAKING_THRESHOLD;
+    }
+
+    if (speakingState.remoteAnalyser && remoteData) {
+      speakingState.remoteAnalyser.getByteFrequencyData(remoteData);
+      let sum = 0;
+      for (let i = 0; i < remoteData.length; i++) sum += remoteData[i];
+      remoteSpeaking = (sum / remoteData.length) > SPEAKING_THRESHOLD;
+    }
+
+    if (activeCallMeAvatar) activeCallMeAvatar.classList.toggle("speaking", localSpeaking);
+    if (activeCallPeerAvatar) activeCallPeerAvatar.classList.toggle("speaking", remoteSpeaking);
+
+    speakingState.rafId = requestAnimationFrame(tick);
+  }
+
+  speakingState.rafId = requestAnimationFrame(tick);
+}
+
+function stopSpeakingDetection() {
+  if (speakingState.rafId) {
+    cancelAnimationFrame(speakingState.rafId);
+    speakingState.rafId = null;
+  }
+  if (speakingState.localCtx) {
+    try { speakingState.localCtx.close(); } catch {}
+    speakingState.localCtx = null;
+  }
+  if (speakingState.remoteCtx) {
+    try { speakingState.remoteCtx.close(); } catch {}
+    speakingState.remoteCtx = null;
+  }
+  speakingState.localAnalyser = null;
+  speakingState.remoteAnalyser = null;
+  if (activeCallMeAvatar) activeCallMeAvatar.classList.remove("speaking");
+  if (activeCallPeerAvatar) activeCallPeerAvatar.classList.remove("speaking");
 }
 
 function updateVigenereToggle() {
@@ -3368,6 +3475,12 @@ themeSelect.addEventListener("change", () => {
   saveUiSettings();
 });
 
+fullscreenToggleBtn.addEventListener("click", () => {
+  state.ui.fullscreen = !state.ui.fullscreen;
+  applyFullscreen();
+  saveUiSettings();
+});
+
 translationLanguage.addEventListener("change", () => {
   state.ui.targetLanguage = normalizeTranslationLanguage(translationLanguage.value);
   saveUiSettings();
@@ -4247,6 +4360,7 @@ async function init() {
   applySidebarWidth(state.ui.sidebarWidth);
   initializeSidebarResize();
   applyTheme();
+  applyFullscreen();
   syncUiControls();
   renderTwoFaState();
   updateDeleteUi();

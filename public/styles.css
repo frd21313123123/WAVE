@@ -89,7 +89,7 @@ body {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 18px;
+  padding: 0;
 }
 
 .hidden {
@@ -248,16 +248,45 @@ textarea:focus {
 
 .chat-view {
   --sidebar-width: 336px;
-  width: min(1360px, 100%);
-  height: min(95vh, 980px);
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
   display: grid;
   grid-template-columns: var(--sidebar-width) 10px 1fr;
-  border-radius: 14px;
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid rgba(196, 210, 226, 0.65);
-  box-shadow: var(--shadow-app);
+  border: none;
+  box-shadow: none;
   background: var(--surface);
   animation: rise-in 260ms ease;
+}
+
+/* Windowed mode */
+.windowed-mode .chat-view {
+  width: calc(100% - 40px);
+  height: calc(100vh - 40px);
+  height: calc(100dvh - 40px);
+  max-width: 1400px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-app);
+  margin: 20px auto;
+}
+
+.windowed-mode .app-shell {
+  padding: 0;
+}
+
+@media (max-width: 950px) {
+  .windowed-mode .chat-view {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    margin: 0;
+  }
 }
 
 .chat-view.resizing {
@@ -783,6 +812,16 @@ textarea:focus {
   background: #2a2a2a;
 }
 
+.active-call-avatar.speaking {
+  box-shadow: 0 0 0 3px #43b581, 0 0 16px 4px rgba(67, 181, 129, 0.45);
+  transition: box-shadow 0.15s ease;
+}
+
+.active-call-avatar:not(.speaking) {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  transition: box-shadow 0.3s ease;
+}
+
 /* User Info Overlay */
 .active-call-bottom-overlay {
   position: absolute;
@@ -886,8 +925,22 @@ textarea:focus {
 }
 
 .active-call-control-pill.active {
-  background: #fff;
-  color: #000;
+  background: rgba(218, 55, 60, 0.15);
+  color: #ed4245;
+  position: relative;
+}
+
+.active-call-control-pill.active::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 2.5px;
+  background: #ed4245;
+  border-radius: 2px;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  pointer-events: none;
 }
 
 .active-call-control-pill svg {
@@ -3025,8 +3078,22 @@ textarea:focus {
 }
 
 .split-main.active {
-  background: #fff;
-  color: #000;
+  background: rgba(218, 55, 60, 0.15);
+  color: #ed4245;
+  position: relative;
+}
+
+.split-main.active::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 2.5px;
+  background: #ed4245;
+  border-radius: 2px;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  pointer-events: none;
 }
 
 .split-main svg {
@@ -3053,13 +3120,13 @@ textarea:focus {
 }
 
 .split-main.active+.split-chevron {
-  border-left-color: rgba(0, 0, 0, 0.1);
-  color: rgba(0, 0, 0, 0.6);
+  border-left-color: rgba(218, 55, 60, 0.2);
+  color: rgba(237, 66, 69, 0.6);
 }
 
 .split-main.active+.split-chevron:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: #000;
+  background: rgba(218, 55, 60, 0.1);
+  color: #ed4245;
 }
 
 /* Popovers */
