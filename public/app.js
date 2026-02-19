@@ -25,12 +25,20 @@ const activeCallPeerAvatarImg = document.getElementById("activeCallPeerAvatarImg
 const activeCallMeAvatar = document.getElementById("activeCallMeAvatar");
 const activeCallMeAvatarImg = document.getElementById("activeCallMeAvatarImg");
 const activeCallMuteBtn = document.getElementById("activeCallMuteBtn");
-const activeCallMuteText = document.getElementById("activeCallMuteText");
 const activeCallSpeakerBtn = document.getElementById("activeCallSpeakerBtn");
-const activeCallSpeakerText = document.getElementById("activeCallSpeakerText");
 const activeCallAcceptBtn = document.getElementById("activeCallAcceptBtn");
 const activeCallEndBtn = document.getElementById("activeCallEndBtn");
-const activeCallEndText = document.getElementById("activeCallEndText");
+const activeCallMuteChevron = document.getElementById("activeCallMuteChevron");
+const activeCallVideoBtn = document.getElementById("activeCallVideoBtn");
+const activeCallVideoChevron = document.getElementById("activeCallVideoChevron");
+const activeCallSpeakerChevron = document.getElementById("activeCallSpeakerChevron");
+const micSettingsPopover = document.getElementById("micSettingsPopover");
+const videoSettingsPopover = document.getElementById("videoSettingsPopover");
+const speakerSettingsPopover = document.getElementById("speakerSettingsPopover");
+const popoverWebcamBtn = document.getElementById("popoverWebcamBtn");
+const popoverScreenShareBtn = document.getElementById("popoverScreenShareBtn");
+const remoteVideo = document.getElementById("remoteVideo");
+const localVideo = document.getElementById("localVideo");
 const messagesEl = document.getElementById("messages");
 const messageForm = document.getElementById("messageForm");
 const messageInput = document.getElementById("messageInput");
@@ -178,6 +186,15 @@ const state = {
     incomingActionInFlight: false,
     muted: false,
     outputMuted: false,
+    videoEnabled: false,
+    screenShareEnabled: false,
+    timerInterval: null,
+    timerStart: null,
+    micGainNode: null,
+    micAudioCtx: null,
+    micProcessedStream: null,
+    micVolume: 100,
+    speakerVolume: 100,
   },
   deleteMode: false,
   selectedMessageIds: new Set(),
@@ -320,7 +337,8 @@ function setIncomingCallActionInFlight(inFlight) {
 function clearIncomingCallUi() {
   incomingCallPanel.classList.add("hidden");
   incomingCallText.textContent = "";
-  setIncomingCallActionInFlight(false);
+  acceptCallBtn.disabled = false;
+  rejectCallBtn.disabled = false;
 }
 
 function clearPendingIncomingCall() {
@@ -329,14 +347,26 @@ function clearPendingIncomingCall() {
   updateCallUi();
 }
 
+function isIncomingCallChatOpen() {
+  const pending = state.call.pendingIncoming;
+  if (!pending) return false;
+  const conv =
+    getConversationById(pending.conversationId) ||
+    getConversationByParticipantId(pending.fromUserId);
+  return conv && conv.id === state.activeConversationId;
+}
+
 function showIncomingCallUi(callerName) {
   incomingCallText.textContent = callerName;
-  if (activeCallPanel) {
+  setIncomingCallActionInFlight(false);
+
+  if (isIncomingCallChatOpen()) {
+    // Chat is open — use the inline active-call panel, hide floating
     incomingCallPanel.classList.add("hidden");
   } else {
+    // Chat is NOT open — show floating notification
     incomingCallPanel.classList.remove("hidden");
   }
-  setIncomingCallActionInFlight(false);
   renderActiveCallOverlay();
 }
 
@@ -415,6 +445,63 @@ function applyCallAudioPreferences() {
   remoteAudio.muted = Boolean(state.call.outputMuted);
 }
 
+function formatCallDuration(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function startCallTimer() {
+  stopCallTimer();
+  state.call.timerStart = Date.now();
+  state.call.timerInterval = setInterval(() => {
+    if (!state.call.active || !state.call.timerStart) return;
+    const elapsed = Math.floor((Date.now() - state.call.timerStart) / 1000);
+    if (activeCallStatus) {
+      activeCallStatus.textContent = formatCallDuration(elapsed);
+    }
+    callStatus.textContent = `В звонке ${formatCallDuration(elapsed)}`;
+  }, 1000);
+}
+
+function stopCallTimer() {
+  if (state.call.timerInterval) {
+    clearInterval(state.call.timerInterval);
+    state.call.timerInterval = null;
+  }
+  state.call.timerStart = null;
+}
+
+async function loadPopoverDevices() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const mics = devices.filter(d => d.kind === "audioinput");
+    const speakers = devices.filter(d => d.kind === "audiooutput");
+    const micSelect = document.getElementById("popoverMicSelect");
+    const speakerSelect = document.getElementById("popoverSpeakerSelect");
+    if (micSelect) {
+      micSelect.innerHTML = '<option value="">Default</option>';
+      for (const mic of mics) {
+        const opt = document.createElement("option");
+        opt.value = mic.deviceId;
+        opt.textContent = mic.label || `Микрофон ${micSelect.options.length}`;
+        micSelect.appendChild(opt);
+      }
+      if (state.ui.microphoneId) micSelect.value = state.ui.microphoneId;
+    }
+    if (speakerSelect) {
+      speakerSelect.innerHTML = '<option value="">Default</option>';
+      for (const spk of speakers) {
+        const opt = document.createElement("option");
+        opt.value = spk.deviceId;
+        opt.textContent = spk.label || `Динамик ${speakerSelect.options.length}`;
+        speakerSelect.appendChild(opt);
+      }
+    }
+  } catch {}
+}
+
 function setCallMuted(muted) {
   state.call.muted = Boolean(muted);
   applyCallAudioPreferences();
@@ -434,6 +521,12 @@ function renderActiveCallOverlay() {
 
   const hasIncomingPending = Boolean(state.call.pendingIncoming) && !state.call.active;
   if (!state.call.active && !hasIncomingPending) {
+    activeCallPanel.classList.add("hidden");
+    return;
+  }
+
+  // Incoming call with chat NOT open — only show floating panel, not inline
+  if (hasIncomingPending && !isIncomingCallChatOpen()) {
     activeCallPanel.classList.add("hidden");
     return;
   }
@@ -464,22 +557,44 @@ function renderActiveCallOverlay() {
   setActiveCallAvatar(activeCallPeerAvatar, activeCallPeerAvatarImg, peerAvatarUrl, peerName);
   setActiveCallAvatar(activeCallMeAvatar, activeCallMeAvatarImg, meAvatarUrl, meName);
 
+  // Mute Button
   if (activeCallMuteBtn) {
     activeCallMuteBtn.classList.toggle("hidden", hasIncomingPending);
     activeCallMuteBtn.classList.toggle("active", state.call.muted);
     activeCallMuteBtn.setAttribute("aria-pressed", state.call.muted ? "true" : "false");
+    activeCallMuteBtn.title = state.call.muted ? "Включить микрофон" : "Выключить микрофон";
   }
-  if (activeCallMuteText) {
-    activeCallMuteText.textContent = state.call.muted ? "Микро выкл" : "Микро";
+  if (activeCallMuteChevron) {
+    activeCallMuteChevron.classList.toggle("hidden", hasIncomingPending);
   }
 
+  // Speaker Button
   if (activeCallSpeakerBtn) {
     activeCallSpeakerBtn.classList.toggle("hidden", hasIncomingPending);
     activeCallSpeakerBtn.classList.toggle("active", state.call.outputMuted);
     activeCallSpeakerBtn.setAttribute("aria-pressed", state.call.outputMuted ? "true" : "false");
+    activeCallSpeakerBtn.title = state.call.outputMuted ? "Включить звук" : "Выключить звук";
   }
-  if (activeCallSpeakerText) {
-    activeCallSpeakerText.textContent = state.call.outputMuted ? "Звук выкл" : "Звук";
+  if (activeCallSpeakerChevron) {
+    activeCallSpeakerChevron.classList.toggle("hidden", hasIncomingPending);
+  }
+
+  // Video Button
+  if (activeCallVideoBtn) {
+    const isVideoOn = state.call.videoEnabled || state.call.screenShareEnabled;
+    activeCallVideoBtn.classList.toggle("hidden", hasIncomingPending);
+    activeCallVideoBtn.classList.toggle("active", isVideoOn);
+    activeCallVideoBtn.setAttribute("aria-pressed", isVideoOn ? "true" : "false");
+    activeCallVideoBtn.title = isVideoOn ? "Выключить камеру" : "Включить камеру";
+  }
+  if (activeCallVideoChevron) {
+    activeCallVideoChevron.classList.toggle("hidden", hasIncomingPending);
+  }
+
+  // Hide the entire control group container when all children are hidden
+  const controlGroupMain = activeCallPanel.querySelector(".control-group-main");
+  if (controlGroupMain) {
+    controlGroupMain.classList.toggle("hidden", hasIncomingPending);
   }
 
   if (activeCallAcceptBtn) {
@@ -489,10 +604,8 @@ function renderActiveCallOverlay() {
 
   if (activeCallEndBtn) {
     activeCallEndBtn.disabled = hasIncomingPending && state.call.incomingActionInFlight;
-  }
-
-  if (activeCallEndText) {
-    activeCallEndText.textContent = hasIncomingPending ? "Отклонить" : "Завершить";
+    activeCallEndBtn.title = hasIncomingPending ? "Отклонить" : "Завершить";
+    activeCallEndBtn.classList.toggle("danger-pulse", hasIncomingPending);
   }
 
   activeCallPanel.classList.remove("hidden");
@@ -544,11 +657,25 @@ function updateCallUi() {
     callBtn.title = "";
   }
 
+  // Sync floating incoming-call panel vs inline active-call panel
+  if (hasPendingIncoming && !callActive) {
+    if (isIncomingCallChatOpen()) {
+      incomingCallPanel.classList.add("hidden");
+    } else {
+      const callerName = state.call.pendingIncoming?.callerName || "Собеседник";
+      incomingCallText.textContent = callerName;
+      incomingCallPanel.classList.remove("hidden");
+    }
+  } else if (!hasPendingIncoming) {
+    incomingCallPanel.classList.add("hidden");
+  }
+
   renderActiveCallOverlay();
 }
 
 function cleanupCallState() {
   stopCallRingtone();
+  stopCallTimer();
   clearPendingIncomingCall();
 
   if (state.call.peer) {
@@ -564,6 +691,16 @@ function cleanupCallState() {
     }
   }
 
+  if (state.call.micProcessedStream) {
+    for (const track of state.call.micProcessedStream.getTracks()) {
+      track.stop();
+    }
+  }
+
+  if (state.call.micAudioCtx) {
+    try { state.call.micAudioCtx.close(); } catch {}
+  }
+
   state.call.active = false;
   state.call.targetUserId = "";
   state.call.conversationId = "";
@@ -571,9 +708,28 @@ function cleanupCallState() {
   state.call.localStream = null;
   state.call.muted = false;
   state.call.outputMuted = false;
+  state.call.videoEnabled = false;
+  state.call.screenShareEnabled = false;
+  state.call.timerInterval = null;
+  state.call.timerStart = null;
+  state.call.micGainNode = null;
+  state.call.micAudioCtx = null;
+  state.call.micProcessedStream = null;
 
   remoteAudio.muted = false;
   remoteAudio.srcObject = null;
+
+  if (remoteVideo) {
+    remoteVideo.srcObject = null;
+    remoteVideo.classList.add("hidden");
+  }
+  if (localVideo) {
+    localVideo.srcObject = null;
+    localVideo.classList.add("hidden");
+  }
+  if (activeCallPeerAvatar) activeCallPeerAvatar.classList.remove("hidden");
+  if (activeCallMeAvatar) activeCallMeAvatar.classList.remove("hidden");
+
   updateCallUi();
 }
 
@@ -636,7 +792,8 @@ async function acceptPendingIncomingCall() {
       await selectConversation(callerConversation.id);
     }
 
-    const localStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+    const rawStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+    const localStream = createGainProcessedStream(rawStream);
     const peer = await createCallPeer(
       pendingCall.fromUserId,
       callerConversation?.id || pendingCall.conversationId,
@@ -657,6 +814,7 @@ async function acceptPendingIncomingCall() {
 
     clearPendingIncomingCall();
     setCallStatus("В звонке.");
+    startCallTimer();
   } catch (error) {
     sendSocketPayload({
       type: "call:signal",
@@ -672,47 +830,107 @@ async function acceptPendingIncomingCall() {
 async function createCallPeer(targetUserId, conversationId, localStream) {
   const PeerConnection = getPeerConnectionConstructor();
   if (!PeerConnection) {
-    throw new Error("Звонки недоступны в этом браузере.");
+    throw new Error("WebRTC не поддерживается в этом браузере.");
   }
 
   const peer = new PeerConnection({
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
 
-  for (const track of localStream.getTracks()) {
-    peer.addTrack(track, localStream);
+  if (localStream) {
+    for (const track of localStream.getTracks()) {
+      peer.addTrack(track, localStream);
+    }
   }
 
   peer.onicecandidate = (event) => {
-    if (!event.candidate || !state.call.targetUserId) {
-      return;
+    if (event.candidate) {
+      sendSocketPayload({
+        type: "call:signal",
+        targetUserId,
+        signalType: "ice",
+        conversationId,
+        data: { candidate: event.candidate.toJSON() },
+      });
     }
-    sendSocketPayload({
-      type: "call:signal",
-      targetUserId: state.call.targetUserId,
-      signalType: "ice",
-      conversationId,
-      data: { candidate: event.candidate },
-    });
   };
 
   peer.ontrack = (event) => {
-    const [stream] = event.streams || [];
-    if (!stream) {
+    const track = event.track;
+    if (!track) return;
+
+    if (track.kind === "audio") {
+      const audioStream = new MediaStream([track]);
+      remoteAudio.srcObject = audioStream;
+      remoteAudio.muted = false;
+      remoteAudio.volume = state.call.speakerVolume / 100;
+      const tryPlay = () => {
+        remoteAudio.play().catch(() => {
+          // Retry play on user interaction if autoplay blocked
+          document.addEventListener("click", () => {
+            remoteAudio.play().catch(() => {});
+          }, { once: true });
+        });
+      };
+      tryPlay();
+
+      // Re-play if track unmutes after renegotiation
+      track.onunmute = tryPlay;
+    }
+
+    if (track.kind === "video") {
+      if (remoteVideo) {
+        const videoStream = new MediaStream([track]);
+        remoteVideo.srcObject = videoStream;
+        remoteVideo.muted = true;
+        remoteVideo.classList.remove("hidden");
+        remoteVideo.play().catch(() => { });
+        if (activeCallPeerAvatar) activeCallPeerAvatar.classList.add("hidden");
+
+        const hideRemoteVideo = () => {
+          remoteVideo.srcObject = null;
+          remoteVideo.classList.add("hidden");
+          if (activeCallPeerAvatar) activeCallPeerAvatar.classList.remove("hidden");
+        };
+
+        track.onended = hideRemoteVideo;
+        track.onmute = hideRemoteVideo;
+        track.onunmute = () => {
+          if (remoteVideo && track.readyState === "live") {
+            const vs = new MediaStream([track]);
+            remoteVideo.srcObject = vs;
+            remoteVideo.classList.remove("hidden");
+            remoteVideo.play().catch(() => { });
+            if (activeCallPeerAvatar) activeCallPeerAvatar.classList.add("hidden");
+          }
+        };
+      }
+    }
+  };
+
+  // Periodically check if remote video track is still alive
+  // (fallback for browsers that don't fire onmute properly)
+  const checkRemoteVideo = setInterval(() => {
+    if (!state.call.active || !state.call.peer) {
+      clearInterval(checkRemoteVideo);
       return;
     }
-    remoteAudio.srcObject = stream;
-    remoteAudio
-      .play()
-      .then(() => { })
-      .catch(() => { });
-  };
+    const videoReceivers = peer.getReceivers().filter(r => r.track && r.track.kind === "video");
+    const hasLiveVideo = videoReceivers.some(r => r.track.readyState === "live" && !r.track.muted);
+    if (!hasLiveVideo && remoteVideo && !remoteVideo.classList.contains("hidden")) {
+      remoteVideo.srcObject = null;
+      remoteVideo.classList.add("hidden");
+      if (activeCallPeerAvatar) activeCallPeerAvatar.classList.remove("hidden");
+    }
+  }, 1000);
 
   peer.onconnectionstatechange = () => {
     if (!state.call.active) {
+      clearInterval(checkRemoteVideo);
       return;
     }
     if (["failed", "disconnected", "closed"].includes(peer.connectionState)) {
+      clearInterval(checkRemoteVideo);
       endCall(true, "Соединение прервано.");
     }
   };
@@ -723,6 +941,7 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
   state.call.peer = peer;
   state.call.localStream = localStream;
   applyCallAudioPreferences();
+  loadPopoverDevices();
   updateCallUi();
   return peer;
 }
@@ -761,7 +980,8 @@ async function startOutgoingCall() {
   }
 
   try {
-    const localStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+    const rawStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+    const localStream = createGainProcessedStream(rawStream);
     const peer = await createCallPeer(
       targetUserId,
       state.activeConversationId,
@@ -799,6 +1019,26 @@ async function handleCallSignal(payload) {
 
   if (signalType === "offer") {
     if (state.call.active) {
+      // Handle renegotiation from same peer
+      if (fromUserId === state.call.targetUserId && state.call.peer) {
+        try {
+          await state.call.peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          const answer = await state.call.peer.createAnswer();
+          await state.call.peer.setLocalDescription(answer);
+
+          sendSocketPayload({
+            type: "call:signal",
+            targetUserId: fromUserId,
+            signalType: "answer",
+            conversationId,
+            data: { sdp: state.call.peer.localDescription },
+          });
+        } catch (e) {
+          console.error("Renegotiation failed:", e);
+        }
+        return;
+      }
+
       sendSocketPayload({
         type: "call:signal",
         targetUserId: fromUserId,
@@ -851,9 +1091,9 @@ async function handleCallSignal(payload) {
       callerName,
     };
 
-    showIncomingCallUi(callerName);
     setCallStatus(`Входящий звонок от ${callerName}.`);
     startCallRingtone();
+    showIncomingCallUi(callerName);
     updateCallUi();
     return;
   }
@@ -879,6 +1119,7 @@ async function handleCallSignal(payload) {
     await state.call.peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
     stopCallRingtone();
     setCallStatus("В звонке.");
+    startCallTimer();
     return;
   }
 
@@ -1631,6 +1872,20 @@ function getAudioConstraints() {
   return id ? { audio: { deviceId: { exact: id } } } : { audio: true };
 }
 
+function createGainProcessedStream(rawStream) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = ctx.createMediaStreamSource(rawStream);
+  const gain = ctx.createGain();
+  gain.gain.value = state.call.micVolume / 100;
+  source.connect(gain);
+  const dest = ctx.createMediaStreamDestination();
+  gain.connect(dest);
+  state.call.micAudioCtx = ctx;
+  state.call.micGainNode = gain;
+  state.call.micProcessedStream = dest.stream;
+  return dest.stream;
+}
+
 function updateVigenereToggle() {
   const enabled = state.ui.vigenereEnabled;
   vigenereToggle.classList.toggle("active", enabled);
@@ -2098,6 +2353,28 @@ function createMessageRow(message, deletingIds = new Set()) {
   return row;
 }
 
+function scrollToBottom(smooth = false) {
+  if (state.deleteMode) {
+    return;
+  }
+
+  const scroll = () => {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  };
+
+  if (smooth) {
+    try {
+      messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: "smooth" });
+    } catch {
+      scroll();
+    }
+  } else {
+    scroll();
+    requestAnimationFrame(scroll);
+    setTimeout(scroll, 100);
+  }
+}
+
 function appendMessageToActiveView(message) {
   if (!state.activeConversationId || message.conversationId !== state.activeConversationId) {
     return false;
@@ -2116,9 +2393,7 @@ function appendMessageToActiveView(message) {
     state.deletingMessageIdsByConversation.get(state.activeConversationId) || new Set();
   messagesEl.appendChild(createMessageRow(message, deletingIds));
 
-  if (!state.deleteMode) {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
+  scrollToBottom(true);
 
   return true;
 }
@@ -2143,9 +2418,7 @@ function renderMessages() {
     messagesEl.appendChild(createMessageRow(message, deletingIds));
   }
 
-  if (!state.deleteMode) {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
+  scrollToBottom(false);
 }
 
 function renderSearchResults(users) {
@@ -2239,15 +2512,12 @@ async function loadConversations() {
   updateDeleteUi();
 
   renderConversationList();
-  if (state.conversations.length > 0) {
-    await selectConversation(state.conversations[0].id);
-  } else {
-    setChatLocked(false);
-    state.activeConversationId = null;
-    setNoConversationHeader();
-    renderMessages();
-    resetMobileChatState();
-  }
+  // Default: no chat open
+  setChatLocked(false);
+  state.activeConversationId = null;
+  setNoConversationHeader();
+  renderMessages();
+  resetMobileChatState();
   updateChatLockUi();
 }
 
@@ -3738,6 +4008,272 @@ async function init() {
     showAuth();
   }
 }
+
+// ========================
+// VIDEO / AUDIO SETTINGS HANDLERS
+// ========================
+function closePopovers() {
+  [micSettingsPopover, videoSettingsPopover, speakerSettingsPopover].forEach(el => {
+    el?.classList.add("hidden");
+  });
+  const splitGroups = document.querySelectorAll('.control-split-group');
+  splitGroups.forEach(el => el.classList.remove('active-popover'));
+}
+
+function togglePopover(popover, triggerChevron) {
+  const isHidden = popover.classList.contains("hidden");
+  closePopovers();
+  if (isHidden) {
+    popover.classList.remove("hidden");
+    triggerChevron.closest('.control-split-group').classList.add('active-popover');
+    // Sync slider values with current state
+    const micVol = document.getElementById("popoverMicVolume");
+    const spkVol = document.getElementById("popoverSpeakerVolume");
+    if (micVol) micVol.value = state.call.micVolume;
+    if (spkVol) spkVol.value = state.call.speakerVolume;
+  }
+}
+
+async function handleNegotiationNeeded() {
+  if (!state.call.active || !state.call.peer) return;
+  try {
+    const offer = await state.call.peer.createOffer();
+    await state.call.peer.setLocalDescription(offer);
+    sendSocketPayload({
+      type: "call:signal",
+      targetUserId: state.call.targetUserId,
+      signalType: "offer",
+      conversationId: state.call.conversationId,
+      data: { sdp: state.call.peer.localDescription },
+    });
+  } catch (err) {
+    console.error("Negotiation failed:", err);
+  }
+}
+
+function stopVideoTrack() {
+  const stream = state.call.localStream;
+
+  // Remove video sender from peer FIRST (before stopping the track)
+  // so renegotiation properly signals track removal to remote
+  if (state.call.peer) {
+    const senders = state.call.peer.getSenders();
+    for (const sender of senders) {
+      if (sender.track && sender.track.kind === "video") {
+        state.call.peer.removeTrack(sender);
+      }
+    }
+  }
+
+  // Now stop and remove local video tracks
+  if (stream) {
+    for (const videoTrack of stream.getVideoTracks()) {
+      videoTrack.stop();
+      stream.removeTrack(videoTrack);
+    }
+  }
+
+  if (localVideo) {
+    localVideo.srcObject = null;
+    localVideo.classList.add("hidden");
+  }
+  if (activeCallMeAvatar) {
+    activeCallMeAvatar.classList.remove("hidden");
+  }
+  state.call.videoEnabled = false;
+  state.call.screenShareEnabled = false;
+
+  // Trigger renegotiation so remote side learns the video track is gone
+  handleNegotiationNeeded();
+  renderActiveCallOverlay();
+}
+
+async function addVideoTrack(newStream) {
+  const newVideoTrack = newStream.getVideoTracks()[0];
+  if (!newVideoTrack) return;
+
+  // If there is an existing audio track, keep it
+  if (!state.call.localStream) {
+    state.call.localStream = new MediaStream();
+  }
+
+  // Remove old video track if any
+  const oldVideoTrack = state.call.localStream.getVideoTracks()[0];
+  if (oldVideoTrack) {
+    oldVideoTrack.stop();
+    state.call.localStream.removeTrack(oldVideoTrack);
+  }
+
+  state.call.localStream.addTrack(newVideoTrack);
+
+  // Add to peer
+  if (state.call.peer) {
+    // Check if we already have a video sender
+    const senders = state.call.peer.getSenders();
+    const videoSender = senders.find(s => s.track && s.track.kind === "video");
+
+    if (videoSender) {
+      videoSender.replaceTrack(newVideoTrack);
+    } else {
+      state.call.peer.addTrack(newVideoTrack, state.call.localStream);
+    }
+  }
+
+  // Preview
+  if (localVideo) {
+    localVideo.srcObject = new MediaStream([newVideoTrack]);
+    localVideo.classList.remove("hidden");
+  }
+  if (activeCallMeAvatar) {
+    activeCallMeAvatar.classList.add("hidden");
+  }
+
+  newVideoTrack.onended = () => {
+    stopVideoTrack();
+  };
+
+  handleNegotiationNeeded();
+  renderActiveCallOverlay();
+}
+
+async function toggleWebcam() {
+  if (state.call.videoEnabled) {
+    stopVideoTrack();
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    state.call.videoEnabled = true;
+    state.call.screenShareEnabled = false;
+    await addVideoTrack(stream);
+  } catch (err) {
+    console.error("Webcam error:", err);
+    setCallStatus("Не удалось включить камеру.", true);
+  }
+}
+
+async function toggleScreenShare() {
+  if (state.call.screenShareEnabled) {
+    stopVideoTrack();
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    state.call.screenShareEnabled = true;
+    state.call.videoEnabled = false;
+    await addVideoTrack(stream);
+  } catch (err) {
+    console.error("Screen share error:", err);
+  }
+}
+
+// Listeners
+if (activeCallMuteChevron) {
+  activeCallMuteChevron.addEventListener("click", (e) => {
+    e.stopPropagation();
+    togglePopover(micSettingsPopover, activeCallMuteChevron);
+  });
+}
+
+if (activeCallVideoChevron) {
+  activeCallVideoChevron.addEventListener("click", (e) => {
+    e.stopPropagation();
+    togglePopover(videoSettingsPopover, activeCallVideoChevron);
+  });
+}
+
+if (activeCallSpeakerChevron) {
+  activeCallSpeakerChevron.addEventListener("click", (e) => {
+    e.stopPropagation();
+    togglePopover(speakerSettingsPopover, activeCallSpeakerChevron);
+  });
+}
+
+if (activeCallVideoBtn) {
+  activeCallVideoBtn.addEventListener("click", () => {
+    // If video is on -> turn off
+    if (state.call.videoEnabled || state.call.screenShareEnabled) {
+      stopVideoTrack();
+    } else {
+      // If off -> default to webcam
+      toggleWebcam();
+    }
+  });
+}
+
+if (popoverWebcamBtn) {
+  popoverWebcamBtn.addEventListener("click", () => {
+    closePopovers();
+    if (!state.call.videoEnabled) {
+      toggleWebcam();
+    } else {
+      stopVideoTrack();
+    }
+  });
+}
+
+if (popoverScreenShareBtn) {
+  popoverScreenShareBtn.addEventListener("click", () => {
+    closePopovers();
+    if (!state.call.screenShareEnabled) {
+      toggleScreenShare();
+    } else {
+      stopVideoTrack();
+    }
+  });
+}
+
+// Popover device & volume controls
+const popoverMicSelect = document.getElementById("popoverMicSelect");
+const popoverSpeakerSelect = document.getElementById("popoverSpeakerSelect");
+const popoverMicVolume = document.getElementById("popoverMicVolume");
+const popoverSpeakerVolume = document.getElementById("popoverSpeakerVolume");
+
+if (popoverMicSelect) {
+  popoverMicSelect.addEventListener("change", () => {
+    state.ui.microphoneId = popoverMicSelect.value || "";
+    if (microphoneSelect) microphoneSelect.value = state.ui.microphoneId;
+    saveUiSettings();
+  });
+}
+
+if (popoverSpeakerSelect) {
+  popoverSpeakerSelect.addEventListener("change", () => {
+    const deviceId = popoverSpeakerSelect.value;
+    if (remoteAudio && typeof remoteAudio.setSinkId === "function") {
+      remoteAudio.setSinkId(deviceId).catch(() => {});
+    }
+  });
+}
+
+if (popoverMicVolume) {
+  popoverMicVolume.addEventListener("input", () => {
+    const val = parseInt(popoverMicVolume.value, 10);
+    state.call.micVolume = val;
+    if (state.call.micGainNode) {
+      state.call.micGainNode.gain.value = val / 100;
+    }
+  });
+}
+
+if (popoverSpeakerVolume) {
+  popoverSpeakerVolume.addEventListener("input", () => {
+    const val = parseInt(popoverSpeakerVolume.value, 10);
+    state.call.speakerVolume = val;
+    if (remoteAudio) {
+      remoteAudio.volume = val / 100;
+    }
+  });
+}
+
+// Close popovers on click outside
+document.addEventListener("click", (e) => {
+  if (!e.target.closest('.control-group-main') && !e.target.closest('.control-popover')) {
+    closePopovers();
+  }
+});
 
 init();
 
