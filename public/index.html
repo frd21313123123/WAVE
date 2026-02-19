@@ -15,6 +15,9 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500&display=swap"
     rel="stylesheet" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
@@ -128,6 +131,15 @@
             <p id="typingIndicator" class="typing-indicator hidden"></p>
             <p id="callStatus" class="chat-call-status"></p>
           </div>
+          <button id="groupSettingsHeaderBtn" class="ghost-btn group-settings-btn hidden" type="button"
+            title="Настройки группы">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" width="16" height="16">
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
           <button id="deleteModeBtn" class="ghost-btn delete-mode-btn" type="button">
             Удаление
           </button>
@@ -238,6 +250,84 @@
     </div>
   </div>
 
+  <!-- Group settings modal -->
+  <div id="groupSettingsModal" class="settings-overlay hidden" role="dialog" aria-modal="true"
+    aria-label="Настройки группы">
+    <div class="settings-modal" style="max-width:460px;height:auto;max-height:92vh;border-radius:20px;margin:auto;">
+      <div class="settings-modal-header">
+        <h2 class="settings-modal-title">Настройки группы</h2>
+        <button id="closeGroupSettingsBtn" class="ghost-btn icon-btn" type="button" title="Закрыть">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+            stroke-linejoin="round" width="20" height="20">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="settings-modal-body" style="padding:0;">
+
+        <!-- Group avatar & name -->
+        <section class="settings-section gs-header-section">
+          <div class="gs-avatar-row">
+            <div id="gsAvatarPreview" class="gs-avatar-preview" title="Изменить фото группы">
+              <span class="gs-avatar-initial" id="gsAvatarInitial">Г</span>
+            </div>
+            <div class="gs-header-info">
+              <h3 id="gsGroupName" class="gs-group-name">Группа</h3>
+              <p id="gsGroupMeta" class="gs-group-meta">0 участников</p>
+            </div>
+          </div>
+          <input id="gsAvatarFileInput" type="file" accept="image/*" class="hidden" />
+        </section>
+
+        <!-- Edit name -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Название группы</h3>
+          <div class="gs-edit-row">
+            <input id="gsNameInput" type="text" maxlength="64" placeholder="Название группы" />
+            <button id="gsNameSaveBtn" type="button" class="primary-btn gs-save-btn">Сохранить</button>
+          </div>
+        </section>
+
+        <!-- Group avatar upload -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Фото группы</h3>
+          <div class="gs-avatar-upload-row">
+            <button id="gsAvatarUploadBtn" type="button" class="ghost-btn">Загрузить фото</button>
+            <button id="gsAvatarRemoveBtn" type="button" class="ghost-btn danger-btn">Удалить фото</button>
+          </div>
+          <p class="settings-hint">JPG/PNG, макс 1.5MB. Фото видно всем участникам.</p>
+        </section>
+
+        <!-- Members -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Участники <span id="gsMemberCount"></span></h3>
+          <ul id="gsMemberList" class="list gs-member-list"></ul>
+        </section>
+
+        <!-- Add member -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Добавить участника</h3>
+          <input id="gsAddMemberSearch" type="text" placeholder="Поиск по логину/email"
+            style="width:100%;margin-bottom:6px;" />
+          <ul id="gsAddMemberResults" class="list" style="max-height:130px;"></ul>
+        </section>
+
+        <!-- Actions -->
+        <section class="settings-section gs-actions-section">
+          <button id="gsLeaveBtn" type="button" class="ghost-btn danger-btn gs-action-btn">
+            🚪 Покинуть группу
+          </button>
+          <button id="gsDeleteGroupBtn" type="button" class="ghost-btn danger-btn gs-action-btn">
+            🗑 Удалить группу
+          </button>
+        </section>
+
+        <p id="gsStatus" class="status-text" style="padding:0 20px 12px;"></p>
+      </div>
+    </div>
+  </div>
+
   <!-- Emoji reaction picker -->
   <div id="reactionPicker" class="reaction-picker hidden">
     <button type="button" data-emoji="👍">👍</button>
@@ -341,7 +431,8 @@
             <label>Push-уведомления</label>
             <button id="notifToggleBtn" type="button" class="ghost-btn">Включить</button>
           </div>
-          <p class="settings-hint">Получайте уведомления даже когда вкладка закрыта (требуется разрешение браузера).</p>
+          <p class="settings-hint">Получайте push-уведомления даже когда приложение закрыто. Установите приложение на
+            телефон для лучшего эффекта.</p>
         </section>
 
         <section class="settings-section">

@@ -7,6 +7,7 @@ const bcrypt = require("bcryptjs");
 const cookieParser = require("cookie-parser");
 const express = require("express");
 const jwt = require("jsonwebtoken");
+const webPush = require("web-push");
 const { WebSocketServer } = require("ws");
 
 const { JsonStore } = require("./storage");
@@ -43,10 +44,23 @@ const TOTP_DIGITS = 6;
 const TOTP_BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const TWO_FA_ISSUER = "Wave Messenger";
 
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "BMrCnig_P00U_1oqQ5g8ZDGdh4VjMEfMeiHgSOcrRZPPR_Z3fIDOqqMI0dC71IQASKYKR8de4YSkSlCXibWILAg";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "x6uSkjR_Aq2b1T4QTiY1J48COvv34mYPqHh7iBGgEuE";
+const VAPID_EMAIL = process.env.VAPID_EMAIL || "mailto:admin@wavemessenger.app";
+
+try {
+  webPush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} catch (error) {
+  console.error("Failed to configure Web Push VAPID keys:", error.message);
+}
+
+const pushSubscriptionsByUser = new Map();
+
 const store = new JsonStore(path.join(__dirname, "data", "db.json"), {
   users: [],
   conversations: [],
   messages: [],
+  pushSubscriptions: [],
 });
 
 const app = express();
@@ -335,6 +349,8 @@ function buildConversationPayload(
       id: conversation.id,
       type: "group",
       name: conversation.name || "Группа",
+      avatarUrl: conversation.avatarUrl || null,
+      creatorId: conversation.creatorId || conversation.participantIds[0] || null,
       participants,
       participantIds: conversation.participantIds,
       updatedAt: conversation.updatedAt,
@@ -1320,6 +1336,18 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
         type: "message:new",
         message: messagePayload,
       });
+
+      if (participantId !== req.user.id) {
+        sendPushNotificationToUser(participantId, {
+          title: sender ? sender.username : "Новое сообщение",
+          body: messagePayload.messageType === "voice"
+            ? "🎤 Голосовое сообщение"
+            : (messagePayload.text || "").slice(0, 100),
+          tag: `wave-msg-${conversationId}`,
+          conversationId,
+          url: "/",
+        });
+      }
     }
 
     const currentUserConversationPayload = buildConversationPayload(
@@ -1614,7 +1642,7 @@ app.post("/api/conversations/group", requireAuth, async (req, res) => {
         }
       }
       const now = new Date().toISOString();
-      const conv = { id: crypto.randomUUID(), type: "group", name, participantIds: allIds, createdAt: now, updatedAt: now, lastMessageId: null };
+      const conv = { id: crypto.randomUUID(), type: "group", name, participantIds: allIds, creatorId: req.user.id, avatarUrl: null, createdAt: now, updatedAt: now, lastMessageId: null };
       data.conversations.push(conv);
       return { conversationId: conv.id };
     });
@@ -1634,6 +1662,159 @@ app.post("/api/conversations/group", requireAuth, async (req, res) => {
     if (e.code === "NOT_FOUND") return res.status(404).json({ error: e.message });
     console.error(e);
     return res.status(500).json({ error: "Не удалось создать группу" });
+  }
+});
+
+// --- Group settings: rename ---
+app.patch("/api/conversations/:id/group", requireAuth, async (req, res) => {
+  const conversationId = req.params.id;
+  const newName = normalize(req.body.name);
+  if (newName !== undefined && newName !== null && req.body.name !== undefined) {
+    if (!newName || newName.length > 64) return res.status(400).json({ error: "Название группы: 1-64 символа" });
+  }
+  try {
+    await store.withWriteLock((data) => {
+      const conv = data.conversations.find((c) => c.id === conversationId);
+      if (!conv || conv.type !== "group") throw Object.assign(new Error("Группа не найдена"), { code: "NOT_FOUND" });
+      if (!conv.participantIds.includes(req.user.id)) throw Object.assign(new Error("Вы не участник группы"), { code: "FORBIDDEN" });
+      if (newName) conv.name = newName;
+      if (req.body.avatarUrl !== undefined) {
+        const av = String(req.body.avatarUrl || "").trim();
+        conv.avatarUrl = av || null;
+      }
+      conv.updatedAt = new Date().toISOString();
+    });
+    const state = await store.read();
+    const conv = state.conversations.find((c) => c.id === conversationId);
+    const usersById = new Map(state.users.map((u) => [u.id, u]));
+    const messagesById = new Map(state.messages.map((m) => [m.id, m]));
+    for (const pid of conv.participantIds) {
+      const p = buildConversationPayload(conv, pid, usersById, messagesById);
+      sendToUser(pid, { type: "conversation:update", conversation: p });
+    }
+    const payload = buildConversationPayload(conv, req.user.id, usersById, messagesById);
+    return res.json({ conversation: payload });
+  } catch (e) {
+    if (e.code === "NOT_FOUND" || e.code === "FORBIDDEN") return res.status(e.code === "FORBIDDEN" ? 403 : 404).json({ error: e.message });
+    console.error(e);
+    return res.status(500).json({ error: "Не удалось обновить группу" });
+  }
+});
+
+// --- Group: add member ---
+app.post("/api/conversations/:id/members", requireAuth, async (req, res) => {
+  const conversationId = req.params.id;
+  const userId = normalize(req.body.userId);
+  if (!userId) return res.status(400).json({ error: "Не указан userId" });
+  try {
+    await store.withWriteLock((data) => {
+      const conv = data.conversations.find((c) => c.id === conversationId);
+      if (!conv || conv.type !== "group") throw Object.assign(new Error("Группа не найдена"), { code: "NOT_FOUND" });
+      if (!conv.participantIds.includes(req.user.id)) throw Object.assign(new Error("Вы не участник группы"), { code: "FORBIDDEN" });
+      if (conv.participantIds.includes(userId)) throw Object.assign(new Error("Пользователь уже в группе"), { code: "ALREADY" });
+      if (!data.users.some((u) => u.id === userId)) throw Object.assign(new Error("Пользователь не найден"), { code: "USER_NF" });
+      conv.participantIds.push(userId);
+      conv.updatedAt = new Date().toISOString();
+    });
+    const state = await store.read();
+    const conv = state.conversations.find((c) => c.id === conversationId);
+    const usersById = new Map(state.users.map((u) => [u.id, u]));
+    const messagesById = new Map(state.messages.map((m) => [m.id, m]));
+    for (const pid of conv.participantIds) {
+      const p = buildConversationPayload(conv, pid, usersById, messagesById);
+      sendToUser(pid, { type: "conversation:update", conversation: p });
+    }
+    const payload = buildConversationPayload(conv, req.user.id, usersById, messagesById);
+    return res.json({ conversation: payload });
+  } catch (e) {
+    if (["NOT_FOUND", "FORBIDDEN", "ALREADY", "USER_NF"].includes(e.code)) {
+      return res.status(e.code === "FORBIDDEN" ? 403 : e.code === "ALREADY" ? 409 : 404).json({ error: e.message });
+    }
+    console.error(e);
+    return res.status(500).json({ error: "Не удалось добавить участника" });
+  }
+});
+
+// --- Group: remove member (kick) ---
+app.delete("/api/conversations/:id/members/:userId", requireAuth, async (req, res) => {
+  const conversationId = req.params.id;
+  const targetUserId = req.params.userId;
+  try {
+    const removedId = await store.withWriteLock((data) => {
+      const conv = data.conversations.find((c) => c.id === conversationId);
+      if (!conv || conv.type !== "group") throw Object.assign(new Error("Группа не найдена"), { code: "NOT_FOUND" });
+      if (!conv.participantIds.includes(req.user.id)) throw Object.assign(new Error("Вы не участник группы"), { code: "FORBIDDEN" });
+      const creatorId = conv.creatorId || conv.participantIds[0];
+      if (req.user.id !== creatorId) throw Object.assign(new Error("Только создатель может удалять участников"), { code: "FORBIDDEN" });
+      if (targetUserId === creatorId) throw Object.assign(new Error("Нельзя удалить создателя"), { code: "FORBIDDEN" });
+      if (!conv.participantIds.includes(targetUserId)) throw Object.assign(new Error("Участник не найден"), { code: "USER_NF" });
+      conv.participantIds = conv.participantIds.filter((id) => id !== targetUserId);
+      conv.updatedAt = new Date().toISOString();
+      return targetUserId;
+    });
+    const state = await store.read();
+    const conv = state.conversations.find((c) => c.id === conversationId);
+    const usersById = new Map(state.users.map((u) => [u.id, u]));
+    const messagesById = new Map(state.messages.map((m) => [m.id, m]));
+    // Notify remaining members
+    for (const pid of conv.participantIds) {
+      const p = buildConversationPayload(conv, pid, usersById, messagesById);
+      sendToUser(pid, { type: "conversation:update", conversation: p });
+    }
+    // Notify removed member
+    sendToUser(removedId, { type: "conversation:deleted", conversationId });
+    const payload = buildConversationPayload(conv, req.user.id, usersById, messagesById);
+    return res.json({ conversation: payload });
+  } catch (e) {
+    if (["NOT_FOUND", "FORBIDDEN", "USER_NF"].includes(e.code)) {
+      return res.status(e.code === "FORBIDDEN" ? 403 : 404).json({ error: e.message });
+    }
+    console.error(e);
+    return res.status(500).json({ error: "Не удалось удалить участника" });
+  }
+});
+
+// --- Group: leave ---
+app.post("/api/conversations/:id/leave", requireAuth, async (req, res) => {
+  const conversationId = req.params.id;
+  try {
+    const remainingIds = await store.withWriteLock((data) => {
+      const conv = data.conversations.find((c) => c.id === conversationId);
+      if (!conv || conv.type !== "group") throw Object.assign(new Error("Группа не найдена"), { code: "NOT_FOUND" });
+      if (!conv.participantIds.includes(req.user.id)) throw Object.assign(new Error("Вы не участник"), { code: "FORBIDDEN" });
+      conv.participantIds = conv.participantIds.filter((id) => id !== req.user.id);
+      conv.updatedAt = new Date().toISOString();
+      if (conv.participantIds.length === 0) {
+        data.conversations = data.conversations.filter((c) => c.id !== conversationId);
+        data.messages = data.messages.filter((m) => m.conversationId !== conversationId);
+        return [];
+      }
+      // If the leaver was creator, transfer to next
+      if (conv.creatorId === req.user.id) {
+        conv.creatorId = conv.participantIds[0];
+      }
+      return [...conv.participantIds];
+    });
+    const state = await store.read();
+    const usersById = new Map(state.users.map((u) => [u.id, u]));
+    const messagesById = new Map(state.messages.map((m) => [m.id, m]));
+    // Notify remaining members
+    if (remainingIds.length > 0) {
+      const conv = state.conversations.find((c) => c.id === conversationId);
+      if (conv) {
+        for (const pid of remainingIds) {
+          const p = buildConversationPayload(conv, pid, usersById, messagesById);
+          sendToUser(pid, { type: "conversation:update", conversation: p });
+        }
+      }
+    }
+    return res.json({ success: true });
+  } catch (e) {
+    if (["NOT_FOUND", "FORBIDDEN"].includes(e.code)) {
+      return res.status(e.code === "FORBIDDEN" ? 403 : 404).json({ error: e.message });
+    }
+    console.error(e);
+    return res.status(500).json({ error: "Не удалось покинуть группу" });
   }
 });
 
@@ -1697,6 +1878,131 @@ app.post("/api/conversations/:id/messages/:messageId/reactions", requireAuth, as
     return res.status(500).json({ error: "Ошибка" });
   }
 });
+
+// --- Push subscription management ---
+app.get("/api/push/vapid-key", (req, res) => {
+  return res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+app.post("/api/push/subscribe", requireAuth, async (req, res) => {
+  const subscription = req.body.subscription;
+  if (!subscription || !subscription.endpoint) {
+    return res.status(400).json({ error: "Некорректная подписка" });
+  }
+
+  try {
+    await store.withWriteLock((data) => {
+      if (!Array.isArray(data.pushSubscriptions)) {
+        data.pushSubscriptions = [];
+      }
+
+      data.pushSubscriptions = data.pushSubscriptions.filter(
+        (sub) => sub.subscription.endpoint !== subscription.endpoint
+      );
+
+      data.pushSubscriptions.push({
+        userId: req.user.id,
+        subscription,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    if (!pushSubscriptionsByUser.has(req.user.id)) {
+      pushSubscriptionsByUser.set(req.user.id, []);
+    }
+    const subs = pushSubscriptionsByUser.get(req.user.id);
+    const existingIdx = subs.findIndex((s) => s.endpoint === subscription.endpoint);
+    if (existingIdx >= 0) {
+      subs[existingIdx] = subscription;
+    } else {
+      subs.push(subscription);
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Failed to save push subscription", error);
+    return res.status(500).json({ error: "Не удалось сохранить подписку" });
+  }
+});
+
+app.post("/api/push/unsubscribe", requireAuth, async (req, res) => {
+  const endpoint = String(req.body.endpoint || "");
+  if (!endpoint) {
+    return res.status(400).json({ error: "Не указан endpoint" });
+  }
+
+  try {
+    await store.withWriteLock((data) => {
+      if (!Array.isArray(data.pushSubscriptions)) return;
+      data.pushSubscriptions = data.pushSubscriptions.filter(
+        (sub) => !(sub.userId === req.user.id && sub.subscription.endpoint === endpoint)
+      );
+    });
+
+    const subs = pushSubscriptionsByUser.get(req.user.id);
+    if (subs) {
+      const idx = subs.findIndex((s) => s.endpoint === endpoint);
+      if (idx >= 0) subs.splice(idx, 1);
+      if (subs.length === 0) pushSubscriptionsByUser.delete(req.user.id);
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Failed to remove push subscription", error);
+    return res.status(500).json({ error: "Не удалось удалить подписку" });
+  }
+});
+
+async function sendPushNotificationToUser(userId, payload) {
+  const subs = pushSubscriptionsByUser.get(userId) || [];
+  if (subs.length === 0) {
+    try {
+      const state = await store.read();
+      if (Array.isArray(state.pushSubscriptions)) {
+        const dbSubs = state.pushSubscriptions.filter((s) => s.userId === userId);
+        for (const entry of dbSubs) {
+          subs.push(entry.subscription);
+        }
+        if (subs.length > 0) {
+          pushSubscriptionsByUser.set(userId, subs);
+        }
+      }
+    } catch { }
+  }
+
+  if (subs.length === 0) return;
+
+  const jsonPayload = JSON.stringify(payload);
+  const expiredEndpoints = [];
+
+  for (const sub of subs) {
+    try {
+      await webPush.sendNotification(sub, jsonPayload);
+    } catch (error) {
+      if (error.statusCode === 404 || error.statusCode === 410) {
+        expiredEndpoints.push(sub.endpoint);
+      }
+    }
+  }
+
+  if (expiredEndpoints.length > 0) {
+    const remaining = subs.filter((s) => !expiredEndpoints.includes(s.endpoint));
+    if (remaining.length > 0) {
+      pushSubscriptionsByUser.set(userId, remaining);
+    } else {
+      pushSubscriptionsByUser.delete(userId);
+    }
+
+    try {
+      await store.withWriteLock((data) => {
+        if (!Array.isArray(data.pushSubscriptions)) return;
+        data.pushSubscriptions = data.pushSubscriptions.filter(
+          (entry) => !expiredEndpoints.includes(entry.subscription.endpoint)
+        );
+      });
+    } catch { }
+  }
+}
 
 app.use(express.static(path.join(__dirname, "public")));
 

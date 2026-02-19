@@ -85,6 +85,25 @@ const avatarPreview = document.getElementById("avatarPreview");
 const avatarFileInput = document.getElementById("avatarFileInput");
 const avatarUploadBtn = document.getElementById("avatarUploadBtn");
 const notifToggleBtn = document.getElementById("notifToggleBtn");
+const groupSettingsHeaderBtn = document.getElementById("groupSettingsHeaderBtn");
+const groupSettingsModal = document.getElementById("groupSettingsModal");
+const closeGroupSettingsBtn = document.getElementById("closeGroupSettingsBtn");
+const gsAvatarPreview = document.getElementById("gsAvatarPreview");
+const gsAvatarInitial = document.getElementById("gsAvatarInitial");
+const gsAvatarFileInput = document.getElementById("gsAvatarFileInput");
+const gsAvatarUploadBtn = document.getElementById("gsAvatarUploadBtn");
+const gsAvatarRemoveBtn = document.getElementById("gsAvatarRemoveBtn");
+const gsGroupName = document.getElementById("gsGroupName");
+const gsGroupMeta = document.getElementById("gsGroupMeta");
+const gsNameInput = document.getElementById("gsNameInput");
+const gsNameSaveBtn = document.getElementById("gsNameSaveBtn");
+const gsMemberList = document.getElementById("gsMemberList");
+const gsMemberCount = document.getElementById("gsMemberCount");
+const gsAddMemberSearch = document.getElementById("gsAddMemberSearch");
+const gsAddMemberResults = document.getElementById("gsAddMemberResults");
+const gsLeaveBtn = document.getElementById("gsLeaveBtn");
+const gsDeleteGroupBtn = document.getElementById("gsDeleteGroupBtn");
+const gsStatus = document.getElementById("gsStatus");
 
 const UI_SETTINGS_KEY = "messenger_ui_settings_v1";
 const DEFAULT_VIGENERE_KEY = "WAVE";
@@ -1034,6 +1053,7 @@ function setNoConversationHeader() {
   chatTitle.textContent = "Выберите диалог слева";
   chatPresence.textContent = "";
   chatPresence.classList.remove("online", "offline");
+  groupSettingsHeaderBtn.classList.add("hidden");
   if (!state.call.active && !state.call.pendingIncoming) {
     setCallStatus("");
   }
@@ -1054,6 +1074,7 @@ function renderActiveConversationHeader() {
     const onlineCount = (conversation.participants || []).filter((p) => p.online).length;
     chatPresence.textContent = `${conversation.participants?.length || 0} участников, ${onlineCount} онлайн`;
     chatPresence.classList.remove("online", "offline");
+    groupSettingsHeaderBtn.classList.remove("hidden");
   } else {
     chatTitle.textContent = conversation.participant?.username || "Диалог";
     const isOnline = Boolean(conversation.participant?.online);
@@ -1065,6 +1086,7 @@ function renderActiveConversationHeader() {
     }
     chatPresence.classList.toggle("online", isOnline);
     chatPresence.classList.toggle("offline", !isOnline);
+    groupSettingsHeaderBtn.classList.add("hidden");
   }
   hideTypingIndicator();
   updateBlockUserUi();
@@ -2973,19 +2995,443 @@ groupCreateBtn.addEventListener("click", async () => {
 });
 
 // ========================
-// PUSH NOTIFICATIONS
+// GROUP SETTINGS
 // ========================
+function openGroupSettings() {
+  const conv = getActiveConversation();
+  if (!conv || conv.type !== "group") return;
+  groupSettingsModal.classList.remove("hidden");
+  gsStatus.textContent = "";
+  gsAddMemberSearch.value = "";
+  gsAddMemberResults.innerHTML = "";
+  renderGroupSettingsHeader(conv);
+  renderGroupSettingsMembers(conv);
+  gsNameInput.value = conv.name || "";
+  const isCreator = conv.creatorId === state.me?.id || (!conv.creatorId && conv.participantIds?.[0] === state.me?.id);
+  gsDeleteGroupBtn.classList.toggle("hidden", !isCreator);
+}
+
+function closeGroupSettings() {
+  groupSettingsModal.classList.add("hidden");
+}
+
+function renderGroupSettingsHeader(conv) {
+  gsGroupName.textContent = conv.name || "Группа";
+  const memberCount = conv.participants?.length || conv.participantIds?.length || 0;
+  const onlineCount = (conv.participants || []).filter((p) => p.online).length;
+  gsGroupMeta.textContent = `${memberCount} участников, ${onlineCount} онлайн`;
+  gsMemberCount.textContent = `(${memberCount})`;
+
+  // Avatar
+  gsAvatarPreview.innerHTML = "";
+  if (conv.avatarUrl) {
+    const img = document.createElement("img");
+    img.src = conv.avatarUrl;
+    img.alt = conv.name || "Группа";
+    gsAvatarPreview.appendChild(img);
+  } else {
+    const span = document.createElement("span");
+    span.className = "gs-avatar-initial";
+    span.textContent = (conv.name || "Г").charAt(0).toUpperCase();
+    gsAvatarPreview.appendChild(span);
+  }
+}
+
+function renderGroupSettingsMembers(conv) {
+  gsMemberList.innerHTML = "";
+  const creatorId = conv.creatorId || conv.participantIds?.[0];
+  const isCreator = creatorId === state.me?.id;
+  const participants = conv.participants || [];
+
+  for (const member of participants) {
+    const li = document.createElement("li");
+    li.className = "gs-member-item";
+
+    // Avatar
+    const avatarDiv = document.createElement("div");
+    avatarDiv.className = "gs-member-avatar";
+    if (member.avatarUrl) {
+      const img = document.createElement("img");
+      img.src = member.avatarUrl;
+      img.alt = member.username;
+      avatarDiv.appendChild(img);
+    } else {
+      avatarDiv.textContent = (member.username || "?").charAt(0).toUpperCase();
+    }
+    li.appendChild(avatarDiv);
+
+    // Info
+    const infoDiv = document.createElement("div");
+    infoDiv.className = "gs-member-info";
+    const nameP = document.createElement("p");
+    nameP.className = "gs-member-name";
+    nameP.textContent = member.username || "—";
+
+    if (member.id === creatorId) {
+      const badge = document.createElement("span");
+      badge.className = "gs-creator-badge";
+      badge.textContent = "Создатель";
+      nameP.appendChild(badge);
+    }
+    if (member.id === state.me?.id) {
+      const badge = document.createElement("span");
+      badge.className = "gs-you-badge";
+      badge.textContent = "Вы";
+      nameP.appendChild(badge);
+    }
+    infoDiv.appendChild(nameP);
+
+    const statusP = document.createElement("p");
+    statusP.className = "gs-member-status";
+    if (member.online) {
+      statusP.textContent = "онлайн";
+      statusP.classList.add("online");
+    } else {
+      statusP.textContent = member.lastSeenAt ? formatLastSeen(member.lastSeenAt) : "оффлайн";
+    }
+    infoDiv.appendChild(statusP);
+    li.appendChild(infoDiv);
+
+    // Kick button (only for creator, not for self)
+    if (isCreator && member.id !== state.me?.id) {
+      const kickBtn = document.createElement("button");
+      kickBtn.className = "gs-member-kick";
+      kickBtn.textContent = "Удалить";
+      kickBtn.title = "Удалить участника из группы";
+      kickBtn.addEventListener("click", async () => {
+        if (!confirm(`Удалить ${member.username} из группы?`)) return;
+        try {
+          const payload = await api(`/api/conversations/${conv.id}/members/${member.id}`, { method: "DELETE" });
+          upsertConversation(payload.conversation);
+          renderConversationList();
+          renderActiveConversationHeader();
+          openGroupSettings(); // refresh
+        } catch (e) {
+          gsStatus.textContent = e.message || "Ошибка";
+        }
+      });
+      li.appendChild(kickBtn);
+    }
+
+    gsMemberList.appendChild(li);
+  }
+}
+
+groupSettingsHeaderBtn.addEventListener("click", openGroupSettings);
+closeGroupSettingsBtn.addEventListener("click", closeGroupSettings);
+groupSettingsModal.addEventListener("click", (e) => {
+  if (e.target === groupSettingsModal) closeGroupSettings();
+});
+
+// Chat title click also opens group settings
+chatTitle.addEventListener("click", () => {
+  const conv = getActiveConversation();
+  if (conv && conv.type === "group") openGroupSettings();
+});
+
+// --- Rename group ---
+gsNameSaveBtn.addEventListener("click", async () => {
+  const conv = getActiveConversation();
+  if (!conv || conv.type !== "group") return;
+  const newName = gsNameInput.value.trim();
+  if (!newName) { gsStatus.textContent = "Название не может быть пустым"; return; }
+  if (newName === conv.name) { gsStatus.textContent = ""; return; }
+  try {
+    gsNameSaveBtn.disabled = true;
+    const payload = await api(`/api/conversations/${conv.id}/group`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: newName }),
+      headers: { "Content-Type": "application/json" },
+    });
+    upsertConversation(payload.conversation);
+    renderConversationList();
+    renderActiveConversationHeader();
+    renderGroupSettingsHeader(payload.conversation);
+    gsStatus.textContent = "Название обновлено ✓";
+    setTimeout(() => { gsStatus.textContent = ""; }, 2000);
+  } catch (e) {
+    gsStatus.textContent = e.message || "Ошибка";
+  } finally {
+    gsNameSaveBtn.disabled = false;
+  }
+});
+
+// --- Group avatar upload ---
+gsAvatarPreview.addEventListener("click", () => gsAvatarFileInput.click());
+gsAvatarUploadBtn.addEventListener("click", () => gsAvatarFileInput.click());
+
+gsAvatarFileInput.addEventListener("change", async () => {
+  const file = gsAvatarFileInput.files?.[0];
+  if (!file) return;
+  if (file.size > 1.5 * 1024 * 1024) { gsStatus.textContent = "Макс размер 1.5MB"; return; }
+  const conv = getActiveConversation();
+  if (!conv || conv.type !== "group") return;
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const payload = await api(`/api/conversations/${conv.id}/group`, {
+      method: "PATCH",
+      body: JSON.stringify({ avatarUrl: dataUrl }),
+      headers: { "Content-Type": "application/json" },
+    });
+    upsertConversation(payload.conversation);
+    renderConversationList();
+    renderActiveConversationHeader();
+    renderGroupSettingsHeader(payload.conversation);
+    gsStatus.textContent = "Фото обновлено ✓";
+    setTimeout(() => { gsStatus.textContent = ""; }, 2000);
+  } catch (e) {
+    gsStatus.textContent = e.message || "Ошибка загрузки";
+  }
+  gsAvatarFileInput.value = "";
+});
+
+gsAvatarRemoveBtn.addEventListener("click", async () => {
+  const conv = getActiveConversation();
+  if (!conv || conv.type !== "group") return;
+  try {
+    const payload = await api(`/api/conversations/${conv.id}/group`, {
+      method: "PATCH",
+      body: JSON.stringify({ avatarUrl: "" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    upsertConversation(payload.conversation);
+    renderConversationList();
+    renderActiveConversationHeader();
+    renderGroupSettingsHeader(payload.conversation);
+    gsStatus.textContent = "Фото удалено";
+    setTimeout(() => { gsStatus.textContent = ""; }, 2000);
+  } catch (e) {
+    gsStatus.textContent = e.message || "Ошибка";
+  }
+});
+
+// --- Add member search ---
+let gsSearchTimeout = null;
+gsAddMemberSearch.addEventListener("input", () => {
+  clearTimeout(gsSearchTimeout);
+  const query = gsAddMemberSearch.value.trim();
+  if (!query) { gsAddMemberResults.innerHTML = ""; return; }
+  gsSearchTimeout = setTimeout(async () => {
+    try {
+      const results = await api(`/api/users/search?q=${encodeURIComponent(query)}`);
+      const conv = getActiveConversation();
+      if (!conv) return;
+      const currentIds = new Set(conv.participantIds || []);
+      gsAddMemberResults.innerHTML = "";
+      for (const user of (results.users || results || [])) {
+        if (currentIds.has(user.id)) continue;
+        if (user.id === state.me?.id) continue;
+        const li = document.createElement("li");
+        li.className = "list-item";
+        li.style.cursor = "pointer";
+        li.textContent = user.username || user.email;
+        li.addEventListener("click", async () => {
+          try {
+            const payload = await api(`/api/conversations/${conv.id}/members`, {
+              method: "POST",
+              body: JSON.stringify({ userId: user.id }),
+              headers: { "Content-Type": "application/json" },
+            });
+            upsertConversation(payload.conversation);
+            renderConversationList();
+            renderActiveConversationHeader();
+            openGroupSettings(); // refresh
+            gsAddMemberSearch.value = "";
+            gsAddMemberResults.innerHTML = "";
+            gsStatus.textContent = `${user.username} добавлен ✓`;
+            setTimeout(() => { gsStatus.textContent = ""; }, 2000);
+          } catch (e) {
+            gsStatus.textContent = e.message || "Ошибка";
+          }
+        });
+        gsAddMemberResults.appendChild(li);
+      }
+      if (gsAddMemberResults.children.length === 0) {
+        const empty = document.createElement("li");
+        empty.className = "list-item";
+        empty.style.color = "var(--text-subtle)";
+        empty.textContent = "Не найдено";
+        gsAddMemberResults.appendChild(empty);
+      }
+    } catch (e) {
+      gsAddMemberResults.innerHTML = "";
+    }
+  }, 300);
+});
+
+// --- Leave group ---
+gsLeaveBtn.addEventListener("click", async () => {
+  const conv = getActiveConversation();
+  if (!conv || conv.type !== "group") return;
+  if (!confirm(`Покинуть группу "${conv.name}"? Вы не сможете вернуться сами.`)) return;
+  try {
+    await api(`/api/conversations/${conv.id}/leave`, { method: "POST" });
+    closeGroupSettings();
+    await removeConversationFromState(conv.id);
+  } catch (e) {
+    gsStatus.textContent = e.message || "Ошибка";
+  }
+});
+
+// --- Delete group ---
+gsDeleteGroupBtn.addEventListener("click", async () => {
+  const conv = getActiveConversation();
+  if (!conv || conv.type !== "group") return;
+  if (!confirm(`Удалить группу "${conv.name}" для всех участников? Это действие нельзя отменить.`)) return;
+  try {
+    await api(`/api/conversations/${conv.id}`, { method: "DELETE" });
+    closeGroupSettings();
+    await removeConversationFromState(conv.id);
+  } catch (e) {
+    gsStatus.textContent = e.message || "Ошибка";
+  }
+});
+
+// ========================
+// PUSH NOTIFICATIONS (Service Worker + Web Push)
+// ========================
+let swRegistration = null;
+
+async function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return null;
+  try {
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    swRegistration = reg;
+    console.log("Service Worker registered");
+    return reg;
+  } catch (e) {
+    console.warn("Service Worker registration failed:", e);
+    return null;
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function subscribeToPush() {
+  if (!swRegistration) return;
+  try {
+    const keyResp = await api("/api/push/vapid-key");
+    const applicationServerKey = urlBase64ToUint8Array(keyResp.publicKey);
+
+    let subscription = await swRegistration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await swRegistration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+    }
+
+    await api("/api/push/subscribe", {
+      method: "POST",
+      body: { subscription: subscription.toJSON() },
+    });
+
+    notifToggleBtn.textContent = "Включены ✓";
+    console.log("Push subscription active");
+  } catch (e) {
+    console.warn("Push subscription failed:", e);
+    notifToggleBtn.textContent = "Ошибка подписки";
+  }
+}
+
+async function unsubscribeFromPush() {
+  if (!swRegistration) return;
+  try {
+    const subscription = await swRegistration.pushManager.getSubscription();
+    if (subscription) {
+      await api("/api/push/unsubscribe", {
+        method: "POST",
+        body: { endpoint: subscription.endpoint },
+      });
+      await subscription.unsubscribe();
+    }
+    notifToggleBtn.textContent = "Включить";
+  } catch (e) {
+    console.warn("Push unsubscribe failed:", e);
+  }
+}
+
+async function checkPushState() {
+  if (!swRegistration || !("PushManager" in window)) {
+    notifToggleBtn.textContent = "Не поддерживается";
+    notifToggleBtn.disabled = true;
+    return;
+  }
+
+  const permission = Notification.permission;
+  if (permission === "denied") {
+    notifToggleBtn.textContent = "Заблокированы";
+    notifToggleBtn.disabled = true;
+    return;
+  }
+
+  const subscription = await swRegistration.pushManager.getSubscription();
+  if (subscription && permission === "granted") {
+    notifToggleBtn.textContent = "Включены ✓";
+  } else {
+    notifToggleBtn.textContent = "Включить";
+  }
+}
+
 notifToggleBtn.addEventListener("click", async () => {
-  if (!("Notification" in window)) { alert("Браузер не поддерживает уведомления"); return; }
-  if (Notification.permission === "granted") { notifToggleBtn.textContent = "Включены ✓"; return; }
+  if (!("Notification" in window)) {
+    alert("Браузер не поддерживает уведомления");
+    return;
+  }
+
+  const subscription = swRegistration
+    ? await swRegistration.pushManager.getSubscription()
+    : null;
+
+  if (subscription && Notification.permission === "granted") {
+    await unsubscribeFromPush();
+    return;
+  }
+
+  if (Notification.permission === "denied") {
+    alert("Уведомления заблокированы в настройках браузера. Разрешите их вручную.");
+    return;
+  }
+
   const perm = await Notification.requestPermission();
-  notifToggleBtn.textContent = perm === "granted" ? "Включены ✓" : "Отклонено";
+  if (perm === "granted") {
+    await subscribeToPush();
+  } else {
+    notifToggleBtn.textContent = "Отклонено";
+  }
 });
 
 function showPushNotification(title, body) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   if (!document.hidden) return;
-  try { new Notification(title, { body, icon: "/favicon.ico", tag: "wave-msg" }); } catch { }
+  try {
+    if (swRegistration) {
+      swRegistration.showNotification(title, {
+        body,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        tag: "wave-msg",
+        renotify: true,
+        vibrate: [200, 100, 200],
+      });
+    } else {
+      new Notification(title, { body, icon: "/icons/icon-192.png", tag: "wave-msg" });
+    }
+  } catch { }
 }
 
 // ========================
@@ -3023,16 +3469,31 @@ async function init() {
   setSettingsPanelOpen(false);
   setAuthTab("login");
   renderSearchResults([]);
-  if ("Notification" in window && Notification.permission === "granted") {
-    notifToggleBtn.textContent = "Включены ✓";
-  }
+
+  await registerServiceWorker();
+  await checkPushState();
 
   try {
     const payload = await api("/api/auth/me");
     await bootstrapSession(payload.user);
+
+    if (
+      swRegistration &&
+      "PushManager" in window &&
+      Notification.permission === "granted"
+    ) {
+      const existing = await swRegistration.pushManager.getSubscription();
+      if (existing) {
+        await api("/api/push/subscribe", {
+          method: "POST",
+          body: { subscription: existing.toJSON() },
+        }).catch(() => { });
+      }
+    }
   } catch {
     showAuth();
   }
 }
 
 init();
+
