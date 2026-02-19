@@ -313,7 +313,7 @@ function getBlockedUserIds(user) {
   if (!Array.isArray(user?.blockedUserIds)) {
     return new Set();
   }
-  return new Set(user.blockedUserIds.map((id) => String(id || "")).filter(Boolean));
+  return new Set(user.blockedUserIds.map((id) => normalize(id)).filter(Boolean));
 }
 
 function isUserBlockedBy(blockerUser, targetUserId) {
@@ -677,9 +677,12 @@ app.delete("/api/auth/account", requireAuth, async (req, res) => {
         (message) => !deletedConversationSet.has(message.conversationId)
       );
 
+      const normalizedUserId = normalize(userId);
       for (const user of data.users) {
         if (user.id !== userId && Array.isArray(user.blockedUserIds)) {
-          user.blockedUserIds = user.blockedUserIds.filter((id) => id !== userId);
+          user.blockedUserIds = user.blockedUserIds.filter(
+            (id) => normalize(id) !== normalizedUserId
+          );
         }
         if (Array.isArray(user.chatProtectedConversationIds)) {
           user.chatProtectedConversationIds = user.chatProtectedConversationIds.filter(
@@ -967,17 +970,18 @@ async function toggleUserBlock(req, res, shouldBlock) {
         throw error;
       }
 
-      if (!Array.isArray(me.blockedUserIds)) {
-        me.blockedUserIds = [];
-      }
-
+      const normalizedTargetUserId = normalize(targetUserId);
+      const blockedUserIds = new Set(
+        (Array.isArray(me.blockedUserIds) ? me.blockedUserIds : [])
+          .map((id) => normalize(id))
+          .filter(Boolean)
+      );
       if (shouldBlock) {
-        if (!me.blockedUserIds.includes(targetUserId)) {
-          me.blockedUserIds.push(targetUserId);
-        }
+        blockedUserIds.add(normalizedTargetUserId);
       } else {
-        me.blockedUserIds = me.blockedUserIds.filter((id) => id !== targetUserId);
+        blockedUserIds.delete(normalizedTargetUserId);
       }
+      me.blockedUserIds = [...blockedUserIds];
 
       const conversation = findDirectConversation(data, userId, targetUserId);
       return {
