@@ -437,6 +437,10 @@ textarea:focus {
   background: var(--accent-soft);
 }
 
+.list-item.pinned {
+  box-shadow: inset 2px 0 0 rgba(42, 171, 238, 0.7);
+}
+
 .item-row {
   display: flex;
   justify-content: space-between;
@@ -454,6 +458,12 @@ textarea:focus {
 
 .item-title-wrap .item-title {
   min-width: 0;
+}
+
+.pin-badge {
+  font-size: 0.72rem;
+  line-height: 1;
+  color: var(--text-subtle);
 }
 
 .presence-dot {
@@ -1090,6 +1100,39 @@ textarea:focus {
   animation: settings-modal-in 0.2s cubic-bezier(.25, .46, .45, .94);
 }
 
+#settingsPanel.settings-overlay {
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 2vw, 24px);
+  background: rgba(5, 10, 18, 0.5);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+}
+
+#settingsPanel .settings-modal {
+  width: min(92vw, 760px);
+  height: min(92dvh, 760px);
+  max-height: min(92dvh, 760px);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.45),
+    0 10px 26px rgba(0, 0, 0, 0.3);
+  animation: settings-modal-center-in 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes settings-modal-center-in {
+  from {
+    transform: translateY(14px) scale(0.975);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
 @keyframes settings-modal-in {
   from {
     transform: translateX(40px);
@@ -1145,6 +1188,168 @@ textarea:focus {
 .settings-row {
   display: grid;
   gap: 6px;
+}
+
+/* ===== THEME TOGGLE ===== */
+.theme-toggle-row {
+  align-items: center;
+}
+
+.theme-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.theme-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  min-width: 28px;
+}
+
+.theme-label-left {
+  text-align: right;
+}
+
+.theme-label-right {
+  text-align: left;
+}
+
+.theme-toggle {
+  width: 72px;
+  height: 38px;
+  background: var(--surface-quiet);
+  border-radius: 19px;
+  position: relative;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  outline: none;
+  transition: background 0.6s, border-color 0.6s;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.theme-toggle::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 20px;
+  transition: box-shadow 0.5s;
+}
+
+.theme-toggle:hover::before {
+  box-shadow: 0 0 14px 3px rgba(196, 98, 45, 0.22);
+}
+
+[data-theme="dark"] .theme-toggle:hover::before {
+  box-shadow: 0 0 14px 3px rgba(124, 158, 245, 0.22);
+}
+
+.theme-knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface);
+  transition:
+    transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.55s,
+    box-shadow 0.55s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+[data-theme="dark"] .theme-knob {
+  transform: translateX(34px);
+  background: #1a2030;
+}
+
+.theme-icon-sun,
+.theme-icon-moon {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  transition: opacity 0.35s, transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.theme-icon-sun {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+.theme-icon-moon {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.5);
+}
+
+[data-theme="dark"] .theme-icon-sun {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.5);
+}
+
+[data-theme="dark"] .theme-icon-moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+/* ===== THEME TRANSITION — View Transitions API ===== */
+
+@keyframes theme-circle-reveal {
+  from { clip-path: circle(0px at var(--vt-x, 50vw) var(--vt-y, 50vh)); }
+  to   { clip-path: circle(200vmax at var(--vt-x, 50vw) var(--vt-y, 50vh)); }
+}
+
+/* Old snapshot stays frozen underneath */
+::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* New snapshot expands as a circle from the toggle button */
+::view-transition-new(root) {
+  animation: theme-circle-reveal 0.95s cubic-bezier(0.4, 0, 0.2, 1);
+  mix-blend-mode: normal;
+}
+
+/* ---- Fallback for browsers without View Transitions API ---- */
+html.theme-changing *,
+html.theme-changing *::before,
+html.theme-changing *::after {
+  transition:
+    background-color 0.65s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.65s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.65s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.65s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.65s cubic-bezier(0.4, 0, 0.2, 1),
+    fill 0.65s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+html.theme-changing .theme-knob {
+  transition:
+    transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 0.65s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.65s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.65s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+html.theme-changing .theme-icon-sun,
+html.theme-changing .theme-icon-moon {
+  transition:
+    opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
 }
 
 .settings-row label {
@@ -1405,6 +1610,24 @@ textarea:focus {
   line-height: 1.35;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.bubble-image {
+  display: block;
+  max-width: min(320px, 62vw);
+  max-height: 420px;
+  width: auto;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(189, 205, 221, 0.9);
+  background: var(--surface);
+  cursor: zoom-in;
+}
+
+.bubble-image-link {
+  display: block;
+  line-height: 0;
+  text-decoration: none;
 }
 
 .bubble-aux {
@@ -1731,6 +1954,20 @@ textarea:focus {
     width: 100vw;
     border-left: none;
     border-radius: 0;
+  }
+
+  #settingsPanel.settings-overlay {
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+  }
+
+  #settingsPanel.settings-overlay .settings-modal {
+    width: min(96vw, 640px) !important;
+    max-width: min(96vw, 640px) !important;
+    height: min(92dvh, 640px) !important;
+    max-height: min(92dvh, 640px) !important;
+    border-radius: 18px !important;
   }
 
   .settings-section {
@@ -2167,6 +2404,18 @@ textarea:focus {
 
   .settings-modal-title {
     font-size: 0.95rem;
+  }
+
+  #settingsPanel.settings-overlay {
+    padding: 8px;
+  }
+
+  #settingsPanel.settings-overlay .settings-modal {
+    width: 96vw !important;
+    max-width: 96vw !important;
+    height: min(92dvh, 96vw) !important;
+    max-height: min(92dvh, 96vw) !important;
+    border-radius: 14px !important;
   }
 
   .settings-section {
@@ -2641,6 +2890,14 @@ textarea:focus {
 
 .message-context-menu button:hover {
   background: var(--surface-hover);
+}
+
+.message-context-menu button.danger-item {
+  color: var(--danger);
+}
+
+.message-context-menu button.danger-item:hover {
+  background: rgba(210, 70, 70, 0.14);
 }
 
 /* Reply/forward badge inside bubble */
@@ -3258,4 +3515,278 @@ textarea:focus {
 .popover-menu-item:hover {
   background: #35373c;
   color: #fff;
+}
+
+/* ===== CALL POPOVER — DEVICE/VOLUME DESIGN ===== */
+
+/* Widen the popover to fit the new design */
+.control-popover {
+  width: 300px;
+  padding: 18px;
+  border-radius: 14px;
+  gap: 0;
+}
+
+.cpop-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cpop-section + .cpop-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #2a2c32;
+}
+
+.cpop-label {
+  margin: 0;
+  font-size: 0.69rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #72767d;
+}
+
+/* ---- Device selector ---- */
+.cpop-device-selector {
+  position: relative;
+}
+
+.cpop-device-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: #0e0f11;
+  border: 1px solid #2e3138;
+  border-radius: 14px;
+  color: #e3e5e8;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 0.86rem;
+  transition: border-color 0.18s, border-radius 0.18s, background 0.18s;
+}
+
+.cpop-device-btn:hover {
+  border-color: #4a4e57;
+  background: #131519;
+}
+
+.cpop-device-btn.open {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-color: #4a4e57;
+  border-bottom-color: transparent;
+  background: #131519;
+}
+
+.cpop-device-btn > svg:first-child {
+  flex-shrink: 0;
+  color: #6d717a;
+}
+
+.cpop-device-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.cpop-chevron {
+  flex-shrink: 0;
+  color: #6d717a;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cpop-device-btn.open .cpop-chevron {
+  transform: rotate(180deg);
+}
+
+/* ---- Device list: visibility-based show/hide so CSS transitions work ---- */
+.cpop-device-list {
+  position: fixed;
+  /* left / top / width are set by JS via inline style */
+  background: #131519;
+  border: 1px solid #4a4e57;
+  border-top: none;
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+  overflow: hidden;
+  z-index: 9999;
+  /* Hidden state */
+  visibility: hidden;
+  opacity: 0;
+  transform: scaleY(0.88);
+  transform-origin: top center;
+  pointer-events: none;
+  transition:
+    opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0s linear 0.18s;
+}
+
+.cpop-device-list.open {
+  visibility: visible;
+  opacity: 1;
+  transform: scaleY(1);
+  pointer-events: auto;
+  transition:
+    opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0s linear 0s;
+}
+
+.cpop-device-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  color: #8e9199;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 0.84rem;
+  transition: background 0.12s, color 0.12s;
+}
+
+.cpop-device-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e3e5e8;
+}
+
+.cpop-device-item.selected {
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+}
+
+.cpop-device-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cpop-device-item-left svg {
+  flex-shrink: 0;
+  color: #6d717a;
+}
+
+.cpop-device-item.selected .cpop-device-item-left svg {
+  color: #39bdf8;
+}
+
+.cpop-device-item-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cpop-device-item.selected .cpop-device-item-name {
+  font-weight: 700;
+}
+
+.cpop-check {
+  flex-shrink: 0;
+  color: #39bdf8;
+}
+
+/* ---- Volume row ---- */
+.cpop-volume-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.cpop-mute-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: #6d717a;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  transition: color 0.15s;
+}
+
+.cpop-mute-btn:hover {
+  color: #e3e5e8;
+}
+
+.cpop-mute-btn.muted {
+  color: #f07474;
+}
+
+.cpop-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2px;
+  border-radius: 1px;
+  outline: none;
+  cursor: pointer;
+  background: #3a3d44;
+  border: none;
+  padding: 0;
+  transition: height 0.15s ease, background 0.15s ease;
+}
+
+.cpop-volume-row:hover .cpop-slider {
+  height: 4px;
+  background: #4a4e57;
+}
+
+.cpop-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e3e5e8;
+  cursor: pointer;
+  box-shadow: none;
+  transition: width 0.15s ease, height 0.15s ease, background 0.15s ease;
+}
+
+.cpop-volume-row:hover .cpop-slider::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+}
+
+.cpop-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e3e5e8;
+  cursor: pointer;
+  border: none;
+  transition: width 0.15s ease, height 0.15s ease, background 0.15s ease;
+}
+
+.cpop-volume-row:hover .cpop-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+}
+
+.cpop-volume-pct {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #6d717a;
+  width: 33px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

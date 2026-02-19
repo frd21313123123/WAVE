@@ -47,7 +47,7 @@ const settingsBtn = document.getElementById("settingsBtn");
 const settingsPanel = document.getElementById("settingsPanel");
 const closeSettingsBtn = document.getElementById("closeSettingsBtn");
 const translationLanguage = document.getElementById("translationLanguage");
-const themeSelect = document.getElementById("themeSelect");
+const themeToggleBtn = document.getElementById("themeToggleBtn");
 const fullscreenToggleBtn = document.getElementById("fullscreenToggleBtn");
 const vigenereKeyInput = document.getElementById("vigenereKeyInput");
 const vigenereToggle = document.getElementById("vigenereToggle");
@@ -90,10 +90,14 @@ const replyBarText = document.getElementById("replyBarText");
 const replyBarCancel = document.getElementById("replyBarCancel");
 const voiceRecordBtn = document.getElementById("voiceRecordBtn");
 const messageContextMenu = document.getElementById("messageContextMenu");
+const conversationContextMenu = document.getElementById("conversationContextMenu");
 const ctxReply = document.getElementById("ctxReply");
 const ctxEdit = document.getElementById("ctxEdit");
 const ctxForward = document.getElementById("ctxForward");
 const ctxReact = document.getElementById("ctxReact");
+const convCtxPin = document.getElementById("convCtxPin");
+const convCtxClear = document.getElementById("convCtxClear");
+const convCtxDelete = document.getElementById("convCtxDelete");
 const reactionPicker = document.getElementById("reactionPicker");
 const createGroupBtn = document.getElementById("createGroupBtn");
 const createGroupModal = document.getElementById("createGroupModal");
@@ -145,6 +149,8 @@ const CALL_RECOVERY_MAX_AGE_MS = 45 * 1000;
 const CALL_DISCONNECT_GRACE_MS = 15 * 1000;
 const MESSAGE_SOUND_SRC = "/sound-message.mp3";
 const OUTGOING_MESSAGE_SOUND_SRC = "/zvukovoe-uvedomlenie-kontakta.mp3";
+const SCREENSHOT_MESSAGE_TEXT = "🖼 Скриншот";
+const MAX_SCREENSHOT_SIZE_BYTES = 3 * 1024 * 1024;
 const ALLOWED_TRANSLATION_LANGS = new Set([
   "off",
   "en",
@@ -164,6 +170,7 @@ const state = {
   conversations: [],
   activeConversationId: null,
   messagesByConversation: new Map(),
+  pendingOutgoingByClientId: new Map(),
   socket: null,
   pageUnloading: false,
   searchDebounce: null,
@@ -208,6 +215,7 @@ const state = {
   selectedMessageIds: new Set(),
   replyToMessage: null,
   contextMenuMessageId: null,
+  contextMenuConversationId: null,
   typingTimers: new Map(),
   typingDebounce: null,
   voiceRecorder: null,
@@ -221,6 +229,7 @@ const state = {
     sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
     microphoneId: "",
     fullscreen: true,
+    pinnedConversationIds: [],
   },
 };
 
@@ -574,26 +583,31 @@ async function loadPopoverDevices() {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const mics = devices.filter(d => d.kind === "audioinput");
     const speakers = devices.filter(d => d.kind === "audiooutput");
-    const micSelect = document.getElementById("popoverMicSelect");
-    const speakerSelect = document.getElementById("popoverSpeakerSelect");
-    if (micSelect) {
-      micSelect.innerHTML = '<option value="">Default</option>';
-      for (const mic of mics) {
-        const opt = document.createElement("option");
-        opt.value = mic.deviceId;
-        opt.textContent = mic.label || `Микрофон ${micSelect.options.length}`;
-        micSelect.appendChild(opt);
-      }
-      if (state.ui.microphoneId) micSelect.value = state.ui.microphoneId;
+    const micListEl = document.getElementById("micDeviceList");
+    const speakerListEl = document.getElementById("speakerDeviceList");
+
+    const allMics = [{ deviceId: "", label: "Системный по умолчанию" }, ...mics];
+    const allSpks = [{ deviceId: "", label: "Системный по умолчанию" }, ...speakers];
+
+    if (micListEl) {
+      populateCpopList(micListEl, allMics, state.ui.microphoneId || "", (deviceId, label) => {
+        state.ui.microphoneId = deviceId;
+        const nameEl = document.getElementById("micDeviceName");
+        if (nameEl) nameEl.textContent = label;
+        if (microphoneSelect) microphoneSelect.value = deviceId;
+        saveUiSettings();
+        closeCpopLists();
+      }, "mic");
     }
-    if (speakerSelect) {
-      speakerSelect.innerHTML = '<option value="">Default</option>';
-      for (const spk of speakers) {
-        const opt = document.createElement("option");
-        opt.value = spk.deviceId;
-        opt.textContent = spk.label || `Динамик ${speakerSelect.options.length}`;
-        speakerSelect.appendChild(opt);
-      }
+    if (speakerListEl) {
+      populateCpopList(speakerListEl, allSpks, "", (deviceId, label) => {
+        const nameEl = document.getElementById("speakerDeviceName");
+        if (nameEl) nameEl.textContent = label;
+        if (remoteAudio && typeof remoteAudio.setSinkId === "function") {
+          remoteAudio.setSinkId(deviceId).catch(() => {});
+        }
+        closeCpopLists();
+      }, "speaker");
     }
   } catch {}
 }
@@ -1842,6 +1856,12 @@ async function removeConversationFromState(conversationId) {
   state.messagesByConversation.delete(conversationId);
   state.deletingMessageIdsByConversation.delete(conversationId);
   state.readRequestsInFlight.delete(conversationId);
+  if (isConversationPinned(conversationId)) {
+    state.ui.pinnedConversationIds = state.ui.pinnedConversationIds.filter(
+      (id) => id !== conversationId
+    );
+    saveUiSettings();
+  }
 
   if (state.activeConversationId === conversationId) {
     state.activeConversationId = null;
@@ -1925,6 +1945,7 @@ function showAuth() {
   state.conversations = [];
   state.activeConversationId = null;
   state.messagesByConversation = new Map();
+  state.pendingOutgoingByClientId = new Map();
   state.translationCache = new Map();
   state.translationRequests = new Map();
   state.deletingMessageIdsByConversation = new Map();
@@ -1979,6 +2000,38 @@ function normalizeSidebarWidth(value) {
   }
 
   return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, Math.round(width)));
+}
+
+function normalizePinnedConversationIds(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value.map((id) => String(id || "").trim()).filter(Boolean))];
+}
+
+function isConversationPinned(conversationId) {
+  return state.ui.pinnedConversationIds.includes(String(conversationId || ""));
+}
+
+function sortConversations() {
+  state.conversations.sort((a, b) => {
+    const aPinned = isConversationPinned(a.id) ? 1 : 0;
+    const bPinned = isConversationPinned(b.id) ? 1 : 0;
+    if (aPinned !== bPinned) {
+      return bPinned - aPinned;
+    }
+    return b.updatedAt.localeCompare(a.updatedAt);
+  });
+}
+
+function prunePinnedConversationIds() {
+  const activeIds = new Set(state.conversations.map((conversation) => conversation.id));
+  const before = state.ui.pinnedConversationIds.length;
+  state.ui.pinnedConversationIds = state.ui.pinnedConversationIds.filter((id) =>
+    activeIds.has(id)
+  );
+  return before !== state.ui.pinnedConversationIds.length;
 }
 
 function getSidebarMaxWidth() {
@@ -2077,6 +2130,9 @@ function saveUiSettings() {
         sidebarWidth: normalizeSidebarWidth(state.ui.sidebarWidth),
         microphoneId: state.ui.microphoneId || "",
         fullscreen: !!state.ui.fullscreen,
+        pinnedConversationIds: normalizePinnedConversationIds(
+          state.ui.pinnedConversationIds
+        ),
       })
     );
   } catch {
@@ -2098,6 +2154,9 @@ function loadUiSettings() {
     state.ui.vigenereKey = DEFAULT_VIGENERE_KEY;
     state.ui.microphoneId = String(parsed.microphoneId || "");
     state.ui.fullscreen = parsed.fullscreen !== false;
+    state.ui.pinnedConversationIds = normalizePinnedConversationIds(
+      parsed.pinnedConversationIds
+    );
   } catch {
   }
 }
@@ -2110,7 +2169,6 @@ function applyFullscreen() {
 }
 
 function syncUiControls() {
-  themeSelect.value = normalizeTheme(state.ui.theme);
   translationLanguage.value = normalizeTranslationLanguage(state.ui.targetLanguage);
   vigenereKeyInput.value = normalizeVigenereKey(state.ui.vigenereKey);
   updateVigenereToggle();
@@ -2462,6 +2520,61 @@ function createEmptyListNote(text) {
   return item;
 }
 
+function getMessageTypePreview(message, fallback = "Сообщение") {
+  if (!message) {
+    return fallback;
+  }
+  if (message.imageData) {
+    return SCREENSHOT_MESSAGE_TEXT;
+  }
+  if (message.messageType === "voice") {
+    return "🎤 Голосовое";
+  }
+  if (message.messageType === "image") {
+    return SCREENSHOT_MESSAGE_TEXT;
+  }
+
+  const text = String(message.text || "").trim();
+  return text || fallback;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Не удалось прочитать изображение"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function extractScreenshotFileFromClipboard(clipboardData) {
+  const items = Array.from(clipboardData?.items || []);
+  if (items.length === 0) {
+    return null;
+  }
+
+  const hasRichClipboardPayload = items.some(
+    (item) =>
+      item.kind === "string" &&
+      item.type !== "text/plain"
+  );
+  if (hasRichClipboardPayload) {
+    return null;
+  }
+
+  const imageItems = items.filter(
+    (item) => item.kind === "file" && item.type === "image/png"
+  );
+  const hasNonPngFiles = items.some(
+    (item) => item.kind === "file" && item.type !== "image/png"
+  );
+  if (hasNonPngFiles || imageItems.length !== 1) {
+    return null;
+  }
+
+  return imageItems[0].getAsFile();
+}
+
 function upsertConversation(conversation) {
   const index = state.conversations.findIndex((item) => item.id === conversation.id);
   if (index >= 0) {
@@ -2470,15 +2583,86 @@ function upsertConversation(conversation) {
     state.conversations.push(conversation);
   }
 
-  state.conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  sortConversations();
 }
 
 function getConversationById(conversationId) {
   return state.conversations.find((conversation) => conversation.id === conversationId);
 }
 
+function toggleConversationPinned(conversationId) {
+  const id = String(conversationId || "");
+  if (!id) {
+    return;
+  }
+
+  if (isConversationPinned(id)) {
+    state.ui.pinnedConversationIds = state.ui.pinnedConversationIds.filter(
+      (item) => item !== id
+    );
+  } else {
+    state.ui.pinnedConversationIds = [id, ...state.ui.pinnedConversationIds];
+  }
+
+  state.ui.pinnedConversationIds = normalizePinnedConversationIds(
+    state.ui.pinnedConversationIds
+  );
+  sortConversations();
+  saveUiSettings();
+  renderConversationList();
+}
+
+async function clearConversationHistoryById(conversationId) {
+  const id = String(conversationId || "");
+  if (!id) {
+    return;
+  }
+
+  const payload = await api(`/api/conversations/${id}/messages/all`, {
+    method: "DELETE",
+  });
+
+  if (payload.conversation) {
+    upsertConversation(payload.conversation);
+  } else {
+    const conversation = getConversationById(id);
+    if (conversation) {
+      conversation.lastMessage = null;
+      conversation.updatedAt = new Date().toISOString();
+      upsertConversation(conversation);
+    }
+  }
+
+  const deletedIds = payload.deletedMessageIds || [];
+  if (deletedIds.length > 0) {
+    removeMessagesFromState(id, deletedIds);
+  } else if (state.messagesByConversation.has(id)) {
+    state.messagesByConversation.set(id, []);
+  }
+
+  if (state.activeConversationId === id) {
+    renderMessages();
+    renderActiveConversationHeader();
+  }
+  renderConversationList();
+  updateChatLockUi();
+}
+
+async function deleteConversationById(conversationId) {
+  const id = String(conversationId || "");
+  if (!id) {
+    return;
+  }
+
+  const payload = await api(`/api/conversations/${id}`, {
+    method: "DELETE",
+  });
+  await removeConversationFromState(payload.deletedConversationId || id);
+}
+
 function renderConversationList() {
   conversationList.innerHTML = "";
+  sortConversations();
 
   if (state.conversations.length === 0) {
     conversationList.appendChild(
@@ -2496,6 +2680,7 @@ function renderConversationList() {
     }
 
     const isGroup = conversation.type === "group";
+    const pinned = isConversationPinned(conversation.id);
     const title = isGroup ? (conversation.name || "Группа") : (conversation.participant ? conversation.participant.username : "Диалог");
     const avatarUrl = isGroup
       ? conversation.avatarUrl || null
@@ -2503,12 +2688,15 @@ function renderConversationList() {
     const isOnline = isGroup ? false : Boolean(conversation.participant?.online);
 
     let preview = conversation.lastMessage
-      ? (conversation.lastMessage.messageType === "voice" ? "🎤 Голосовое" : conversation.lastMessage.text)
+      ? getMessageTypePreview(conversation.lastMessage, "Сообщение")
       : "Сообщений еще нет";
     if (conversation.lastMessage?.senderId === state.me?.id) {
       preview = `${conversation.lastMessage.readAt ? "✓✓" : "✓"} ${preview}`;
     }
     button.dataset.initial = getInitial(title);
+    if (pinned) {
+      button.classList.add("pinned");
+    }
 
     if (avatarUrl) {
       button.classList.add("has-avatar");
@@ -2536,6 +2724,14 @@ function renderConversationList() {
     titleEl.textContent = title;
     titleWrap.appendChild(titleEl);
 
+    if (pinned) {
+      const pinBadge = document.createElement("span");
+      pinBadge.className = "pin-badge";
+      pinBadge.textContent = "📌";
+      pinBadge.title = "Закрепленный чат";
+      titleWrap.appendChild(pinBadge);
+    }
+
     if (isGroup) {
       const badge = document.createElement("span");
       badge.className = "group-badge";
@@ -2560,6 +2756,14 @@ function renderConversationList() {
     button.addEventListener("click", () => {
       selectConversation(conversation.id);
     });
+    button.addEventListener("contextmenu", (event) => {
+      if (state.deleteMode) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      openConversationContextMenu(conversation.id, event.clientX, event.clientY);
+    });
 
     const wrapper = document.createElement("li");
     wrapper.appendChild(button);
@@ -2577,6 +2781,68 @@ function addMessage(message) {
   existing.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   state.messagesByConversation.set(message.conversationId, existing);
   return true;
+}
+
+function getLocalPendingMessageId(conversationId, clientMessageId) {
+  if (!conversationId || !clientMessageId) {
+    return "";
+  }
+
+  const messages = state.messagesByConversation.get(conversationId) || [];
+  const pending = messages.find(
+    (message) =>
+      message.pending &&
+      String(message.clientMessageId || "") === String(clientMessageId)
+  );
+  return pending ? pending.id : "";
+}
+
+function replaceMessageInState(conversationId, fromMessageId, nextMessage) {
+  const current = state.messagesByConversation.get(conversationId) || [];
+  const filtered = current.filter(
+    (message) => message.id !== fromMessageId && message.id !== nextMessage.id
+  );
+  filtered.push({ ...nextMessage, pending: false });
+  filtered.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  state.messagesByConversation.set(conversationId, filtered);
+}
+
+function mergeServerMessageWithLocalMedia(serverMessage, localMessage) {
+  if (!localMessage) {
+    return serverMessage;
+  }
+
+  const merged = { ...serverMessage };
+  if (!merged.imageData && localMessage.imageData) {
+    merged.imageData = localMessage.imageData;
+  }
+  if (!merged.voiceData && localMessage.voiceData) {
+    merged.voiceData = localMessage.voiceData;
+  }
+  if (merged.messageType === "text") {
+    if (merged.imageData) {
+      merged.messageType = "image";
+    } else if (merged.voiceData) {
+      merged.messageType = "voice";
+    }
+  }
+
+  return merged;
+}
+
+function getMessageMetaText(message, mine) {
+  if (mine) {
+    const readMarker = message.pending
+      ? "\u043e\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u0435\u0442\u0441\u044f..."
+      : message.readAt
+        ? "\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e"
+        : "\u0434\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u043e";
+    return `\u0412\u044b, ${formatDateTime(message.createdAt)} \u00b7 ${readMarker}`;
+  }
+
+  return `${message.sender?.username || "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c"}, ${formatDateTime(
+    message.createdAt
+  )}`;
 }
 
 function createMessageRow(message, deletingIds = new Set()) {
@@ -2608,7 +2874,7 @@ function createMessageRow(message, deletingIds = new Set()) {
     const original = messages.find((m) => m.id === message.replyToId);
     const replyBadge = document.createElement("span");
     replyBadge.className = "bubble-reply-badge";
-    replyBadge.textContent = `↩ ${original ? (original.messageType === "voice" ? "🎤 Голосовое" : (original.text || "").slice(0, 50)) : "Сообщение"}`;
+    replyBadge.textContent = `↩ ${original ? getMessageTypePreview(original, "Сообщение").slice(0, 50) : "Сообщение"}`;
     replyBadge.addEventListener("click", () => {
       const el = messagesEl.querySelector(`[data-message-id="${message.replyToId}"]`);
       if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.style.outline = "2px solid var(--accent)"; setTimeout(() => { el.style.outline = ""; }, 1500); }
@@ -2624,8 +2890,24 @@ function createMessageRow(message, deletingIds = new Set()) {
     bubble.appendChild(fwdBadge);
   }
 
-  // Voice message
-  if (message.messageType === "voice" && message.voiceData) {
+  if (message.imageData) {
+    const imageLink = document.createElement("a");
+    imageLink.className = "bubble-image-link";
+    imageLink.href = message.imageData;
+    imageLink.target = "_blank";
+    imageLink.rel = "noopener noreferrer";
+    imageLink.title = "Открыть скриншот в полном размере";
+
+    const image = document.createElement("img");
+    image.className = "bubble-image";
+    image.src = message.imageData;
+    image.alt = SCREENSHOT_MESSAGE_TEXT;
+    image.loading = "lazy";
+    image.decoding = "async";
+
+    imageLink.appendChild(image);
+    bubble.appendChild(imageLink);
+  } else if (message.messageType === "voice" && message.voiceData) {
     const player = document.createElement("div");
     player.className = "voice-message-player";
     const playBtn = document.createElement("button");
@@ -2696,14 +2978,7 @@ function createMessageRow(message, deletingIds = new Set()) {
 
   const meta = document.createElement("div");
   meta.className = "bubble-meta";
-  if (mine) {
-    const readMarker = message.readAt ? "прочитано" : "доставлено";
-    meta.textContent = `Вы, ${formatDateTime(message.createdAt)} · ${readMarker}`;
-  } else {
-    meta.textContent = `${message.sender?.username || "Пользователь"}, ${formatDateTime(
-      message.createdAt
-    )}`;
-  }
+  meta.textContent = getMessageMetaText(message, mine);
   if (message.editedAt) {
     const editedSpan = document.createElement("span");
     editedSpan.className = "bubble-edited";
@@ -2757,6 +3032,158 @@ function appendMessageToActiveView(message) {
   messagesEl.appendChild(createMessageRow(message, deletingIds));
 
   scrollToBottom(true);
+
+  return true;
+}
+
+function replaceMessageRowInActiveView(fromMessageId, nextMessage) {
+  if (!state.activeConversationId || nextMessage.conversationId !== state.activeConversationId) {
+    return false;
+  }
+
+  const existingRow = messagesEl.querySelector(`[data-message-id="${nextMessage.id}"]`);
+  if (existingRow) {
+    const oldRow = messagesEl.querySelector(`[data-message-id="${fromMessageId}"]`);
+    if (oldRow && oldRow !== existingRow) {
+      oldRow.remove();
+    }
+    return true;
+  }
+
+  const oldRow = messagesEl.querySelector(`[data-message-id="${fromMessageId}"]`);
+  if (!oldRow) {
+    return appendMessageToActiveView(nextMessage);
+  }
+
+  const deletingIds =
+    state.deletingMessageIdsByConversation.get(state.activeConversationId) || new Set();
+  oldRow.replaceWith(createMessageRow(nextMessage, deletingIds));
+  return true;
+}
+
+function reconcilePendingOutgoingMessage(message) {
+  const clientMessageId = String(message?.clientMessageId || "");
+  const conversationId = String(message?.conversationId || "");
+  if (!clientMessageId || !conversationId) {
+    return false;
+  }
+
+  let localMessageId = state.pendingOutgoingByClientId.get(clientMessageId);
+  if (!localMessageId) {
+    localMessageId = getLocalPendingMessageId(conversationId, clientMessageId);
+  }
+  if (!localMessageId) {
+    return false;
+  }
+
+  const localMessage = (state.messagesByConversation.get(conversationId) || []).find(
+    (item) => item.id === localMessageId
+  );
+  const mergedMessage = mergeServerMessageWithLocalMedia(message, localMessage);
+
+  state.pendingOutgoingByClientId.delete(clientMessageId);
+  replaceMessageInState(conversationId, localMessageId, mergedMessage);
+  replaceMessageRowInActiveView(localMessageId, { ...mergedMessage, pending: false });
+  return true;
+}
+
+function createOptimisticMessage(conversationId, body, clientMessageId) {
+  return {
+    id: `local-${clientMessageId}`,
+    clientMessageId,
+    pending: true,
+    conversationId,
+    senderId: state.me.id,
+    text: String(body.text || ""),
+    messageType: body.imageData ? "image" : body.voiceData ? "voice" : "text",
+    encryption: body.encryption || null,
+    replyToId: body.replyToId || null,
+    forwardFromId: body.forwardFromId || null,
+    imageData: body.imageData || null,
+    voiceData: body.voiceData || null,
+    reactions: [],
+    editedAt: null,
+    readAt: null,
+    createdAt: new Date().toISOString(),
+    sender: state.me ? { ...state.me } : null,
+  };
+}
+
+async function sendMessageWithOptimistic(body) {
+  if (!state.activeConversationId || !state.me) {
+    return null;
+  }
+
+  const conversationId = state.activeConversationId;
+  const clientMessageId = crypto.randomUUID();
+  const optimisticMessage = createOptimisticMessage(conversationId, body, clientMessageId);
+
+  state.pendingOutgoingByClientId.set(clientMessageId, optimisticMessage.id);
+  addMessage(optimisticMessage);
+  appendMessageToActiveView(optimisticMessage);
+
+  try {
+    const payload = await api(`/api/conversations/${conversationId}/messages`, {
+      method: "POST",
+      body: { ...body, clientMessageId },
+    });
+
+    upsertConversation(payload.conversation);
+    const merged = reconcilePendingOutgoingMessage(payload.message);
+    if (!merged) {
+      addMessage(payload.message);
+      appendMessageToActiveView(payload.message);
+    }
+
+    renderConversationList();
+    return payload;
+  } catch (error) {
+    state.pendingOutgoingByClientId.delete(clientMessageId);
+    removeMessagesFromState(conversationId, [optimisticMessage.id]);
+
+    const optimisticRow = messagesEl.querySelector(`[data-message-id="${optimisticMessage.id}"]`);
+    if (optimisticRow) {
+      optimisticRow.remove();
+    }
+    if (
+      state.activeConversationId === conversationId &&
+      messagesEl.children.length === 0
+    ) {
+      renderMessages();
+    }
+
+    renderConversationList();
+    throw error;
+  }
+}
+
+function updateMessageMetaInActiveView(messageId) {
+  if (!state.activeConversationId) {
+    return false;
+  }
+
+  const row = messagesEl.querySelector(`[data-message-id="${messageId}"]`);
+  if (!row) {
+    return false;
+  }
+
+  const messages = state.messagesByConversation.get(state.activeConversationId) || [];
+  const message = messages.find((item) => item.id === messageId);
+  if (!message) {
+    return false;
+  }
+
+  const meta = row.querySelector(".bubble-meta");
+  if (!meta) {
+    return false;
+  }
+
+  const mine = message.senderId === state.me?.id;
+  const editedNode = meta.querySelector(".bubble-edited");
+  meta.textContent = getMessageMetaText(message, mine);
+  if (editedNode) {
+    meta.appendChild(editedNode);
+  }
 
   return true;
 }
@@ -2866,10 +3293,14 @@ async function selectConversation(conversationId) {
 async function loadConversations() {
   const payload = await api("/api/conversations");
   state.conversations = payload.conversations || [];
-  state.conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  sortConversations();
+  if (prunePinnedConversationIds()) {
+    saveUiSettings();
+  }
   state.activeConversationId = null;
   state.deletingMessageIdsByConversation = new Map();
   state.readRequestsInFlight = new Set();
+  state.pendingOutgoingByClientId = new Map();
   state.deleteMode = false;
   state.selectedMessageIds.clear();
   updateDeleteUi();
@@ -2915,19 +3346,21 @@ function connectSocket() {
     }
 
     if (payload.type === "message:new" && payload.message) {
-      const added = addMessage(payload.message);
+      const mergedPending = reconcilePendingOutgoingMessage(payload.message);
+      const added = mergedPending ? false : addMessage(payload.message);
       if (payload.message.senderId !== state.me?.id) {
         playIncomingMessageSound();
-        const conv = getConversationById(payload.message.conversationId);
         const senderName = payload.message.sender?.username || "Новое сообщение";
-        const previewText = payload.message.messageType === "voice" ? "🎤 Голосовое" : (payload.message.text || "").slice(0, 60);
+        const previewText = getMessageTypePreview(payload.message, "Новое сообщение").slice(0, 60);
         showPushNotification(senderName, previewText);
       }
       if (payload.message.conversationId === state.activeConversationId) {
         if (added) {
           appendMessageToActiveView(payload.message);
         }
-        markConversationAsRead(payload.message.conversationId);
+        if (payload.message.senderId !== state.me?.id) {
+          markConversationAsRead(payload.message.conversationId);
+        }
         hideTypingIndicator();
       }
     }
@@ -2952,7 +3385,21 @@ function connectSocket() {
       if (changed) {
         renderConversationList();
         if (payload.conversationId === state.activeConversationId) {
-          renderMessages();
+          const activeMessages =
+            state.messagesByConversation.get(state.activeConversationId) || [];
+          const hasAnyUpdatedInState = (payload.messageIds || []).some((messageId) =>
+            activeMessages.some((message) => message.id === messageId)
+          );
+
+          let updatedRows = false;
+          if (hasAnyUpdatedInState) {
+            for (const messageId of payload.messageIds || []) {
+              updatedRows = updateMessageMetaInActiveView(messageId) || updatedRows;
+            }
+          }
+          if (hasAnyUpdatedInState && !updatedRows) {
+            renderMessages();
+          }
         }
       }
     }
@@ -3268,11 +3715,7 @@ deleteConversationBtn.addEventListener("click", async () => {
   const deletingId = state.activeConversationId;
 
   try {
-    const payload = await api(`/api/conversations/${deletingId}`, {
-      method: "DELETE",
-    });
-
-    await removeConversationFromState(payload.deletedConversationId || deletingId);
+    await deleteConversationById(deletingId);
     setDeleteMode(false);
   } catch (error) {
     authStatus.textContent = error.message;
@@ -3469,10 +3912,30 @@ twoFaDisableBtn.addEventListener("click", async () => {
   }
 });
 
-themeSelect.addEventListener("change", () => {
-  state.ui.theme = normalizeTheme(themeSelect.value);
-  applyTheme();
-  saveUiSettings();
+themeToggleBtn.addEventListener("click", () => {
+  const isDark = state.ui.theme !== "dark";
+  state.ui.theme = isDark ? "dark" : "light";
+
+  // Pass the toggle button center as the circle origin
+  const rect = themeToggleBtn.getBoundingClientRect();
+  const x = Math.round(rect.left + rect.width / 2);
+  const y = Math.round(rect.top + rect.height / 2);
+  document.documentElement.style.setProperty("--vt-x", `${x}px`);
+  document.documentElement.style.setProperty("--vt-y", `${y}px`);
+
+  if (!document.startViewTransition) {
+    // Fallback: CSS color transitions for older browsers
+    document.documentElement.classList.add("theme-changing");
+    applyTheme();
+    saveUiSettings();
+    setTimeout(() => document.documentElement.classList.remove("theme-changing"), 700);
+    return;
+  }
+
+  document.startViewTransition(() => {
+    applyTheme();
+    saveUiSettings();
+  });
 });
 
 fullscreenToggleBtn.addEventListener("click", () => {
@@ -3519,6 +3982,54 @@ messageInput.addEventListener("keydown", (event) => {
   messageForm.requestSubmit();
 });
 
+let screenshotPasteInFlight = false;
+messageInput.addEventListener("paste", async (event) => {
+  event.preventDefault();
+
+  if (screenshotPasteInFlight) {
+    return;
+  }
+
+  const activeConversation = getActiveConversation();
+  if (
+    !state.activeConversationId ||
+    state.chatLocked ||
+    !activeConversation ||
+    activeConversation.blockedMe
+  ) {
+    return;
+  }
+
+  const screenshotFile = extractScreenshotFileFromClipboard(event.clipboardData);
+  if (!screenshotFile) {
+    authStatus.textContent = "Через Ctrl+V можно отправлять только скриншот.";
+    return;
+  }
+
+  if (screenshotFile.size > MAX_SCREENSHOT_SIZE_BYTES) {
+    authStatus.textContent = "Скриншот слишком большой (макс 3MB).";
+    return;
+  }
+
+  screenshotPasteInFlight = true;
+  try {
+    const imageData = await readFileAsDataUrl(screenshotFile);
+    const body = { text: SCREENSHOT_MESSAGE_TEXT, imageData };
+    if (state.replyToMessage) {
+      body.replyToId = state.replyToMessage.id;
+      state.replyToMessage = null;
+      replyBar.classList.add("hidden");
+    }
+    await sendMessageWithOptimistic(body);
+    playOutgoingMessageSound();
+    authStatus.textContent = "";
+  } catch (error) {
+    authStatus.textContent = error.message;
+  } finally {
+    screenshotPasteInFlight = false;
+  }
+});
+
 messageForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -3545,17 +4056,7 @@ messageForm.addEventListener("submit", async (event) => {
     if (state.replyToMessage) {
       body.replyToId = state.replyToMessage.id;
     }
-    const payload = await api(
-      `/api/conversations/${state.activeConversationId}/messages`,
-      { method: "POST", body }
-    );
-
-    upsertConversation(payload.conversation);
-    const added = addMessage(payload.message);
-    renderConversationList();
-    if (!added || !appendMessageToActiveView(payload.message)) {
-      renderMessages();
-    }
+    await sendMessageWithOptimistic(body);
     playOutgoingMessageSound();
     messageInput.value = "";
     messageInput.style.height = "auto";
@@ -3633,9 +4134,32 @@ function hideContextMenu() {
   state.contextMenuMessageId = null;
 }
 
+function hideConversationContextMenu() {
+  conversationContextMenu.classList.add("hidden");
+  state.contextMenuConversationId = null;
+}
+
+function openConversationContextMenu(conversationId, x, y) {
+  const id = String(conversationId || "");
+  const conversation = getConversationById(id);
+  if (!id || !conversation) {
+    return;
+  }
+
+  state.contextMenuConversationId = id;
+  convCtxPin.textContent = isConversationPinned(id) ? "📌 Открепить" : "📌 Закрепить";
+  conversationContextMenu.style.left = `${Math.min(x, window.innerWidth - 210)}px`;
+  conversationContextMenu.style.top = `${Math.min(y, window.innerHeight - 220)}px`;
+  hideContextMenu();
+  conversationContextMenu.classList.remove("hidden");
+}
+
 document.addEventListener("click", (e) => {
   if (!messageContextMenu.contains(e.target) && !reactionPicker.contains(e.target)) {
     hideContextMenu();
+  }
+  if (!conversationContextMenu.contains(e.target)) {
+    hideConversationContextMenu();
   }
 });
 
@@ -3644,9 +4168,10 @@ function openMessageContextMenu(msgId, x, y) {
   const messages = state.messagesByConversation.get(state.activeConversationId) || [];
   const msg = messages.find((m) => m.id === msgId);
   const isMine = msg && msg.senderId === state.me?.id;
-  ctxEdit.style.display = isMine && msg.messageType !== "voice" ? "" : "none";
+  ctxEdit.style.display = isMine && msg.messageType === "text" && !msg.imageData && !msg.voiceData ? "" : "none";
   messageContextMenu.style.left = `${Math.min(x, window.innerWidth - 190)}px`;
   messageContextMenu.style.top = `${Math.min(y, window.innerHeight - 200)}px`;
+  hideConversationContextMenu();
   messageContextMenu.classList.remove("hidden");
   reactionPicker.classList.add("hidden");
 }
@@ -3693,7 +4218,7 @@ ctxReply.addEventListener("click", () => {
   const msg = messages.find((m) => m.id === state.contextMenuMessageId);
   if (!msg) { hideContextMenu(); return; }
   state.replyToMessage = msg;
-  replyBarText.textContent = msg.messageType === "voice" ? "🎤 Голосовое сообщение" : (msg.text || "").slice(0, 80);
+  replyBarText.textContent = getMessageTypePreview(msg, "Сообщение").slice(0, 80);
   replyBar.classList.remove("hidden");
   messageInput.focus();
   hideContextMenu();
@@ -3728,10 +4253,21 @@ ctxForward.addEventListener("click", () => {
   const targets = state.conversations.filter((c) => c.id !== state.activeConversationId);
   if (isNaN(idx) || idx < 0 || idx >= targets.length) return;
   const targetConv = targets[idx];
-  const fwdText = msg.messageType === "voice" ? "🎤 Голосовое (пересланное)" : (msg.text || "");
+  const fwdText = msg.messageType === "voice"
+    ? "🎤 Голосовое (пересланное)"
+    : msg.messageType === "image"
+      ? `${SCREENSHOT_MESSAGE_TEXT} (пересланное)`
+      : (msg.text || "");
+  const body = { text: fwdText, forwardFromId: msg.id };
+  if (msg.messageType === "voice" && msg.voiceData) {
+    body.voiceData = msg.voiceData;
+  }
+  if (msg.messageType === "image" && msg.imageData) {
+    body.imageData = msg.imageData;
+  }
   api(`/api/conversations/${targetConv.id}/messages`, {
     method: "POST",
-    body: { text: fwdText, forwardFromId: msg.id },
+    body,
   })
     .then(() => {
       playOutgoingMessageSound();
@@ -3757,6 +4293,64 @@ reactionPicker.addEventListener("click", async (e) => {
   try {
     await api(`/api/conversations/${state.activeConversationId}/messages/${msgId}/reactions`, { method: "POST", body: { emoji } });
   } catch (e) { console.error(e); }
+});
+
+convCtxPin.addEventListener("click", () => {
+  const conversationId = state.contextMenuConversationId;
+  hideConversationContextMenu();
+  if (!conversationId) {
+    return;
+  }
+  toggleConversationPinned(conversationId);
+});
+
+convCtxClear.addEventListener("click", async () => {
+  const conversationId = state.contextMenuConversationId;
+  hideConversationContextMenu();
+  if (!conversationId) {
+    return;
+  }
+
+  const conversation = getConversationById(conversationId);
+  if (!conversation) {
+    return;
+  }
+
+  const title = getConversationTitle(conversation);
+  if (!window.confirm(`Очистить историю чата "${title}"? Сообщения будут удалены для всех участников.`)) {
+    return;
+  }
+
+  try {
+    await clearConversationHistoryById(conversationId);
+  } catch (error) {
+    authStatus.textContent = error.message;
+  }
+});
+
+convCtxDelete.addEventListener("click", async () => {
+  const conversationId = state.contextMenuConversationId;
+  hideConversationContextMenu();
+  if (!conversationId) {
+    return;
+  }
+
+  const conversation = getConversationById(conversationId);
+  if (!conversation) {
+    return;
+  }
+
+  const title = getConversationTitle(conversation);
+  if (!window.confirm(`Удалить чат "${title}" для всех участников?`)) {
+    return;
+  }
+
+  try {
+    await deleteConversationById(conversationId);
+    setDeleteMode(false);
+  } catch (error) {
+    authStatus.textContent = error.message;
+  }
 });
 
 // ========================
@@ -3786,11 +4380,7 @@ voiceRecordBtn.addEventListener("click", async () => {
         try {
           const body = { text: "🎤 Голосовое сообщение", voiceData: base64 };
           if (state.replyToMessage) { body.replyToId = state.replyToMessage.id; state.replyToMessage = null; replyBar.classList.add("hidden"); }
-          const payload = await api(`/api/conversations/${state.activeConversationId}/messages`, { method: "POST", body });
-          upsertConversation(payload.conversation);
-          const added = addMessage(payload.message);
-          renderConversationList();
-          if (!added || !appendMessageToActiveView(payload.message)) renderMessages();
+          await sendMessageWithOptimistic(body);
           playOutgoingMessageSound();
         } catch (e) { authStatus.textContent = e.message; }
       };
@@ -4403,6 +4993,7 @@ function closePopovers() {
   });
   const splitGroups = document.querySelectorAll('.control-split-group');
   splitGroups.forEach(el => el.classList.remove('active-popover'));
+  closeCpopLists();
 }
 
 function togglePopover(popover, triggerChevron) {
@@ -4411,11 +5002,9 @@ function togglePopover(popover, triggerChevron) {
   if (isHidden) {
     popover.classList.remove("hidden");
     triggerChevron.closest('.control-split-group').classList.add('active-popover');
-    // Sync slider values with current state
-    const micVol = document.getElementById("popoverMicVolume");
-    const spkVol = document.getElementById("popoverSpeakerVolume");
-    if (micVol) micVol.value = state.call.micVolume;
-    if (spkVol) spkVol.value = state.call.speakerVolume;
+    // Sync slider values and percent labels with current state
+    syncCpopVolume("popoverMicVolume", "micVolPct", "micMuteBtn", state.call.micVolume);
+    syncCpopVolume("popoverSpeakerVolume", "speakerVolPct", "speakerMuteBtn", state.call.speakerVolume);
   }
 }
 
@@ -4610,36 +5199,110 @@ if (popoverScreenShareBtn) {
   });
 }
 
-// Popover device & volume controls
-const popoverMicSelect = document.getElementById("popoverMicSelect");
-const popoverSpeakerSelect = document.getElementById("popoverSpeakerSelect");
-const popoverMicVolume = document.getElementById("popoverMicVolume");
-const popoverSpeakerVolume = document.getElementById("popoverSpeakerVolume");
+// ========================
+// CPOP — helpers
+// ========================
 
-if (popoverMicSelect) {
-  popoverMicSelect.addEventListener("change", () => {
-    state.ui.microphoneId = popoverMicSelect.value || "";
-    if (microphoneSelect) microphoneSelect.value = state.ui.microphoneId;
-    saveUiSettings();
+const MIC_ICON_SVG = `<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>`;
+const MIC_MUTED_SVG = `<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/><line x1="1" y1="1" x2="23" y2="23"/>`;
+const SPK_ICON_SVG = `<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>`;
+const SPK_MUTED_SVG = `<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>`;
+
+function syncCpopVolume(sliderId, pctId, muteId, value) {
+  const slider = document.getElementById(sliderId);
+  const pct = document.getElementById(pctId);
+  const btn = document.getElementById(muteId);
+  if (slider) { slider.value = value; }
+  if (pct) pct.textContent = value + "%";
+  if (btn) btn.classList.toggle("muted", value === 0);
+}
+
+function populateCpopList(listEl, devices, selectedId, onSelect, kind) {
+  const itemIcon = kind === "mic"
+    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${MIC_ICON_SVG}</svg>`
+    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
+  const checkSvg = `<svg class="cpop-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+  listEl.innerHTML = "";
+  for (const d of devices) {
+    const isSelected = d.deviceId === selectedId;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cpop-device-item" + (isSelected ? " selected" : "");
+    btn.innerHTML = `<div class="cpop-device-item-left">${itemIcon}<span class="cpop-device-item-name">${d.label}</span></div>${isSelected ? checkSvg : ""}`;
+    btn.addEventListener("click", () => onSelect(d.deviceId, d.label));
+    listEl.appendChild(btn);
+  }
+}
+
+function closeCpopLists() {
+  ["micDeviceList", "speakerDeviceList"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("open");
+  });
+  ["micDeviceBtn", "speakerDeviceBtn"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("open");
   });
 }
 
-if (popoverSpeakerSelect) {
-  popoverSpeakerSelect.addEventListener("change", () => {
-    const deviceId = popoverSpeakerSelect.value;
-    if (remoteAudio && typeof remoteAudio.setSinkId === "function") {
-      remoteAudio.setSinkId(deviceId).catch(() => {});
+// Device dropdown toggles
+const micDeviceBtn = document.getElementById("micDeviceBtn");
+const micDeviceList = document.getElementById("micDeviceList");
+const speakerDeviceBtn = document.getElementById("speakerDeviceBtn");
+const speakerDeviceListEl = document.getElementById("speakerDeviceList");
+
+function positionCpopList(listEl, selectorEl) {
+  const rect = selectorEl.getBoundingClientRect();
+  listEl.style.left  = rect.left + "px";
+  listEl.style.top   = rect.bottom + "px";
+  listEl.style.width = rect.width + "px";
+}
+
+if (micDeviceBtn) {
+  micDeviceBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = micDeviceList.classList.contains("open");
+    closeCpopLists();
+    if (!isOpen) {
+      positionCpopList(micDeviceList, micDeviceBtn.closest(".cpop-device-selector"));
+      micDeviceList.classList.add("open");
+      micDeviceBtn.classList.add("open");
     }
   });
 }
+if (speakerDeviceBtn) {
+  speakerDeviceBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = speakerDeviceListEl.classList.contains("open");
+    closeCpopLists();
+    if (!isOpen) {
+      positionCpopList(speakerDeviceListEl, speakerDeviceBtn.closest(".cpop-device-selector"));
+      speakerDeviceListEl.classList.add("open");
+      speakerDeviceBtn.classList.add("open");
+    }
+  });
+}
+
+// Volume sliders
+let micPrevVol = 100;
+let speakerPrevVol = 100;
+
+const popoverMicVolume = document.getElementById("popoverMicVolume");
+const popoverSpeakerVolume = document.getElementById("popoverSpeakerVolume");
 
 if (popoverMicVolume) {
   popoverMicVolume.addEventListener("input", () => {
     const val = parseInt(popoverMicVolume.value, 10);
     state.call.micVolume = val;
-    if (state.call.micGainNode) {
-      state.call.micGainNode.gain.value = val / 100;
-    }
+    if (val > 0) micPrevVol = val;
+    const pct = document.getElementById("micVolPct");
+    if (pct) pct.textContent = val + "%";
+    const btn = document.getElementById("micMuteBtn");
+    if (btn) btn.classList.toggle("muted", val === 0);
+    const icon = document.getElementById("micMuteIcon");
+    if (icon) icon.innerHTML = val === 0 ? MIC_MUTED_SVG : MIC_ICON_SVG;
+    if (state.call.micGainNode) state.call.micGainNode.gain.value = val / 100;
   });
 }
 
@@ -4647,9 +5310,39 @@ if (popoverSpeakerVolume) {
   popoverSpeakerVolume.addEventListener("input", () => {
     const val = parseInt(popoverSpeakerVolume.value, 10);
     state.call.speakerVolume = val;
-    if (remoteAudio) {
-      remoteAudio.volume = val / 100;
-    }
+    if (val > 0) speakerPrevVol = val;
+    const pct = document.getElementById("speakerVolPct");
+    if (pct) pct.textContent = val + "%";
+    const btn = document.getElementById("speakerMuteBtn");
+    if (btn) btn.classList.toggle("muted", val === 0);
+    const icon = document.getElementById("speakerMuteIcon");
+    if (icon) icon.innerHTML = val === 0 ? SPK_MUTED_SVG : SPK_ICON_SVG;
+    if (remoteAudio) remoteAudio.volume = val / 100;
+  });
+}
+
+// Mute buttons
+const micMuteBtn = document.getElementById("micMuteBtn");
+if (micMuteBtn) {
+  micMuteBtn.addEventListener("click", () => {
+    const slider = document.getElementById("popoverMicVolume");
+    if (!slider) return;
+    const isMuted = parseInt(slider.value, 10) === 0;
+    const newVal = isMuted ? micPrevVol : 0;
+    slider.value = newVal;
+    slider.dispatchEvent(new Event("input"));
+  });
+}
+
+const speakerMuteBtn = document.getElementById("speakerMuteBtn");
+if (speakerMuteBtn) {
+  speakerMuteBtn.addEventListener("click", () => {
+    const slider = document.getElementById("popoverSpeakerVolume");
+    if (!slider) return;
+    const isMuted = parseInt(slider.value, 10) === 0;
+    const newVal = isMuted ? speakerPrevVol : 0;
+    slider.value = newVal;
+    slider.dispatchEvent(new Event("input"));
   });
 }
 

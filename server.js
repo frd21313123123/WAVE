@@ -1222,6 +1222,8 @@ app.get("/api/conversations/:id/messages", requireAuth, async (req, res) => {
       encryption: message.encryption || null,
       replyToId: message.replyToId || null,
       forwardFromId: message.forwardFromId || null,
+      clientMessageId: message.clientMessageId || null,
+      imageData: message.imageData || null,
       voiceData: message.voiceData || null,
       reactions: message.reactions || [],
       editedAt: message.editedAt || null,
@@ -1239,14 +1241,31 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
   const conversationId = req.params.id;
   const text = normalize(req.body.text);
   const encryptionType = normalizeLower(req.body.encryption?.type);
-  const encryption = encryptionType === "vigenere" ? { type: "vigenere" } : null;
   const replyToId = normalize(req.body.replyToId);
   const forwardFromId = normalize(req.body.forwardFromId);
+  const clientMessageId = normalize(req.body.clientMessageId).slice(0, 128);
+  const imageData = String(req.body.imageData || "").trim();
   const voiceData = String(req.body.voiceData || "").trim();
-  const messageType = voiceData ? "voice" : "text";
+  const messageType = imageData ? "image" : voiceData ? "voice" : "text";
+  const encryption =
+    messageType === "text" && encryptionType === "vigenere"
+      ? { type: "vigenere" }
+      : null;
 
-  if (!text && !voiceData) {
+  if (!text && !voiceData && !imageData) {
     return res.status(400).json({ error: "Сообщение пустое" });
+  }
+
+  if (imageData && !imageData.startsWith("data:image/png;base64,")) {
+    return res.status(400).json({ error: "Через Ctrl+V поддерживаются только скриншоты PNG" });
+  }
+
+  if (imageData && voiceData) {
+    return res.status(400).json({ error: "Нельзя отправить скриншот и голосовое в одном сообщении" });
+  }
+
+  if (imageData && imageData.length > 4_200_000) {
+    return res.status(400).json({ error: "Скриншот слишком большой" });
   }
 
   if (text && text.length > MAX_MESSAGE_LENGTH) {
@@ -1279,11 +1298,13 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
         id: crypto.randomUUID(),
         conversationId,
         senderId: req.user.id,
-        text: text || "",
+        text: text || (messageType === "image" ? "🖼 Скриншот" : ""),
         messageType,
         encryption,
         replyToId: replyToId || null,
         forwardFromId: forwardFromId || null,
+        clientMessageId: clientMessageId || null,
+        imageData: imageData || null,
         voiceData: voiceData || null,
         reactions: [],
         readAt: null,
@@ -1317,6 +1338,8 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
       encryption: result.message.encryption || null,
       replyToId: result.message.replyToId || null,
       forwardFromId: result.message.forwardFromId || null,
+      clientMessageId: result.message.clientMessageId || null,
+      imageData: result.message.imageData || null,
       voiceData: result.message.voiceData || null,
       reactions: result.message.reactions || [],
       editedAt: result.message.editedAt || null,
@@ -1346,7 +1369,9 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
           title: sender ? sender.username : "Новое сообщение",
           body: messagePayload.messageType === "voice"
             ? "🎤 Голосовое сообщение"
-            : (messagePayload.text || "").slice(0, 100),
+            : messagePayload.messageType === "image"
+              ? "🖼 Скриншот"
+              : (messagePayload.text || "").slice(0, 100),
           tag: `wave-msg-${conversationId}`,
           conversationId,
           url: "/",
@@ -1563,6 +1588,87 @@ app.delete("/api/conversations/:id/messages", requireAuth, async (req, res) => {
 
     console.error(error);
     return res.status(500).json({ error: "Не удалось удалить сообщения" });
+  }
+});
+
+app.delete("/api/conversations/:id/messages/all", requireAuth, async (req, res) => {
+  const conversationId = req.params.id;
+
+  try {
+    const result = await store.withWriteLock((data) => {
+      const conversation = data.conversations.find((item) => item.id === conversationId);
+      if (!conversation || !conversation.participantIds.includes(req.user.id)) {
+        const error = new Error("Ð”Ð¸Ð°Ð»Ð¾Ð³ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½");
+        error.code = "CONVERSATION_NOT_FOUND";
+        throw error;
+      }
+
+      const deletedMessageIds = data.messages
+        .filter((message) => message.conversationId === conversationId)
+        .map((message) => message.id);
+
+      if (deletedMessageIds.length > 0) {
+        const deletedSet = new Set(deletedMessageIds);
+        data.messages = data.messages.filter(
+          (message) =>
+            !(message.conversationId === conversationId && deletedSet.has(message.id))
+        );
+      }
+
+      conversation.lastMessageId = null;
+      conversation.updatedAt = new Date().toISOString();
+
+      return {
+        deletedMessageIds,
+        participantIds: [...conversation.participantIds],
+      };
+    });
+
+    const state = await store.read();
+    const usersById = new Map(state.users.map((user) => [user.id, user]));
+    const messagesById = new Map(
+      state.messages.map((message) => [message.id, message])
+    );
+    const conversation = state.conversations.find((item) => item.id === conversationId);
+
+    for (const participantId of result.participantIds) {
+      const conversationPayload = buildConversationPayload(
+        conversation,
+        participantId,
+        usersById,
+        messagesById
+      );
+      sendToUser(participantId, {
+        type: "conversation:update",
+        conversation: conversationPayload,
+      });
+      if (result.deletedMessageIds.length > 0) {
+        sendToUser(participantId, {
+          type: "message:deleted",
+          conversationId,
+          messageIds: result.deletedMessageIds,
+        });
+      }
+    }
+
+    const currentUserConversationPayload = buildConversationPayload(
+      conversation,
+      req.user.id,
+      usersById,
+      messagesById
+    );
+
+    return res.json({
+      deletedMessageIds: result.deletedMessageIds,
+      conversation: currentUserConversationPayload,
+    });
+  } catch (error) {
+    if (error.code === "CONVERSATION_NOT_FOUND") {
+      return res.status(404).json({ error: error.message });
+    }
+
+    console.error(error);
+    return res.status(500).json({ error: "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‡Ð¸ÑÑ‚Ð¸Ñ‚ÑŒ Ð¸ÑÑ‚Ð¾Ñ€Ð¸ÑŽ Ñ‡Ð°Ñ‚Ð°" });
   }
 });
 
@@ -1836,6 +1942,7 @@ app.patch("/api/conversations/:id/messages/:messageId", requireAuth, async (req,
       const msg = data.messages.find((m) => m.id === messageId && m.conversationId === conversationId);
       if (!msg) throw Object.assign(new Error("Сообщение не найдено"), { code: "MSG_NF" });
       if (msg.senderId !== req.user.id) throw Object.assign(new Error("Нельзя редактировать чужое сообщение"), { code: "FORBIDDEN" });
+      if ((msg.messageType || "text") !== "text") throw Object.assign(new Error("Это сообщение нельзя редактировать"), { code: "FORBIDDEN" });
       msg.text = newText;
       msg.editedAt = new Date().toISOString();
       return { message: { ...msg }, participantIds: [...conv.participantIds] };

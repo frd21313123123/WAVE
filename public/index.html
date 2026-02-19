@@ -235,18 +235,38 @@
                     </div>
                     <!-- Mic Popover -->
                     <div id="micSettingsPopover" class="control-popover hidden">
-                      <div class="popover-section">
-                        <label>Input Device</label>
-                        <select id="popoverMicSelect" class="popover-select">
-                          <option>Default</option>
-                        </select>
+                      <div class="cpop-section">
+                        <p class="cpop-label">Устройство ввода</p>
+                        <div class="cpop-device-selector">
+                          <button class="cpop-device-btn" id="micDeviceBtn" type="button">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                              <line x1="12" y1="19" x2="12" y2="23"/>
+                              <line x1="8" y1="23" x2="16" y2="23"/>
+                            </svg>
+                            <span class="cpop-device-name" id="micDeviceName">Системный по умолчанию</span>
+                            <svg class="cpop-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                              <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                          </button>
+                          <div class="cpop-device-list" id="micDeviceList"></div>
+                        </div>
                       </div>
-                      <div class="popover-section">
-                        <label>Input Volume</label>
-                        <input type="range" id="popoverMicVolume" class="popover-slider" min="0" max="100" value="100">
-                      </div>
-                      <div class="popover-footer">
-                        <button class="popover-link-btn" type="button">Voice Settings</button>
+                      <div class="cpop-section">
+                        <p class="cpop-label">Громкость ввода</p>
+                        <div class="cpop-volume-row">
+                          <button class="cpop-mute-btn" id="micMuteBtn" type="button">
+                            <svg id="micMuteIcon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                              <line x1="12" y1="19" x2="12" y2="23"/>
+                              <line x1="8" y1="23" x2="16" y2="23"/>
+                            </svg>
+                          </button>
+                          <input type="range" id="popoverMicVolume" class="cpop-slider" min="0" max="100" value="100">
+                          <span class="cpop-volume-pct" id="micVolPct">100%</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -296,19 +316,35 @@
                     </div>
                     <!-- Speaker Popover -->
                     <div id="speakerSettingsPopover" class="control-popover hidden">
-                      <div class="popover-section">
-                        <label>Output Device</label>
-                        <select id="popoverSpeakerSelect" class="popover-select">
-                          <option>Default</option>
-                        </select>
+                      <div class="cpop-section">
+                        <p class="cpop-label">Устройство вывода</p>
+                        <div class="cpop-device-selector">
+                          <button class="cpop-device-btn" id="speakerDeviceBtn" type="button">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
+                              <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+                            </svg>
+                            <span class="cpop-device-name" id="speakerDeviceName">Системный по умолчанию</span>
+                            <svg class="cpop-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                              <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                          </button>
+                          <div class="cpop-device-list" id="speakerDeviceList"></div>
+                        </div>
                       </div>
-                      <div class="popover-section">
-                        <label>Output Volume</label>
-                        <input type="range" id="popoverSpeakerVolume" class="popover-slider" min="0" max="100"
-                          value="100">
-                      </div>
-                      <div class="popover-footer">
-                        <button class="popover-link-btn" type="button">Voice Settings</button>
+                      <div class="cpop-section">
+                        <p class="cpop-label">Громкость вывода</p>
+                        <div class="cpop-volume-row">
+                          <button class="cpop-mute-btn" id="speakerMuteBtn" type="button">
+                            <svg id="speakerMuteIcon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                            </svg>
+                          </button>
+                          <input type="range" id="popoverSpeakerVolume" class="cpop-slider" min="0" max="100" value="100">
+                          <span class="cpop-volume-pct" id="speakerVolPct">100%</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -493,6 +529,13 @@
     <button type="button" id="ctxReact">😀 Реакция</button>
   </div>
 
+  <!-- Conversation context menu -->
+  <div id="conversationContextMenu" class="message-context-menu hidden">
+    <button type="button" id="convCtxPin">📌 Закрепить</button>
+    <button type="button" id="convCtxClear">🧹 Очистить историю</button>
+    <button type="button" id="convCtxDelete" class="danger-item">🗑 Удалить чат</button>
+  </div>
+
   <!-- User Settings Modal -->
   <div id="settingsPanel" class="settings-overlay hidden" role="dialog" aria-modal="true"
     aria-label="Настройки пользователя">
@@ -525,12 +568,32 @@
 
         <section class="settings-section">
           <h3 class="settings-section-title">Внешний вид</h3>
-          <div class="settings-row">
-            <label for="themeSelect">Тема</label>
-            <select id="themeSelect">
-              <option value="light">Светлая</option>
-              <option value="dark">Темная</option>
-            </select>
+          <div class="settings-row theme-toggle-row">
+            <label>Тема</label>
+            <div class="theme-toggle-wrap">
+              <span class="theme-label theme-label-left">День</span>
+              <button class="theme-toggle" id="themeToggleBtn" aria-label="Переключить тему" type="button">
+                <div class="theme-knob">
+                  <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="5" fill="#c4622d"/>
+                    <g stroke="#c4622d" stroke-width="2" stroke-linecap="round">
+                      <line x1="12" y1="2" x2="12" y2="4"/>
+                      <line x1="12" y1="20" x2="12" y2="22"/>
+                      <line x1="2" y1="12" x2="4" y2="12"/>
+                      <line x1="20" y1="12" x2="22" y2="12"/>
+                      <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/>
+                      <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
+                      <line x1="19.07" y1="4.93" x2="17.66" y2="6.34"/>
+                      <line x1="6.34" y1="17.66" x2="4.93" y2="19.07"/>
+                    </g>
+                  </svg>
+                  <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="#7c9ef5"/>
+                  </svg>
+                </div>
+              </button>
+              <span class="theme-label theme-label-right">Ночь</span>
+            </div>
           </div>
           <div class="settings-row" style="margin-top:10px;">
             <label>Режим отображения</label>
