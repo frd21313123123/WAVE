@@ -1,9 +1,15 @@
 # Dependencies
 node_modules/
+jspm_packages/
+web_modules/
+
+# Debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
+*.log
 
 # Environment variables
 .env
@@ -11,23 +17,49 @@ pnpm-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env*.local
 
-# Database
+# Database / Storage
 data/*.json
+data/*.sqlite
 *.sqlite
 *.sqlite3
 *.db
+*.db-journal
 
 # OS files
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Editor directories
+# Editor / Tooling
 .idea/
 .vscode/
 *.swp
 *.swo
+*.sublime-project
+*.sublime-workspace
 
-# Optional: Build output (if you have a build step later)
+# AI / Agent Tools
+.claude/
+.agent/
+.gemini/
+
+# Build output
 dist/
 build/
+out/
+.next/
+.vercel/
+.cache/
+.parcel-cache/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+.history/
