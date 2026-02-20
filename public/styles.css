@@ -1,64 +1,66 @@
 :root {
-  --bg-base: #f0ece3;
-  --bg-overlay: #e6dfd1;
-  --surface: #e8e2d5;
-  --surface-soft: #ece6da;
-  --surface-quiet: #ddd6c9;
-  --line: #cfc5b6;
-  --line-strong: #bfb3a2;
-  --text-main: #1a1612;
-  --text-muted: #7a6f5f;
-  --text-subtle: #8e8272;
-  --accent: #c4622d;
-  --accent-strong: #ad5126;
-  --accent-rgb: 196, 98, 45;
-  --accent-soft: rgba(196, 98, 45, 0.14);
+  --bg-base: #f7f5f0;
+  --bg-overlay: #f7f5f0;
+  --surface: #ffffff;
+  --surface-soft: #ffffff;
+  --surface-quiet: #ffffff;
+  --line: #e4e0d8;
+  --line-strong: #d9d4ca;
+  --text-main: #1e1e1e;
+  --text-muted: #757575;
+  --text-subtle: #888888;
+  --text-hint: #666666;
+  --accent: #d85c27;
+  --accent-strong: #be4f20;
+  --accent-rgb: 216, 92, 39;
+  --accent-soft: rgba(216, 92, 39, 0.14);
   --danger: #d24646;
-  --bubble-in: #ece5d8;
-  --bubble-out: #ddd6c9;
-  --toggle-bg: #d4cfc5;
-  --toggle-glow: rgba(196, 98, 45, 0.3);
-  --toggle-knob-dark: #1e2030;
+  --bubble-in: #ffffff;
+  --bubble-out: #f2eee6;
+  --toggle-bg: #e4e0d8;
+  --toggle-glow: rgba(216, 92, 39, 0.2);
+  --toggle-knob-dark: #1c1e2a;
   --messages-bg:
-    radial-gradient(circle at 12% 8%, rgba(255, 255, 255, 0.45), transparent 36%),
-    radial-gradient(circle at 80% 30%, rgba(196, 98, 45, 0.1), transparent 32%),
-    linear-gradient(180deg, #f3eee5, #ece5d8);
+    radial-gradient(circle at 12% 8%, rgba(255, 255, 255, 0.55), transparent 36%),
+    radial-gradient(circle at 80% 30%, rgba(216, 92, 39, 0.09), transparent 32%),
+    linear-gradient(180deg, #faf8f4, #f2eee6);
   --messages-pattern:
-    linear-gradient(45deg, rgba(122, 111, 95, 0.09) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(122, 111, 95, 0.06) 25%, transparent 25%);
-  --surface-hover: #e1d9ca;
-  --shadow-app: 0 28px 70px -34px rgba(37, 28, 16, 0.46);
+    linear-gradient(45deg, rgba(117, 117, 117, 0.08) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(117, 117, 117, 0.05) 25%, transparent 25%);
+  --surface-hover: #f4f1eb;
+  --shadow-app: 0 28px 70px -34px rgba(30, 30, 30, 0.18);
 }
 
 [data-theme="dark"] {
-  --bg-base: #0d0e14;
-  --bg-overlay: #13141c;
-  --surface: #13141c;
-  --surface-soft: #171924;
-  --surface-quiet: #1a1c27;
-  --line: #2a2d3b;
-  --line-strong: #353a4b;
-  --text-main: #e8e4dd;
-  --text-muted: #6b7080;
-  --text-subtle: #7f8594;
-  --accent: #7c9ef5;
-  --accent-strong: #6f91ea;
-  --accent-rgb: 124, 158, 245;
-  --accent-soft: rgba(124, 158, 245, 0.16);
+  --bg-base: #12141c;
+  --bg-overlay: #12141c;
+  --surface: #1c1e2a;
+  --surface-soft: #1f2230;
+  --surface-quiet: #232736;
+  --line: #2a2d3d;
+  --line-strong: #373b4d;
+  --text-main: #f0f0f0;
+  --text-muted: #8a8e99;
+  --text-subtle: #9da2ad;
+  --text-hint: #b5bacc;
+  --accent: #5c85ff;
+  --accent-strong: #4f78f2;
+  --accent-rgb: 92, 133, 255;
+  --accent-soft: rgba(92, 133, 255, 0.16);
   --danger: #f07474;
-  --bubble-in: #1d202b;
-  --bubble-out: #1d3126;
-  --toggle-bg: #1e202c;
-  --toggle-glow: rgba(124, 158, 245, 0.2);
-  --toggle-knob-dark: #1e2030;
+  --bubble-in: #222634;
+  --bubble-out: #273865;
+  --toggle-bg: #2a2d3d;
+  --toggle-glow: rgba(92, 133, 255, 0.2);
+  --toggle-knob-dark: #1c1e2a;
   --messages-bg:
-    radial-gradient(circle at 12% 8%, rgba(36, 40, 57, 0.28), transparent 36%),
-    radial-gradient(circle at 80% 30%, rgba(124, 158, 245, 0.18), transparent 32%),
-    linear-gradient(180deg, #11131b, #131623);
+    radial-gradient(circle at 12% 8%, rgba(38, 42, 58, 0.34), transparent 36%),
+    radial-gradient(circle at 80% 30%, rgba(92, 133, 255, 0.2), transparent 32%),
+    linear-gradient(180deg, #151824, #131622);
   --messages-pattern:
-    linear-gradient(45deg, rgba(107, 112, 128, 0.18) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(107, 112, 128, 0.12) 25%, transparent 25%);
-  --surface-hover: #1d2030;
+    linear-gradient(45deg, rgba(138, 142, 153, 0.16) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(138, 142, 153, 0.11) 25%, transparent 25%);
+  --surface-hover: #262a3a;
   --shadow-app: 0 28px 70px -34px rgba(0, 0, 0, 0.86);
 }
 
@@ -1336,11 +1338,13 @@ textarea:focus {
   pointer-events: auto;
   position: absolute;
   bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 24px;
+  right: 24px;
   display: flex;
+  justify-content: center;
   gap: 12px;
   align-items: center;
+  z-index: 30;
 }
 
 .control-group-main {
@@ -1414,6 +1418,16 @@ textarea:focus {
   border-radius: 2px;
   transform: translate(-50%, -50%) rotate(-45deg);
   pointer-events: none;
+}
+
+/* Mic mute button has its own icon/state, avoid crooked slash overlay */
+#activeCallMuteBtn.active::after {
+  display: none;
+}
+
+/* Speaker mute button also uses its own active visual state */
+#activeCallSpeakerBtn.active::after {
+  display: none;
 }
 
 .active-call-control-pill svg {
@@ -1954,11 +1968,8 @@ textarea:focus {
 /* Dropdown list */
 .audio-dropdown-panel {
   display: none;
-  position: absolute;
-  z-index: 100;
-  left: 0;
-  right: 0;
-  top: 100%;
+  position: static;
+  z-index: 1;
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-top: none;
@@ -2047,7 +2058,9 @@ textarea:focus {
 .audio-volume-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
+  row-gap: 8px;
   padding: 10px 14px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -2084,6 +2097,7 @@ textarea:focus {
 
 .audio-slider {
   flex: 1;
+  min-width: 140px;
   height: 4px;
   appearance: none;
   -webkit-appearance: none;
@@ -2121,6 +2135,7 @@ textarea:focus {
 
 .audio-vol-pct {
   flex-shrink: 0;
+  margin-left: auto;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-hint);
@@ -2133,6 +2148,7 @@ textarea:focus {
   margin-top: 14px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
 }
 
@@ -2154,11 +2170,12 @@ textarea:focus {
 
 .voice-test-bars {
   flex: 1;
+  min-width: 0;
   min-height: 28px;
   display: grid;
-  grid-template-columns: repeat(48, minmax(3px, 1fr));
+  grid-template-columns: repeat(48, minmax(0, 1fr));
   align-items: end;
-  gap: 4px;
+  gap: 3px;
 }
 
 .voice-test-bar {
@@ -2347,6 +2364,12 @@ html.theme-changing .theme-icon-moon {
   font-size: 0.78rem;
   line-height: 1.35;
   color: var(--text-subtle);
+}
+
+[data-theme="dark"] .settings-section-title,
+[data-theme="dark"] .settings-row label,
+[data-theme="dark"] .settings-hint {
+  color: var(--text-hint);
 }
 
 /* ── Encryption Widget ── */
@@ -4028,6 +4051,11 @@ html.theme-changing .theme-icon-moon {
     align-items: stretch;
   }
 
+  .voice-test-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
   .settings-hint {
     font-size: 0.72rem;
   }
@@ -4982,20 +5010,20 @@ html.theme-changing .theme-icon-moon {
 .control-popover {
   position: absolute;
   bottom: 56px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: calc(50% - 150px);
+  transform: none;
   width: 280px;
   background: #1e1f22;
   border-radius: 8px;
   padding: 16px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  z-index: 100;
+  z-index: 10020;
   display: flex;
   flex-direction: column;
   gap: 16px;
   color: #dbdee1;
   font-size: 0.85rem;
-  animation: fade-up 0.15s ease-out;
+  animation: control-popover-fade 0.15s ease-out;
 }
 
 .control-popover::after {
@@ -5011,6 +5039,16 @@ html.theme-changing .theme-icon-moon {
 
 .control-popover.hidden {
   display: none;
+}
+
+@keyframes control-popover-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .popover-section {
@@ -5209,7 +5247,7 @@ html.theme-changing .theme-icon-moon {
   border-bottom-right-radius: 14px;
   overflow-x: hidden;
   overflow-y: auto;
-  z-index: 9999;
+  z-index: 10030;
   /* Hidden state */
   visibility: hidden;
   opacity: 0;
