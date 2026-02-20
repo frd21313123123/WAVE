@@ -852,21 +852,6 @@
         <section class="settings-section">
           <h3 class="settings-section-title">Сообщения</h3>
           <div class="settings-row">
-            <label for="translationLanguage">Язык перевода</label>
-            <select id="translationLanguage">
-              <option value="off">Не переводить</option>
-              <option value="en">English</option>
-              <option value="ru">Русский</option>
-              <option value="de">Deutsch</option>
-              <option value="fr">Francais</option>
-              <option value="es">Espanol</option>
-              <option value="it">Italiano</option>
-              <option value="tr">Turkce</option>
-              <option value="uk">Украинский</option>
-              <option value="pl">Polski</option>
-            </select>
-          </div>
-          <div class="settings-row">
             <label for="vigenereKeyInput">Ключ шифрования (Vigenere)</label>
             <input id="vigenereKeyInput" type="text" maxlength="64" placeholder="WAVE" autocomplete="off" />
           </div>
@@ -877,13 +862,33 @@
 
         <section class="settings-section">
           <h3 class="settings-section-title">Звонки</h3>
-          <div class="settings-row">
-            <label for="microphoneSelect">Микрофон</label>
-            <select id="microphoneSelect">
-              <option value="">Микрофон по умолчанию</option>
-            </select>
+          <div class="voice-settings-grid">
+            <div class="voice-settings-field">
+              <label for="microphoneSelect">Микрофон</label>
+              <select id="microphoneSelect" class="voice-select">
+                <option value="">Микрофон по умолчанию</option>
+              </select>
+            </div>
+            <div class="voice-settings-field">
+              <label for="speakerSelect">Динамик</label>
+              <select id="speakerSelect" class="voice-select">
+                <option value="">Динамик по умолчанию</option>
+              </select>
+            </div>
+            <div class="voice-settings-field">
+              <label for="settingsMicVolume">Громкость микрофона</label>
+              <input id="settingsMicVolume" class="voice-slider" type="range" min="0" max="100" value="100" />
+            </div>
+            <div class="voice-settings-field">
+              <label for="settingsSpeakerVolume">Громкость динамика</label>
+              <input id="settingsSpeakerVolume" class="voice-slider" type="range" min="0" max="100" value="100" />
+            </div>
           </div>
-          <p class="settings-hint">Выберите микрофон для голосовых звонков.</p>
+          <div class="voice-settings-test-row">
+            <button id="settingsMicTestBtn" type="button" class="voice-test-btn">Mic Test</button>
+            <div id="settingsMicTestBars" class="voice-test-bars" aria-hidden="true"></div>
+          </div>
+          <p class="settings-hint">Настройте устройства и громкость для голосовых звонков.</p>
         </section>
 
         <!-- Push notifications -->

@@ -46,7 +46,6 @@ const mobileBack = document.getElementById("mobileBack");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsPanel = document.getElementById("settingsPanel");
 const closeSettingsBtn = document.getElementById("closeSettingsBtn");
-const translationLanguage = document.getElementById("translationLanguage");
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 const fullscreenToggleBtn = document.getElementById("fullscreenToggleBtn");
 const vigenereKeyInput = document.getElementById("vigenereKeyInput");
@@ -91,6 +90,11 @@ const chatUnlockBtn = document.getElementById("chatUnlockBtn");
 const chatLockStatus = document.getElementById("chatLockStatus");
 const deleteAccountBtn = document.getElementById("deleteAccountBtn");
 const microphoneSelect = document.getElementById("microphoneSelect");
+const speakerSelect = document.getElementById("speakerSelect");
+const settingsMicVolume = document.getElementById("settingsMicVolume");
+const settingsSpeakerVolume = document.getElementById("settingsSpeakerVolume");
+const settingsMicTestBtn = document.getElementById("settingsMicTestBtn");
+const settingsMicTestBars = document.getElementById("settingsMicTestBars");
 const remoteAudio = document.getElementById("remoteAudio");
 const chatMain = document.querySelector(".chat-main");
 const sidebarResizeHandle = document.getElementById("sidebarResizeHandle");
@@ -249,6 +253,7 @@ const state = {
     vigenereKey: DEFAULT_VIGENERE_KEY,
     sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
     microphoneId: "",
+    speakerId: "",
     fullscreen: true,
     pinnedConversationIds: [],
   },
@@ -2247,6 +2252,7 @@ function saveUiSettings() {
         vigenereEnabled: state.ui.vigenereEnabled,
         sidebarWidth: normalizeSidebarWidth(state.ui.sidebarWidth),
         microphoneId: state.ui.microphoneId || "",
+        speakerId: state.ui.speakerId || "",
         fullscreen: !!state.ui.fullscreen,
         pinnedConversationIds: normalizePinnedConversationIds(
           state.ui.pinnedConversationIds
@@ -2266,11 +2272,12 @@ function loadUiSettings() {
 
     const parsed = JSON.parse(raw);
     state.ui.theme = normalizeTheme(parsed.theme);
-    state.ui.targetLanguage = normalizeTranslationLanguage(parsed.targetLanguage);
+    state.ui.targetLanguage = "off";
     state.ui.vigenereEnabled = Boolean(parsed.vigenereEnabled);
     state.ui.sidebarWidth = normalizeSidebarWidth(parsed.sidebarWidth);
     state.ui.vigenereKey = DEFAULT_VIGENERE_KEY;
     state.ui.microphoneId = String(parsed.microphoneId || "");
+    state.ui.speakerId = String(parsed.speakerId || "");
     state.ui.fullscreen = parsed.fullscreen !== false;
     state.ui.pinnedConversationIds = normalizePinnedConversationIds(
       parsed.pinnedConversationIds
@@ -2286,29 +2293,62 @@ function applyFullscreen() {
   }
 }
 
+function ensureMicTestBars() {
+  if (!settingsMicTestBars || settingsMicTestBars.childElementCount) return;
+  for (let i = 0; i < 48; i += 1) {
+    const bar = document.createElement("span");
+    bar.className = "voice-test-bar";
+    settingsMicTestBars.appendChild(bar);
+  }
+}
+
+function syncSettingsCallControls() {
+  if (settingsMicVolume) settingsMicVolume.value = String(state.call.micVolume);
+  if (settingsSpeakerVolume) settingsSpeakerVolume.value = String(state.call.speakerVolume);
+  ensureMicTestBars();
+}
+
 function syncUiControls() {
-  translationLanguage.value = normalizeTranslationLanguage(state.ui.targetLanguage);
   vigenereKeyInput.value = normalizeVigenereKey(state.ui.vigenereKey);
   updateVigenereToggle();
-  loadMicrophoneDevices();
+  syncSettingsCallControls();
+  loadAudioDevices();
   applyFullscreen();
 }
 
-async function loadMicrophoneDevices() {
+async function loadAudioDevices() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
     return;
   }
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const mics = devices.filter((d) => d.kind === "audioinput");
-    microphoneSelect.innerHTML = '<option value="">Микрофон по умолчанию</option>';
-    for (const mic of mics) {
-      const opt = document.createElement("option");
-      opt.value = mic.deviceId;
-      opt.textContent = mic.label || `Микрофон ${microphoneSelect.options.length}`;
-      microphoneSelect.appendChild(opt);
+    const speakers = devices.filter((d) => d.kind === "audiooutput");
+    if (microphoneSelect) {
+      microphoneSelect.innerHTML = '<option value="">Микрофон по умолчанию</option>';
+      for (const mic of mics) {
+        const opt = document.createElement("option");
+        opt.value = mic.deviceId;
+        opt.textContent = mic.label || `Микрофон ${microphoneSelect.options.length}`;
+        microphoneSelect.appendChild(opt);
+      }
+      microphoneSelect.value = state.ui.microphoneId || "";
     }
-    microphoneSelect.value = state.ui.microphoneId || "";
+
+    if (speakerSelect) {
+      speakerSelect.innerHTML = '<option value="">Динамик по умолчанию</option>';
+      for (const speaker of speakers) {
+        const opt = document.createElement("option");
+        opt.value = speaker.deviceId;
+        opt.textContent = speaker.label || `Динамик ${speakerSelect.options.length}`;
+        speakerSelect.appendChild(opt);
+      }
+      speakerSelect.value = state.ui.speakerId || "";
+    }
+
+    if (remoteAudio && typeof remoteAudio.setSinkId === "function") {
+      remoteAudio.setSinkId(state.ui.speakerId || "").catch(() => {});
+    }
   } catch {
   }
 }
@@ -2341,6 +2381,14 @@ const speakingState = {
   localCtx: null,
   remoteCtx: null,
   rafId: null,
+};
+
+const micTestState = {
+  stream: null,
+  ctx: null,
+  analyser: null,
+  rafId: null,
+  running: false,
 };
 
 const SPEAKING_THRESHOLD = 18;
@@ -2433,7 +2481,8 @@ function setSettingsPanelOpen(isOpen) {
   const shouldOpen = Boolean(isOpen) && !state.chatLocked;
   settingsPanel.classList.toggle("hidden", !shouldOpen);
   if (shouldOpen) {
-    loadMicrophoneDevices();
+    syncSettingsCallControls();
+    loadAudioDevices();
   }
 }
 
@@ -4053,22 +4102,60 @@ fullscreenToggleBtn.addEventListener("click", () => {
   saveUiSettings();
 });
 
-translationLanguage.addEventListener("change", () => {
-  state.ui.targetLanguage = normalizeTranslationLanguage(translationLanguage.value);
-  saveUiSettings();
-  renderMessages();
-});
-
 vigenereKeyInput.addEventListener("input", () => {
   state.ui.vigenereKey = normalizeVigenereKey(vigenereKeyInput.value);
   saveUiSettings();
   renderMessages();
 });
 
-microphoneSelect.addEventListener("change", () => {
-  state.ui.microphoneId = microphoneSelect.value;
-  saveUiSettings();
-});
+if (microphoneSelect) {
+  microphoneSelect.addEventListener("change", () => {
+    state.ui.microphoneId = microphoneSelect.value;
+    saveUiSettings();
+  });
+}
+
+if (speakerSelect) {
+  speakerSelect.addEventListener("change", () => {
+    state.ui.speakerId = speakerSelect.value;
+    saveUiSettings();
+    if (remoteAudio && typeof remoteAudio.setSinkId === "function") {
+      remoteAudio.setSinkId(state.ui.speakerId || "").catch(() => {});
+    }
+  });
+}
+
+if (settingsMicVolume) {
+  settingsMicVolume.addEventListener("input", () => {
+    const val = parseInt(settingsMicVolume.value, 10);
+    state.call.micVolume = val;
+    if (val > 0) micPrevVol = val;
+    if (state.call.micGainNode) state.call.micGainNode.gain.value = val / 100;
+    if (popoverMicVolume) popoverMicVolume.value = String(val);
+    syncCpopVolume("popoverMicVolume", "micVolPct", "micMuteBtn", val);
+  });
+}
+
+if (settingsSpeakerVolume) {
+  settingsSpeakerVolume.addEventListener("input", () => {
+    const val = parseInt(settingsSpeakerVolume.value, 10);
+    state.call.speakerVolume = val;
+    if (val > 0) speakerPrevVol = val;
+    if (remoteAudio) remoteAudio.volume = val / 100;
+    if (popoverSpeakerVolume) popoverSpeakerVolume.value = String(val);
+    syncCpopVolume("popoverSpeakerVolume", "speakerVolPct", "speakerMuteBtn", val);
+  });
+}
+
+if (settingsMicTestBtn) {
+  settingsMicTestBtn.addEventListener("click", async () => {
+    if (micTestState.running) {
+      stopMicTest();
+      return;
+    }
+    await startMicTest();
+  });
+}
 
 vigenereToggle.addEventListener("click", () => {
   state.ui.vigenereEnabled = !state.ui.vigenereEnabled;
@@ -5602,6 +5689,78 @@ if (popoverScreenShareBtn) {
   });
 }
 
+function updateMicTestBars(level = 0) {
+  if (!settingsMicTestBars) return;
+  const bars = settingsMicTestBars.children;
+  const active = Math.floor((bars.length || 1) * Math.max(0, Math.min(1, level)));
+  for (let i = 0; i < bars.length; i += 1) {
+    const bar = bars[i];
+    const isActive = i < active;
+    bar.classList.toggle("active", isActive);
+    bar.style.height = (isActive ? 14 + Math.random() * 14 : 8) + "px";
+  }
+}
+
+function stopMicTest() {
+  micTestState.running = false;
+  if (micTestState.rafId) cancelAnimationFrame(micTestState.rafId);
+  micTestState.rafId = null;
+  if (micTestState.stream) {
+    micTestState.stream.getTracks().forEach((track) => track.stop());
+  }
+  if (micTestState.ctx) {
+    micTestState.ctx.close().catch(() => {});
+  }
+  micTestState.stream = null;
+  micTestState.ctx = null;
+  micTestState.analyser = null;
+  if (settingsMicTestBtn) {
+    settingsMicTestBtn.classList.remove("testing");
+    settingsMicTestBtn.textContent = "Mic Test";
+  }
+  updateMicTestBars(0);
+}
+
+async function startMicTest() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  ensureMicTestBars();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 128;
+    const source = ctx.createMediaStreamSource(stream);
+    source.connect(analyser);
+
+    micTestState.stream = stream;
+    micTestState.ctx = ctx;
+    micTestState.analyser = analyser;
+    micTestState.running = true;
+
+    if (settingsMicTestBtn) {
+      settingsMicTestBtn.classList.add("testing");
+      settingsMicTestBtn.textContent = "Stop";
+    }
+
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      if (!micTestState.running || !micTestState.analyser) return;
+      micTestState.analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i += 1) {
+        const v = (data[i] - 128) / 128;
+        sum += v * v;
+      }
+      updateMicTestBars(Math.min(1, Math.sqrt(sum / data.length) * 4));
+      micTestState.rafId = requestAnimationFrame(tick);
+    };
+
+    tick();
+  } catch {
+    stopMicTest();
+  }
+}
+
 // ========================
 // CPOP — helpers
 // ========================
@@ -5656,10 +5815,35 @@ const speakerDeviceBtn = document.getElementById("speakerDeviceBtn");
 const speakerDeviceListEl = document.getElementById("speakerDeviceList");
 
 function positionCpopList(listEl, selectorEl) {
+  if (!listEl || !selectorEl) return;
+
   const rect = selectorEl.getBoundingClientRect();
-  listEl.style.left  = rect.left + "px";
-  listEl.style.top   = rect.bottom + "px";
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const gap = 8;
+
+  listEl.style.left = rect.left + "px";
   listEl.style.width = rect.width + "px";
+
+  // Measure natural height in a hidden non-open state.
+  listEl.classList.remove("open");
+  listEl.style.visibility = "hidden";
+  listEl.style.pointerEvents = "none";
+  listEl.style.maxHeight = "none";
+
+  const listHeight = listEl.scrollHeight;
+  const spaceBelow = viewportHeight - rect.bottom - gap;
+  const spaceAbove = rect.top - gap;
+  const shouldOpenUp = spaceBelow < listHeight && spaceAbove > spaceBelow;
+  const availableSpace = Math.max(120, shouldOpenUp ? spaceAbove : spaceBelow);
+
+  listEl.style.maxHeight = availableSpace + "px";
+  listEl.style.top = shouldOpenUp
+    ? (Math.max(gap, rect.top - Math.min(listHeight, availableSpace)) + "px")
+    : (rect.bottom + "px");
+
+  listEl.classList.toggle("open-up", shouldOpenUp);
+  listEl.style.visibility = "";
+  listEl.style.pointerEvents = "";
 }
 
 if (micDeviceBtn) {
@@ -5706,6 +5890,7 @@ if (popoverMicVolume) {
     const icon = document.getElementById("micMuteIcon");
     if (icon) icon.innerHTML = val === 0 ? MIC_MUTED_SVG : MIC_ICON_SVG;
     if (state.call.micGainNode) state.call.micGainNode.gain.value = val / 100;
+    if (settingsMicVolume) settingsMicVolume.value = String(val);
   });
 }
 
@@ -5721,6 +5906,7 @@ if (popoverSpeakerVolume) {
     const icon = document.getElementById("speakerMuteIcon");
     if (icon) icon.innerHTML = val === 0 ? SPK_MUTED_SVG : SPK_ICON_SVG;
     if (remoteAudio) remoteAudio.volume = val / 100;
+    if (settingsSpeakerVolume) settingsSpeakerVolume.value = String(val);
   });
 }
 
@@ -5756,5 +5942,6 @@ document.addEventListener("click", (e) => {
   }
 });
 
-init();
+window.addEventListener("beforeunload", stopMicTest);
 
+init();
