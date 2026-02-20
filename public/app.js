@@ -50,6 +50,16 @@ const themeToggleBtn = document.getElementById("themeToggleBtn");
 const fullscreenToggleBtn = document.getElementById("fullscreenToggleBtn");
 const vigenereKeyInput = document.getElementById("vigenereKeyInput");
 const vigenereToggle = document.getElementById("vigenereToggle");
+const encLabelIcon = document.getElementById("encLabelIcon");
+const encInputWrap = document.getElementById("encInputWrap");
+const encVisualLayer = document.getElementById("encVisualLayer");
+const encVisibilityBtn = document.getElementById("encVisibilityBtn");
+const encEyeIcon = document.getElementById("encEyeIcon");
+const encEyeOffIcon = document.getElementById("encEyeOffIcon");
+const encStrengthBars = Array.from(document.querySelectorAll(".enc-strength-bar"));
+const encSaveBtn = document.getElementById("encSaveBtn");
+const encStatusValue = document.getElementById("encStatusValue");
+const encSaveHint = document.getElementById("encSaveHint");
 const loginOtpLabel = document.getElementById("loginOtpLabel");
 const loginOtpInput = document.getElementById("loginOtpInput");
 const loginOtpCancelBtn = document.getElementById("loginOtpCancelBtn");
@@ -84,6 +94,8 @@ const deleteCancelBtn = document.getElementById("deleteCancelBtn");
 const chatLockBtn = document.getElementById("chatLockBtn");
 const blockUserBtn = document.getElementById("blockUserBtn");
 const callBtn = document.getElementById("callBtn");
+const chatAvatar = document.getElementById("chatAvatar");
+const chatAvatarImg = document.getElementById("chatAvatarImg");
 const chatLockOverlay = document.getElementById("chatLockOverlay");
 const chatLockCodeInput = document.getElementById("chatLockCodeInput");
 const chatUnlockBtn = document.getElementById("chatUnlockBtn");
@@ -136,6 +148,33 @@ const avatarFileInput = document.getElementById("avatarFileInput");
 const avatarUploadBtn = document.getElementById("avatarUploadBtn");
 const notifToggleBtn = document.getElementById("notifToggleBtn");
 const groupSettingsHeaderBtn = document.getElementById("groupSettingsHeaderBtn");
+const mobileMenuBtn = document.getElementById("mobileMenuBtn");
+const mobileMenuSheet = document.getElementById("mobileMenuSheet");
+const mobileMenuCreateBtn = document.getElementById("mobileMenuCreateBtn");
+const mobileMenuSettingsBtn = document.getElementById("mobileMenuSettingsBtn");
+const mobileMenuLogoutBtn = document.getElementById("mobileMenuLogoutBtn");
+const mobileThemeBtn = document.getElementById("mobileThemeBtn");
+const mobileSearchBtn = document.getElementById("mobileSearchBtn");
+const mobileFabBtn = document.getElementById("mobileFabBtn");
+const mobileOpenSettingsBtn = document.getElementById("mobileOpenSettingsBtn");
+const mobileChatsPanel = document.getElementById("mobileChatsPanel");
+const mobileCallsPanel = document.getElementById("mobileCallsPanel");
+const mobileSettingsPanel = document.getElementById("mobileSettingsPanel");
+const mobileBottomTabButtons = Array.from(
+  document.querySelectorAll("[data-mobile-tab]")
+);
+const mobileCallBtn = document.getElementById("mobileCallBtn");
+const mobileOptionsBtn = document.getElementById("mobileOptionsBtn");
+const mobileChatActionSheet = document.getElementById("mobileChatActionSheet");
+const mobileDeleteActionBtn = document.getElementById("mobileDeleteActionBtn");
+const mobileLockActionBtn = document.getElementById("mobileLockActionBtn");
+const mobileBlockActionBtn = document.getElementById("mobileBlockActionBtn");
+const mobileGroupSettingsActionBtn = document.getElementById(
+  "mobileGroupSettingsActionBtn"
+);
+const mobileEmojiBtn = document.getElementById("mobileEmojiBtn");
+const mobileAttachBtn = document.getElementById("mobileAttachBtn");
+const mobileToast = document.getElementById("mobileToast");
 const groupSettingsModal = document.getElementById("groupSettingsModal");
 const closeGroupSettingsBtn = document.getElementById("closeGroupSettingsBtn");
 const gsAvatarPreview = document.getElementById("gsAvatarPreview");
@@ -156,8 +195,10 @@ const gsDeleteGroupBtn = document.getElementById("gsDeleteGroupBtn");
 const gsStatus = document.getElementById("gsStatus");
 
 const UI_SETTINGS_KEY = "messenger_ui_settings_v1";
-const DEFAULT_VIGENERE_KEY = "WAVE";
 const DEFAULT_MESSAGE_PLACEHOLDER = "Напишите сообщение...";
+const ENCRYPTION_WIDGET_PLACEHOLDER = "••••••••••••";
+const ENCRYPTION_WIDGET_SCRAMBLE_CHARS =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
 const MESSAGE_DELETE_ANIMATION_MS = 240;
 const SIDEBAR_DEFAULT_WIDTH = 336;
 const SIDEBAR_MIN_WIDTH = 260;
@@ -187,6 +228,17 @@ const ALLOWED_TRANSLATION_LANGS = new Set([
   "pl",
 ]);
 const ALLOWED_THEMES = new Set(["light", "dark"]);
+
+const encryptionWidgetState = {
+  showKey: false,
+  globalScramble: false,
+  globalScrambleInterval: null,
+  globalScrambleTimeout: null,
+  charStates: [],
+  globalChars: [],
+  typingPulseTimeout: null,
+  saveHintTimeout: null,
+};
 
 const state = {
   me: null,
@@ -241,6 +293,8 @@ const state = {
   contextMenuConversationId: null,
   typingTimers: new Map(),
   typingDebounce: null,
+  mobileTab: "chats",
+  mobileToastTimer: null,
   voiceRecorder: null,
   voiceRecording: false,
   groupSelectedMembers: [],
@@ -250,7 +304,7 @@ const state = {
     theme: "light",
     targetLanguage: "off",
     vigenereEnabled: false,
-    vigenereKey: DEFAULT_VIGENERE_KEY,
+    vigenereKey: "",
     sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
     microphoneId: "",
     speakerId: "",
@@ -697,12 +751,12 @@ async function loadPopoverDevices() {
         const nameEl = document.getElementById("speakerDeviceName");
         if (nameEl) nameEl.textContent = label;
         if (remoteAudio && typeof remoteAudio.setSinkId === "function") {
-          remoteAudio.setSinkId(deviceId).catch(() => {});
+          remoteAudio.setSinkId(deviceId).catch(() => { });
         }
         closeCpopLists();
       }, "speaker");
     }
-  } catch {}
+  } catch { }
 }
 
 function setCallMuted(muted) {
@@ -859,6 +913,11 @@ function updateCallUi() {
   } else {
     callBtn.title = "";
   }
+  if (mobileCallBtn) {
+    mobileCallBtn.disabled = callBtn.disabled;
+    mobileCallBtn.classList.toggle("active", callActive);
+    mobileCallBtn.title = callBtn.title || callBtn.textContent || "";
+  }
 
   // Sync floating incoming-call panel vs inline active-call panel
   if (hasPendingIncoming && !callActive) {
@@ -911,7 +970,7 @@ function cleanupCallState(options = {}) {
   }
 
   if (state.call.micAudioCtx) {
-    try { state.call.micAudioCtx.close(); } catch {}
+    try { state.call.micAudioCtx.close(); } catch { }
   }
 
   state.call.active = false;
@@ -1108,7 +1167,7 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
         remoteAudio.play().catch(() => {
           // Retry play on user interaction if autoplay blocked
           document.addEventListener("click", () => {
-            remoteAudio.play().catch(() => {});
+            remoteAudio.play().catch(() => { });
           }, { once: true });
         });
       };
@@ -1527,6 +1586,7 @@ function updateBlockUserUi() {
   blockUserBtn.disabled = !canToggle || state.blockActionInFlight;
   blockUserBtn.classList.toggle("active", blockedByMe);
   blockUserBtn.textContent = blockedByMe ? "Разблокировать" : "Заблокировать";
+  updateMobileChatActionSheet();
 }
 
 function updateComposerUi() {
@@ -1536,6 +1596,13 @@ function updateComposerUi() {
 
   messageInput.disabled = disabled;
   vigenereToggle.disabled = disabled;
+  voiceRecordBtn.disabled = disabled;
+  if (mobileEmojiBtn) {
+    mobileEmojiBtn.disabled = disabled;
+  }
+  if (mobileAttachBtn) {
+    mobileAttachBtn.disabled = disabled;
+  }
   if (sendMessageBtn) {
     sendMessageBtn.disabled = disabled;
   }
@@ -1543,6 +1610,7 @@ function updateComposerUi() {
   messageInput.placeholder = blockedMe
     ? "Вы заблокированы в этом чате."
     : DEFAULT_MESSAGE_PLACEHOLDER;
+  syncMobileComposerState();
 }
 
 function updateChatLockUi() {
@@ -1566,6 +1634,7 @@ function updateChatLockUi() {
     chatLockCodeInput.value = "";
     setChatLockStatus("");
   }
+  updateMobileChatActionSheet();
 }
 
 function setChatLocked(locked) {
@@ -1672,6 +1741,7 @@ function updateDeleteUi() {
   deleteSelectedBtn.disabled = selectedCount === 0 || locked;
   deleteConversationBtn.disabled = !hasConversation || locked;
   deleteCancelBtn.disabled = locked;
+  updateMobileChatActionSheet();
 }
 
 function setDeleteMode(enabled) {
@@ -1861,7 +1931,9 @@ function setNoConversationHeader() {
   chatTitle.textContent = "Выберите диалог слева";
   chatPresence.textContent = "";
   chatPresence.classList.remove("online", "offline");
+  setChatAvatar(null);
   groupSettingsHeaderBtn.classList.add("hidden");
+  updateMobileChatActionSheet();
   if (!state.call.active && !state.call.pendingIncoming) {
     setCallStatus("");
   }
@@ -1877,6 +1949,7 @@ function renderActiveConversationHeader() {
     return;
   }
 
+  setChatAvatar(conversation);
   if (conversation.type === "group") {
     chatTitle.textContent = conversation.name || "Группа";
     const onlineCount = (conversation.participants || []).filter((p) => p.online).length;
@@ -1897,6 +1970,7 @@ function renderActiveConversationHeader() {
     groupSettingsHeaderBtn.classList.add("hidden");
   }
   hideTypingIndicator();
+  updateMobileChatActionSheet();
   updateBlockUserUi();
   updateComposerUi();
   updateCallUi();
@@ -2022,6 +2096,18 @@ async function api(path, options = {}) {
 function showAuth() {
   chatView.classList.add("hidden");
   authView.classList.remove("hidden");
+  stopEncryptionGlobalScramble();
+  clearEncryptionWidgetCharTimers();
+  clearTimeout(encryptionWidgetState.typingPulseTimeout);
+  clearTimeout(encryptionWidgetState.saveHintTimeout);
+  encryptionWidgetState.showKey = false;
+  if (encSaveHint) {
+    encSaveHint.textContent = "";
+    encSaveHint.classList.remove("ok");
+  }
+  closeMobileMenuSheet();
+  closeMobileChatActionSheet();
+  setMobileTab("chats");
   setSettingsPanelOpen(false);
   if (state.call.active) {
     endCall(true, "Звонок завершен.");
@@ -2033,8 +2119,6 @@ function showAuth() {
   state.blockActionInFlight = false;
   state.deleteMode = false;
   state.selectedMessageIds.clear();
-  resetVigenereKey();
-  saveUiSettings();
   resetLoginTwoFactorStep();
   clearTwoFaSetup();
   state.twoFa.enabled = false;
@@ -2058,17 +2142,24 @@ function showAuth() {
 function showChat() {
   authView.classList.add("hidden");
   chatView.classList.remove("hidden");
+  setMobileTab("chats");
+  closeMobileMenuSheet();
+  closeMobileChatActionSheet();
   applySidebarWidth(state.ui.sidebarWidth);
   renderActiveConversationHeader();
   updateChatLockUi();
+  syncMobileComposerState();
 }
 
 function resetMobileChatState() {
   chatView.classList.remove("chat-open");
+  closeMobileChatActionSheet();
 }
 
 function openMobileChatState() {
   chatView.classList.add("chat-open");
+  closeMobileMenuSheet();
+  closeMobileChatActionSheet();
 }
 
 function normalizeTranslationLanguage(value) {
@@ -2088,8 +2179,7 @@ function normalizeTheme(value) {
 }
 
 function normalizeVigenereKey(value) {
-  const key = String(value || "").trim();
-  return key || DEFAULT_VIGENERE_KEY;
+  return String(value || "").trim();
 }
 
 function normalizeSidebarWidth(value) {
@@ -2207,13 +2297,6 @@ function initializeSidebarResize() {
   });
 }
 
-function resetVigenereKey() {
-  state.ui.vigenereKey = DEFAULT_VIGENERE_KEY;
-  if (vigenereKeyInput) {
-    vigenereKeyInput.value = DEFAULT_VIGENERE_KEY;
-  }
-}
-
 function applyTheme() {
   document.documentElement.dataset.theme = normalizeTheme(state.ui.theme);
 }
@@ -2250,6 +2333,7 @@ function saveUiSettings() {
         theme: state.ui.theme,
         targetLanguage: state.ui.targetLanguage,
         vigenereEnabled: state.ui.vigenereEnabled,
+        vigenereKey: normalizeVigenereKey(state.ui.vigenereKey),
         sidebarWidth: normalizeSidebarWidth(state.ui.sidebarWidth),
         microphoneId: state.ui.microphoneId || "",
         speakerId: state.ui.speakerId || "",
@@ -2275,7 +2359,7 @@ function loadUiSettings() {
     state.ui.targetLanguage = "off";
     state.ui.vigenereEnabled = Boolean(parsed.vigenereEnabled);
     state.ui.sidebarWidth = normalizeSidebarWidth(parsed.sidebarWidth);
-    state.ui.vigenereKey = DEFAULT_VIGENERE_KEY;
+    state.ui.vigenereKey = normalizeVigenereKey(parsed.vigenereKey);
     state.ui.microphoneId = String(parsed.microphoneId || "");
     state.ui.speakerId = String(parsed.speakerId || "");
     state.ui.fullscreen = parsed.fullscreen !== false;
@@ -2311,6 +2395,7 @@ function syncSettingsCallControls() {
 function syncUiControls() {
   vigenereKeyInput.value = normalizeVigenereKey(state.ui.vigenereKey);
   updateVigenereToggle();
+  initializeEncryptionWidget();
   syncSettingsCallControls();
   loadAudioDevices();
   applyFullscreen();
@@ -2347,7 +2432,7 @@ async function loadAudioDevices() {
     }
 
     if (remoteAudio && typeof remoteAudio.setSinkId === "function") {
-      remoteAudio.setSinkId(state.ui.speakerId || "").catch(() => {});
+      remoteAudio.setSinkId(state.ui.speakerId || "").catch(() => { });
     }
   } catch {
   }
@@ -2420,7 +2505,7 @@ function startSpeakingDetection() {
       speakingState.remoteAnalyser = analyser;
       speakingState.remoteCtx = ctx;
     }
-  } catch {}
+  } catch { }
 
   const localData = speakingState.localAnalyser ? new Uint8Array(speakingState.localAnalyser.frequencyBinCount) : null;
   const remoteData = speakingState.remoteAnalyser ? new Uint8Array(speakingState.remoteAnalyser.frequencyBinCount) : null;
@@ -2458,11 +2543,11 @@ function stopSpeakingDetection() {
     speakingState.rafId = null;
   }
   if (speakingState.localCtx) {
-    try { speakingState.localCtx.close(); } catch {}
+    try { speakingState.localCtx.close(); } catch { }
     speakingState.localCtx = null;
   }
   if (speakingState.remoteCtx) {
-    try { speakingState.remoteCtx.close(); } catch {}
+    try { speakingState.remoteCtx.close(); } catch { }
     speakingState.remoteCtx = null;
   }
   speakingState.localAnalyser = null;
@@ -2477,10 +2562,274 @@ function updateVigenereToggle() {
   vigenereToggle.textContent = enabled ? "Encrypt send: ON" : "Encrypt send: OFF";
 }
 
+function randomEncryptionWidgetChar() {
+  const index = Math.floor(Math.random() * ENCRYPTION_WIDGET_SCRAMBLE_CHARS.length);
+  return ENCRYPTION_WIDGET_SCRAMBLE_CHARS[index];
+}
+
+function clearEncryptionWidgetCharTimers() {
+  for (const charState of encryptionWidgetState.charStates) {
+    clearInterval(charState.scrambleInterval);
+    clearTimeout(charState.revealTimeout);
+    clearTimeout(charState.hideTimeout);
+  }
+  encryptionWidgetState.charStates = [];
+}
+
+function getEncryptionStrengthLevel(keyValue) {
+  const key = String(keyValue || "");
+  if (!key) {
+    return 0;
+  }
+  if (key.length < 5) {
+    return 1;
+  }
+  if (key.length < 10) {
+    return 2;
+  }
+  return 3;
+}
+
+function updateEncryptionStatusUi(level) {
+  if (encStatusValue) {
+    encStatusValue.className = `enc-status-value level-${level}`;
+    if (level === 0) {
+      encStatusValue.textContent = "ОЖИДАНИЕ ВВОДА";
+    } else if (level === 1) {
+      encStatusValue.textContent = "СЛАБЫЙ КЛЮЧ";
+    } else if (level === 2) {
+      encStatusValue.textContent = "СРЕДНИЙ КЛЮЧ";
+    } else {
+      encStatusValue.textContent = "НАДЕЖНЫЙ КЛЮЧ";
+    }
+  }
+
+  if (encStrengthBars.length > 0) {
+    encStrengthBars.forEach((bar, index) => {
+      const barLevel = index + 1;
+      const active = level >= barLevel;
+      bar.classList.toggle("active", active);
+      bar.classList.toggle("weak", active && barLevel === 1);
+      bar.classList.toggle("medium", active && barLevel === 2);
+      bar.classList.toggle("strong", active && barLevel === 3);
+    });
+  }
+}
+
+function updateEncryptionVisibilityIcons() {
+  if (!encEyeIcon || !encEyeOffIcon) {
+    return;
+  }
+  encEyeIcon.classList.toggle("hidden", encryptionWidgetState.showKey);
+  encEyeOffIcon.classList.toggle("hidden", !encryptionWidgetState.showKey);
+}
+
+function renderEncryptionWidgetVisual() {
+  if (!encVisualLayer || !vigenereKeyInput) {
+    return;
+  }
+
+  const keyChars = Array.from(String(vigenereKeyInput.value || ""));
+  if (keyChars.length === 0) {
+    const placeholder = document.createElement("span");
+    placeholder.className = "enc-placeholder";
+    placeholder.textContent = ENCRYPTION_WIDGET_PLACEHOLDER;
+    encVisualLayer.replaceChildren(placeholder);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (let index = 0; index < keyChars.length; index += 1) {
+    const char = keyChars[index];
+    const charState = encryptionWidgetState.charStates[index];
+    let renderChar = "•";
+    let glowing = false;
+
+    if (encryptionWidgetState.globalScramble) {
+      renderChar = encryptionWidgetState.globalChars[index] || randomEncryptionWidgetChar();
+      glowing = true;
+    } else if (encryptionWidgetState.showKey) {
+      renderChar = char;
+    } else if (charState) {
+      if (charState.phase === "scrambling") {
+        renderChar = charState.scrambleChar;
+        glowing = true;
+      } else if (charState.phase === "visible") {
+        renderChar = char;
+        glowing = true;
+      }
+    }
+
+    const span = document.createElement("span");
+    span.className = `enc-char${glowing ? " glow" : ""}`;
+    span.textContent = renderChar;
+    fragment.appendChild(span);
+  }
+
+  encVisualLayer.replaceChildren(fragment);
+}
+
+function stopEncryptionGlobalScramble() {
+  clearInterval(encryptionWidgetState.globalScrambleInterval);
+  clearTimeout(encryptionWidgetState.globalScrambleTimeout);
+  encryptionWidgetState.globalScrambleInterval = null;
+  encryptionWidgetState.globalScrambleTimeout = null;
+  encryptionWidgetState.globalScramble = false;
+  encryptionWidgetState.globalChars = [];
+  if (encVisibilityBtn) {
+    encVisibilityBtn.disabled = false;
+  }
+}
+
+function refreshEncryptionWidget(options = {}) {
+  if (!vigenereKeyInput) {
+    return;
+  }
+
+  const { rescramble = true } = options;
+  const keyChars = Array.from(String(vigenereKeyInput.value || ""));
+
+  if (rescramble) {
+    clearEncryptionWidgetCharTimers();
+    encryptionWidgetState.charStates = keyChars.map((char) => {
+      const entry = {
+        char,
+        phase: "scrambling",
+        scrambleChar: randomEncryptionWidgetChar(),
+        scrambleInterval: null,
+        revealTimeout: null,
+        hideTimeout: null,
+      };
+
+      entry.scrambleInterval = setInterval(() => {
+        entry.scrambleChar = randomEncryptionWidgetChar();
+        if (!encryptionWidgetState.globalScramble && !encryptionWidgetState.showKey) {
+          renderEncryptionWidgetVisual();
+        }
+      }, 30);
+
+      entry.revealTimeout = setTimeout(() => {
+        clearInterval(entry.scrambleInterval);
+        entry.scrambleInterval = null;
+        entry.phase = "visible";
+        if (!encryptionWidgetState.globalScramble && !encryptionWidgetState.showKey) {
+          renderEncryptionWidgetVisual();
+        }
+      }, 150);
+
+      entry.hideTimeout = setTimeout(() => {
+        entry.phase = "hidden";
+        if (!encryptionWidgetState.globalScramble && !encryptionWidgetState.showKey) {
+          renderEncryptionWidgetVisual();
+        }
+      }, 950);
+
+      return entry;
+    });
+  }
+
+  const strengthLevel = getEncryptionStrengthLevel(vigenereKeyInput.value);
+  updateEncryptionStatusUi(strengthLevel);
+  updateEncryptionVisibilityIcons();
+
+  const keyExists = Boolean(vigenereKeyInput.value);
+  if (encSaveBtn) {
+    encSaveBtn.disabled = !keyExists || encryptionWidgetState.globalScramble;
+  }
+  if (encVisibilityBtn) {
+    encVisibilityBtn.disabled = encryptionWidgetState.globalScramble;
+  }
+
+  renderEncryptionWidgetVisual();
+}
+
+function pulseEncryptionLabelIcon() {
+  if (!encLabelIcon) {
+    return;
+  }
+  encLabelIcon.classList.add("typing");
+  clearTimeout(encryptionWidgetState.typingPulseTimeout);
+  encryptionWidgetState.typingPulseTimeout = setTimeout(() => {
+    encLabelIcon.classList.remove("typing");
+  }, 170);
+}
+
+function toggleEncryptionKeyVisibility(event) {
+  event.preventDefault();
+  if (!vigenereKeyInput) {
+    return;
+  }
+
+  const hasKey = Boolean(vigenereKeyInput.value);
+  if (!hasKey || encryptionWidgetState.globalScramble) {
+    encryptionWidgetState.showKey = !encryptionWidgetState.showKey;
+    refreshEncryptionWidget({ rescramble: false });
+    return;
+  }
+
+  encryptionWidgetState.globalScramble = true;
+  if (encVisibilityBtn) {
+    encVisibilityBtn.disabled = true;
+  }
+
+  encryptionWidgetState.globalScrambleInterval = setInterval(() => {
+    encryptionWidgetState.globalChars = Array.from(vigenereKeyInput.value).map(() =>
+      randomEncryptionWidgetChar()
+    );
+    renderEncryptionWidgetVisual();
+  }, 30);
+
+  clearTimeout(encryptionWidgetState.globalScrambleTimeout);
+  encryptionWidgetState.globalScrambleTimeout = setTimeout(() => {
+    encryptionWidgetState.globalScrambleTimeout = null;
+    stopEncryptionGlobalScramble();
+    encryptionWidgetState.showKey = !encryptionWidgetState.showKey;
+    refreshEncryptionWidget({ rescramble: false });
+  }, 400);
+}
+
+function saveEncryptionKeyFromCard() {
+  if (!vigenereKeyInput) {
+    return;
+  }
+  const key = String(vigenereKeyInput.value || "").trim();
+  if (!key || encryptionWidgetState.globalScramble) {
+    return;
+  }
+
+  state.ui.vigenereKey = normalizeVigenereKey(key);
+  saveUiSettings();
+  renderMessages();
+
+  if (encSaveHint) {
+    encSaveHint.textContent = "Ключ шифрования сохранен";
+    encSaveHint.classList.add("ok");
+    clearTimeout(encryptionWidgetState.saveHintTimeout);
+    encryptionWidgetState.saveHintTimeout = setTimeout(() => {
+      encSaveHint.textContent = "";
+      encSaveHint.classList.remove("ok");
+    }, 1800);
+  }
+
+  showMobileToast("Ключ шифрования сохранен");
+}
+
+function initializeEncryptionWidget() {
+  if (!vigenereKeyInput || !encVisualLayer) {
+    return;
+  }
+  refreshEncryptionWidget({ rescramble: true });
+}
+
 function setSettingsPanelOpen(isOpen) {
   const shouldOpen = Boolean(isOpen) && !state.chatLocked;
   settingsPanel.classList.toggle("hidden", !shouldOpen);
   if (shouldOpen) {
+    closeMobileMenuSheet();
+    closeMobileChatActionSheet();
+    if (isMobileViewport() && !chatView.classList.contains("chat-open")) {
+      setMobileTab("settings");
+    }
     syncSettingsCallControls();
     loadAudioDevices();
   }
@@ -2687,6 +3036,174 @@ function createEmptyListNote(text) {
   return item;
 }
 
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 950px)").matches;
+}
+
+function showMobileToast(text) {
+  if (!mobileToast) {
+    return;
+  }
+  const message = String(text || "").trim();
+  if (!message) {
+    return;
+  }
+
+  mobileToast.textContent = message;
+  mobileToast.classList.remove("hidden");
+  mobileToast.classList.add("shown");
+  clearTimeout(state.mobileToastTimer);
+  state.mobileToastTimer = setTimeout(() => {
+    mobileToast.classList.remove("shown");
+    mobileToast.classList.add("hidden");
+  }, 2200);
+}
+
+function closeMobileMenuSheet() {
+  if (!mobileMenuSheet || mobileMenuSheet.classList.contains("hidden")) {
+    return;
+  }
+  mobileMenuSheet.classList.add("hidden");
+  if (mobileMenuBtn) {
+    mobileMenuBtn.classList.remove("active");
+  }
+}
+
+function toggleMobileMenuSheet(forceOpen = null) {
+  if (!mobileMenuSheet) {
+    return;
+  }
+  const shouldOpen =
+    forceOpen === null
+      ? mobileMenuSheet.classList.contains("hidden")
+      : Boolean(forceOpen);
+  mobileMenuSheet.classList.toggle("hidden", !shouldOpen);
+  if (mobileMenuBtn) {
+    mobileMenuBtn.classList.toggle("active", shouldOpen);
+  }
+  if (shouldOpen) {
+    closeMobileChatActionSheet();
+  }
+}
+
+function closeMobileChatActionSheet() {
+  if (!mobileChatActionSheet || mobileChatActionSheet.classList.contains("hidden")) {
+    return;
+  }
+  mobileChatActionSheet.classList.add("hidden");
+  if (mobileOptionsBtn) {
+    mobileOptionsBtn.classList.remove("active");
+  }
+}
+
+function updateMobileChatActionSheet() {
+  if (!mobileChatActionSheet) {
+    return;
+  }
+
+  if (mobileDeleteActionBtn && deleteModeBtn) {
+    mobileDeleteActionBtn.textContent = deleteModeBtn.textContent || "Удаление";
+    mobileDeleteActionBtn.disabled = deleteModeBtn.disabled;
+  }
+  if (mobileLockActionBtn && chatLockBtn) {
+    mobileLockActionBtn.textContent = chatLockBtn.textContent || "Защитить чат";
+    mobileLockActionBtn.disabled = chatLockBtn.disabled;
+  }
+  if (mobileBlockActionBtn && blockUserBtn) {
+    mobileBlockActionBtn.textContent = blockUserBtn.textContent || "Заблокировать";
+    mobileBlockActionBtn.disabled = blockUserBtn.disabled;
+  }
+  if (mobileGroupSettingsActionBtn && groupSettingsHeaderBtn) {
+    const showGroupAction = !groupSettingsHeaderBtn.classList.contains("hidden");
+    mobileGroupSettingsActionBtn.classList.toggle("hidden", !showGroupAction);
+    mobileGroupSettingsActionBtn.disabled = !showGroupAction;
+  }
+}
+
+function toggleMobileChatActionSheet(forceOpen = null) {
+  if (!mobileChatActionSheet) {
+    return;
+  }
+  updateMobileChatActionSheet();
+  const shouldOpen =
+    forceOpen === null
+      ? mobileChatActionSheet.classList.contains("hidden")
+      : Boolean(forceOpen);
+  mobileChatActionSheet.classList.toggle("hidden", !shouldOpen);
+  if (mobileOptionsBtn) {
+    mobileOptionsBtn.classList.toggle("active", shouldOpen);
+  }
+  if (shouldOpen) {
+    closeMobileMenuSheet();
+  }
+}
+
+function setMobileTab(tab) {
+  const normalized =
+    tab === "calls" || tab === "settings" || tab === "chats" ? tab : "chats";
+  state.mobileTab = normalized;
+  if (chatView) {
+    chatView.dataset.mobileTab = normalized;
+  }
+
+  for (const button of mobileBottomTabButtons) {
+    const active = button.dataset.mobileTab === normalized;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+
+  if (mobileChatsPanel) {
+    mobileChatsPanel.classList.toggle("hidden", normalized !== "chats");
+  }
+  if (mobileCallsPanel) {
+    mobileCallsPanel.classList.toggle("hidden", normalized !== "calls");
+  }
+  if (mobileSettingsPanel) {
+    mobileSettingsPanel.classList.toggle("hidden", normalized !== "settings");
+  }
+
+  closeMobileMenuSheet();
+  closeMobileChatActionSheet();
+}
+
+function syncMobileComposerState() {
+  if (!messageForm || !messageInput) {
+    return;
+  }
+  messageForm.classList.toggle("has-text", Boolean(messageInput.value.trim()));
+}
+
+function setChatAvatar(conversation) {
+  if (!chatAvatar || !chatAvatarImg) {
+    return;
+  }
+
+  let title = "Диалог";
+  let avatarUrl = "";
+  if (conversation) {
+    if (conversation.type === "group") {
+      title = conversation.name || "Группа";
+      avatarUrl = conversation.avatarUrl || "";
+    } else {
+      title = conversation.participant?.username || "Диалог";
+      avatarUrl = conversation.participant?.avatarUrl || "";
+    }
+  }
+
+  chatAvatar.dataset.initial = getInitial(title);
+  if (avatarUrl) {
+    chatAvatarImg.src = avatarUrl;
+    chatAvatarImg.alt = title;
+    chatAvatarImg.classList.remove("hidden");
+    chatAvatar.classList.add("has-image");
+  } else {
+    chatAvatarImg.removeAttribute("src");
+    chatAvatarImg.alt = "";
+    chatAvatarImg.classList.add("hidden");
+    chatAvatar.classList.remove("has-image");
+  }
+}
+
 function getMessageTypePreview(message, fallback = "Сообщение") {
   if (!message) {
     return fallback;
@@ -2860,9 +3377,17 @@ function renderConversationList() {
     if (conversation.lastMessage?.senderId === state.me?.id) {
       preview = `${conversation.lastMessage.readAt ? "✓✓" : "✓"} ${preview}`;
     }
+    const hasUnreadMarker = Boolean(
+      conversation.lastMessage &&
+      conversation.lastMessage.senderId !== state.me?.id &&
+      !conversation.lastMessage.readAt
+    );
     button.dataset.initial = getInitial(title);
     if (pinned) {
       button.classList.add("pinned");
+    }
+    if (hasUnreadMarker) {
+      button.classList.add("has-unread");
     }
 
     if (avatarUrl) {
@@ -2918,7 +3443,17 @@ function renderConversationList() {
     previewEl.textContent = preview;
 
     button.appendChild(row);
-    button.appendChild(previewEl);
+    if (hasUnreadMarker) {
+      const previewRow = document.createElement("div");
+      previewRow.className = "item-sub-row";
+      const unreadEl = document.createElement("span");
+      unreadEl.className = "item-unread";
+      unreadEl.textContent = "1";
+      previewRow.append(previewEl, unreadEl);
+      button.appendChild(previewRow);
+    } else {
+      button.appendChild(previewEl);
+    }
 
     button.addEventListener("click", () => {
       selectConversation(conversation.id);
@@ -3451,8 +3986,10 @@ async function selectConversation(conversationId) {
   await loadMessages(conversationId);
   renderMessages();
   markConversationAsRead(conversationId);
+  setMobileTab("chats");
+  closeMobileChatActionSheet();
 
-  if (window.matchMedia("(max-width: 950px)").matches) {
+  if (isMobileViewport()) {
     openMobileChatState();
   }
 }
@@ -3479,6 +4016,9 @@ async function loadConversations() {
   setNoConversationHeader();
   renderMessages();
   resetMobileChatState();
+  setMobileTab("chats");
+  closeMobileMenuSheet();
+  closeMobileChatActionSheet();
   updateChatLockUi();
 }
 
@@ -3648,8 +4188,6 @@ function connectSocket() {
 async function bootstrapSession(user) {
   state.me = user;
   state.chatLocked = false;
-  resetVigenereKey();
-  saveUiSettings();
   setChatLockStatus("");
   meName.textContent = `${user.username} (${user.email})`;
   showChat();
@@ -3796,6 +4334,138 @@ settingsPanel.addEventListener("click", (event) => {
     setSettingsPanelOpen(false);
   }
 });
+
+if (mobileMenuBtn) {
+  mobileMenuBtn.addEventListener("click", () => {
+    if (!isMobileViewport()) {
+      return;
+    }
+    toggleMobileMenuSheet();
+  });
+}
+
+if (mobileMenuCreateBtn) {
+  mobileMenuCreateBtn.addEventListener("click", () => {
+    closeMobileMenuSheet();
+    createGroupBtn.click();
+  });
+}
+
+if (mobileMenuSettingsBtn) {
+  mobileMenuSettingsBtn.addEventListener("click", () => {
+    closeMobileMenuSheet();
+    settingsBtn.click();
+  });
+}
+
+if (mobileMenuLogoutBtn) {
+  mobileMenuLogoutBtn.addEventListener("click", () => {
+    closeMobileMenuSheet();
+    logoutBtn.click();
+  });
+}
+
+if (mobileThemeBtn) {
+  mobileThemeBtn.addEventListener("click", () => {
+    toggleThemeFromButton(mobileThemeBtn);
+  });
+}
+
+if (mobileSearchBtn) {
+  mobileSearchBtn.addEventListener("click", () => {
+    setMobileTab("chats");
+    userSearch.focus();
+    showMobileToast("Поиск чатов и пользователей");
+  });
+}
+
+if (mobileFabBtn) {
+  mobileFabBtn.addEventListener("click", () => {
+    setMobileTab("chats");
+    createGroupBtn.click();
+  });
+}
+
+if (mobileOpenSettingsBtn) {
+  mobileOpenSettingsBtn.addEventListener("click", () => {
+    settingsBtn.click();
+  });
+}
+
+for (const mobileTabBtn of mobileBottomTabButtons) {
+  mobileTabBtn.addEventListener("click", () => {
+    setMobileTab(mobileTabBtn.dataset.mobileTab);
+  });
+}
+
+if (mobileCallBtn) {
+  mobileCallBtn.addEventListener("click", () => {
+    callBtn.click();
+  });
+}
+
+if (mobileOptionsBtn) {
+  mobileOptionsBtn.addEventListener("click", () => {
+    if (!isMobileViewport()) {
+      return;
+    }
+    toggleMobileChatActionSheet();
+  });
+}
+
+if (mobileDeleteActionBtn) {
+  mobileDeleteActionBtn.addEventListener("click", () => {
+    closeMobileChatActionSheet();
+    deleteModeBtn.click();
+  });
+}
+
+if (mobileLockActionBtn) {
+  mobileLockActionBtn.addEventListener("click", () => {
+    closeMobileChatActionSheet();
+    chatLockBtn.click();
+  });
+}
+
+if (mobileBlockActionBtn) {
+  mobileBlockActionBtn.addEventListener("click", () => {
+    closeMobileChatActionSheet();
+    blockUserBtn.click();
+  });
+}
+
+if (mobileGroupSettingsActionBtn) {
+  mobileGroupSettingsActionBtn.addEventListener("click", () => {
+    closeMobileChatActionSheet();
+    if (!groupSettingsHeaderBtn.classList.contains("hidden")) {
+      groupSettingsHeaderBtn.click();
+    }
+  });
+}
+
+if (mobileEmojiBtn) {
+  mobileEmojiBtn.addEventListener("click", () => {
+    const emoji = "🙂";
+    const current = messageInput.value || "";
+    const start = Number.isFinite(messageInput.selectionStart)
+      ? messageInput.selectionStart
+      : current.length;
+    const end = Number.isFinite(messageInput.selectionEnd)
+      ? messageInput.selectionEnd
+      : current.length;
+    messageInput.value = `${current.slice(0, start)}${emoji}${current.slice(end)}`;
+    const nextCaret = start + emoji.length;
+    messageInput.focus();
+    messageInput.setSelectionRange(nextCaret, nextCaret);
+    messageInput.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+if (mobileAttachBtn) {
+  mobileAttachBtn.addEventListener("click", () => {
+    showMobileToast("Вставьте скриншот через Ctrl+V");
+  });
+}
 
 // Settings tab switching
 const settingsTabTitles = {
@@ -4133,7 +4803,26 @@ vigenereKeyInput.addEventListener("input", () => {
   state.ui.vigenereKey = normalizeVigenereKey(vigenereKeyInput.value);
   saveUiSettings();
   renderMessages();
+  pulseEncryptionLabelIcon();
+  refreshEncryptionWidget({ rescramble: true });
 });
+
+if (encInputWrap) {
+  vigenereKeyInput.addEventListener("focus", () => {
+    encInputWrap.classList.add("focused");
+  });
+  vigenereKeyInput.addEventListener("blur", () => {
+    encInputWrap.classList.remove("focused");
+  });
+}
+
+if (encVisibilityBtn) {
+  encVisibilityBtn.addEventListener("click", toggleEncryptionKeyVisibility);
+}
+
+if (encSaveBtn) {
+  encSaveBtn.addEventListener("click", saveEncryptionKeyFromCard);
+}
 
 if (microphoneSelect) {
   microphoneSelect.addEventListener("change", () => {
@@ -4147,7 +4836,7 @@ if (speakerSelect) {
     state.ui.speakerId = speakerSelect.value;
     saveUiSettings();
     if (remoteAudio && typeof remoteAudio.setSinkId === "function") {
-      remoteAudio.setSinkId(state.ui.speakerId || "").catch(() => {});
+      remoteAudio.setSinkId(state.ui.speakerId || "").catch(() => { });
     }
   });
 }
@@ -4194,6 +4883,7 @@ vigenereToggle.addEventListener("click", () => {
 messageInput.addEventListener("input", () => {
   messageInput.style.height = "auto";
   messageInput.style.height = `${Math.min(messageInput.scrollHeight, 130)}px`;
+  syncMobileComposerState();
 });
 
 messageInput.addEventListener("keydown", (event) => {
@@ -4283,6 +4973,7 @@ messageForm.addEventListener("submit", async (event) => {
     playOutgoingMessageSound();
     messageInput.value = "";
     messageInput.style.height = "auto";
+    syncMobileComposerState();
     state.replyToMessage = null;
     replyBar.classList.add("hidden");
   } catch (error) {
@@ -4292,12 +4983,16 @@ messageForm.addEventListener("submit", async (event) => {
 
 mobileBack.addEventListener("click", () => {
   setDeleteMode(false);
+  closeMobileChatActionSheet();
   resetMobileChatState();
+  setMobileTab("chats");
 });
 
 window.addEventListener("resize", () => {
-  if (!window.matchMedia("(max-width: 950px)").matches) {
+  if (!isMobileViewport()) {
     chatView.classList.remove("chat-open");
+    closeMobileMenuSheet();
+    closeMobileChatActionSheet();
   }
   applySidebarWidth(state.ui.sidebarWidth);
 });
@@ -4334,6 +5029,7 @@ messageInput.addEventListener("input", () => {
   messageInput.style.height = `${Math.min(messageInput.scrollHeight, 130)}px`;
   clearTimeout(state.typingDebounce);
   state.typingDebounce = setTimeout(sendTypingEvent, 300);
+  syncMobileComposerState();
 });
 
 // ========================
@@ -4383,6 +5079,20 @@ document.addEventListener("click", (e) => {
   }
   if (!conversationContextMenu.contains(e.target)) {
     hideConversationContextMenu();
+  }
+  if (
+    mobileMenuSheet &&
+    !mobileMenuSheet.contains(e.target) &&
+    !(mobileMenuBtn && mobileMenuBtn.contains(e.target))
+  ) {
+    closeMobileMenuSheet();
+  }
+  if (
+    mobileChatActionSheet &&
+    !mobileChatActionSheet.contains(e.target) &&
+    !(mobileOptionsBtn && mobileOptionsBtn.contains(e.target))
+  ) {
+    closeMobileChatActionSheet();
   }
 });
 
@@ -5462,8 +6172,6 @@ const _origSubmitHandler = messageForm.onsubmit;
 // ========================
 async function init() {
   loadUiSettings();
-  resetVigenereKey();
-  saveUiSettings();
   applySidebarWidth(state.ui.sidebarWidth);
   initializeSidebarResize();
   applyTheme();
@@ -5475,6 +6183,8 @@ async function init() {
   setSettingsPanelOpen(false);
   setAuthTab("login");
   renderSearchResults([]);
+  setMobileTab("chats");
+  syncMobileComposerState();
 
   await registerServiceWorker();
   await checkPushState();
@@ -5736,7 +6446,7 @@ function stopMicTest() {
     micTestState.stream.getTracks().forEach((track) => track.stop());
   }
   if (micTestState.ctx) {
-    micTestState.ctx.close().catch(() => {});
+    micTestState.ctx.close().catch(() => { });
   }
   micTestState.stream = null;
   micTestState.ctx = null;
