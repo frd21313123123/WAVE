@@ -39,6 +39,7 @@ const popoverWebcamBtn = document.getElementById("popoverWebcamBtn");
 const popoverScreenShareBtn = document.getElementById("popoverScreenShareBtn");
 const remoteVideo = document.getElementById("remoteVideo");
 const localVideo = document.getElementById("localVideo");
+const noConversationState = document.getElementById("noConversationState");
 const messagesEl = document.getElementById("messages");
 const messageForm = document.getElementById("messageForm");
 const messageInput = document.getElementById("messageInput");
@@ -50,6 +51,16 @@ const themeToggleBtn = document.getElementById("themeToggleBtn");
 const fullscreenToggleBtn = document.getElementById("fullscreenToggleBtn");
 const vigenereKeyInput = document.getElementById("vigenereKeyInput");
 const vigenereToggle = document.getElementById("vigenereToggle");
+const encInputShell = document.getElementById("encInputShell");
+const encVisualLayer = document.getElementById("encVisualLayer");
+const encVisibilityBtn = document.getElementById("encVisibilityBtn");
+const encVisibilityEye = document.getElementById("encVisibilityEye");
+const encVisibilityEyeOff = document.getElementById("encVisibilityEyeOff");
+const encSaveBtn = document.getElementById("encSaveBtn");
+const encSaveHint = document.getElementById("encSaveHint");
+const encStatusValue = document.getElementById("encStatusValue");
+const encKeyIcon = document.getElementById("encKeyIcon");
+const encStrengthBars = Array.from(document.querySelectorAll(".enc-strength-bar"));
 const loginOtpLabel = document.getElementById("loginOtpLabel");
 const loginOtpInput = document.getElementById("loginOtpInput");
 const loginOtpCancelBtn = document.getElementById("loginOtpCancelBtn");
@@ -187,6 +198,18 @@ const ALLOWED_TRANSLATION_LANGS = new Set([
   "pl",
 ]);
 const ALLOWED_THEMES = new Set(["light", "dark"]);
+const ENC_SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+
+let encShowKey = false;
+let encGlobalScramble = false;
+let encGlobalScrambleInterval = null;
+let encGlobalScrambleTimeout = null;
+let encTypingPulseTimeout = null;
+let encHintTimeout = null;
+let encVisualRenderToken = 0;
+let encVisualIntervals = [];
+let encVisualTimeouts = [];
+const ENC_DEFAULT_HINT_TEXT = encSaveHint ? encSaveHint.textContent.trim() : "";
 
 const state = {
   me: null,
@@ -2071,6 +2094,33 @@ function openMobileChatState() {
   chatView.classList.add("chat-open");
 }
 
+function returnToMainMenu() {
+  if (!state.activeConversationId) {
+    return false;
+  }
+
+  state.activeConversationId = null;
+  state.deleteMode = false;
+  state.selectedMessageIds.clear();
+  state.replyToMessage = null;
+
+  hideTypingIndicator();
+  hideContextMenu();
+  hideConversationContextMenu();
+  replyBar.classList.add("hidden");
+
+  setSettingsPanelOpen(false);
+  setChatLocked(false);
+  setNoConversationHeader();
+  renderConversationList();
+  renderMessages();
+  resetMobileChatState();
+  updateDeleteUi();
+  updateChatLockUi();
+
+  return true;
+}
+
 function normalizeTranslationLanguage(value) {
   const language = String(value || "").trim().toLowerCase();
   if (!ALLOWED_TRANSLATION_LANGS.has(language)) {
@@ -2311,6 +2361,7 @@ function syncSettingsCallControls() {
 function syncUiControls() {
   vigenereKeyInput.value = normalizeVigenereKey(state.ui.vigenereKey);
   updateVigenereToggle();
+  updateEncryptionUi();
   syncSettingsCallControls();
   loadAudioDevices();
   applyFullscreen();
@@ -2477,12 +2528,248 @@ function updateVigenereToggle() {
   vigenereToggle.textContent = enabled ? "Encrypt send: ON" : "Encrypt send: OFF";
 }
 
+function randomEncChar() {
+  return ENC_SCRAMBLE_CHARS[Math.floor(Math.random() * ENC_SCRAMBLE_CHARS.length)];
+}
+
+function clearEncryptionVisualTimers() {
+  for (const intervalId of encVisualIntervals) {
+    clearInterval(intervalId);
+  }
+  for (const timeoutId of encVisualTimeouts) {
+    clearTimeout(timeoutId);
+  }
+  encVisualIntervals = [];
+  encVisualTimeouts = [];
+  if (encGlobalScrambleInterval) {
+    clearInterval(encGlobalScrambleInterval);
+    encGlobalScrambleInterval = null;
+  }
+}
+
+function getEncryptionSecurityLevel(rawKey) {
+  const length = String(rawKey || "").trim().length;
+  if (!length) return 0;
+  if (length < 5) return 1;
+  if (length < 10) return 2;
+  return 3;
+}
+
+function getEncryptionStatusText(level) {
+  if (level <= 0) return "ОЖИДАНИЕ ВВОДА";
+  if (level === 1) return "СЛАБЫЙ КЛЮЧ";
+  if (level === 2) return "СРЕДНИЙ КЛЮЧ";
+  return "НАДЕЖНЫЙ КЛЮЧ";
+}
+
+function setEncryptionSaveHint(text = "", isSuccess = false) {
+  if (!encSaveHint) {
+    return;
+  }
+  const nextText = String(text || "").trim();
+  if (encHintTimeout) {
+    clearTimeout(encHintTimeout);
+    encHintTimeout = null;
+  }
+  encSaveHint.classList.toggle("success", Boolean(isSuccess) && Boolean(nextText));
+  encSaveHint.textContent = nextText || ENC_DEFAULT_HINT_TEXT;
+
+  if (nextText) {
+    encHintTimeout = setTimeout(() => {
+      encSaveHint.classList.remove("success");
+      encSaveHint.textContent = ENC_DEFAULT_HINT_TEXT;
+      encHintTimeout = null;
+    }, 2200);
+  }
+}
+
+function updateEncryptionVisibilityIcon() {
+  if (!encVisibilityBtn || !encVisibilityEye || !encVisibilityEyeOff) {
+    return;
+  }
+  encVisibilityEye.classList.toggle("hidden", encShowKey);
+  encVisibilityEyeOff.classList.toggle("hidden", !encShowKey);
+  encVisibilityBtn.title = encShowKey ? "Скрыть ключ" : "Показать ключ";
+}
+
+function updateEncryptionStrength() {
+  const rawValue = String(vigenereKeyInput?.value || "");
+  const level = getEncryptionSecurityLevel(rawValue);
+
+  if (encStatusValue) {
+    encStatusValue.textContent = getEncryptionStatusText(level);
+    encStatusValue.classList.remove("level-1", "level-2", "level-3");
+    if (level > 0) {
+      encStatusValue.classList.add(`level-${Math.min(level, 3)}`);
+    }
+  }
+
+  if (encStrengthBars.length) {
+    encStrengthBars.forEach((bar, index) => {
+      const step = index + 1;
+      const active = level >= step;
+      bar.classList.toggle("active", active);
+      bar.classList.remove("level-1", "level-2", "level-3");
+      if (active) {
+        bar.classList.add(`level-${step}`);
+      }
+    });
+  }
+
+  if (encSaveBtn) {
+    encSaveBtn.disabled = rawValue.trim().length === 0 || encGlobalScramble;
+  }
+}
+
+function renderEncryptionVisual() {
+  if (!encVisualLayer || !vigenereKeyInput) {
+    return;
+  }
+
+  const rawValue = String(vigenereKeyInput.value || "");
+  clearEncryptionVisualTimers();
+  encVisualRenderToken += 1;
+  const renderToken = encVisualRenderToken;
+  encVisualLayer.textContent = "";
+
+  if (!rawValue) {
+    const placeholder = document.createElement("span");
+    placeholder.className = "enc-placeholder";
+    placeholder.textContent = "••••••••••••";
+    encVisualLayer.appendChild(placeholder);
+    return;
+  }
+
+  const spans = Array.from(rawValue).map((char) => {
+    const span = document.createElement("span");
+    span.className = "enc-char";
+    span.dataset.char = char;
+    span.textContent = encShowKey ? char : "•";
+    if (encShowKey) {
+      span.classList.add("glow");
+    }
+    encVisualLayer.appendChild(span);
+    return span;
+  });
+
+  if (encGlobalScramble) {
+    encGlobalScrambleInterval = setInterval(() => {
+      if (renderToken !== encVisualRenderToken) {
+        return;
+      }
+      for (const span of spans) {
+        span.textContent = randomEncChar();
+        span.classList.add("glow");
+      }
+    }, 30);
+    return;
+  }
+
+  if (encShowKey) {
+    return;
+  }
+
+  spans.forEach((span, index) => {
+    const scrambleInterval = setInterval(() => {
+      if (renderToken !== encVisualRenderToken) {
+        return;
+      }
+      span.textContent = randomEncChar();
+      span.classList.add("glow");
+    }, 30);
+    encVisualIntervals.push(scrambleInterval);
+
+    const revealTimeout = setTimeout(() => {
+      if (renderToken !== encVisualRenderToken) {
+        return;
+      }
+      clearInterval(scrambleInterval);
+      span.textContent = span.dataset.char || "";
+      span.classList.add("glow");
+    }, 150 + index * 18);
+    encVisualTimeouts.push(revealTimeout);
+
+    const hideTimeout = setTimeout(() => {
+      if (renderToken !== encVisualRenderToken) {
+        return;
+      }
+      span.textContent = "•";
+      span.classList.remove("glow");
+    }, 950 + index * 18);
+    encVisualTimeouts.push(hideTimeout);
+  });
+}
+
+function updateEncryptionUi() {
+  updateEncryptionVisibilityIcon();
+  updateEncryptionStrength();
+  renderEncryptionVisual();
+}
+
+function toggleEncryptionVisibility() {
+  if (!vigenereKeyInput || encGlobalScramble) {
+    return;
+  }
+
+  const hasValue = String(vigenereKeyInput.value || "").trim().length > 0;
+  if (!hasValue) {
+    encShowKey = !encShowKey;
+    updateEncryptionUi();
+    return;
+  }
+
+  encGlobalScramble = true;
+  if (encVisibilityBtn) {
+    encVisibilityBtn.classList.add("scrambling");
+  }
+  updateEncryptionStrength();
+  renderEncryptionVisual();
+
+  if (encGlobalScrambleTimeout) {
+    clearTimeout(encGlobalScrambleTimeout);
+  }
+  encGlobalScrambleTimeout = setTimeout(() => {
+    encGlobalScramble = false;
+    encShowKey = !encShowKey;
+    if (encVisibilityBtn) {
+      encVisibilityBtn.classList.remove("scrambling");
+    }
+    updateEncryptionUi();
+    encGlobalScrambleTimeout = null;
+  }, 400);
+}
+
+function pulseEncryptionKeyIcon() {
+  if (!encKeyIcon) {
+    return;
+  }
+  encKeyIcon.classList.add("typing-pulse");
+  if (encTypingPulseTimeout) {
+    clearTimeout(encTypingPulseTimeout);
+  }
+  encTypingPulseTimeout = setTimeout(() => {
+    encKeyIcon.classList.remove("typing-pulse");
+    encTypingPulseTimeout = null;
+  }, 150);
+}
+
 function setSettingsPanelOpen(isOpen) {
   const shouldOpen = Boolean(isOpen) && !state.chatLocked;
   settingsPanel.classList.toggle("hidden", !shouldOpen);
   if (shouldOpen) {
     syncSettingsCallControls();
     loadAudioDevices();
+    updateEncryptionUi();
+  } else {
+    clearEncryptionVisualTimers();
+    if (encGlobalScrambleTimeout) {
+      clearTimeout(encGlobalScrambleTimeout);
+      encGlobalScrambleTimeout = null;
+    }
+    encGlobalScramble = false;
+    if (encVisibilityBtn) {
+      encVisibilityBtn.classList.remove("scrambling");
+    }
   }
 }
 
@@ -3358,8 +3645,15 @@ function updateMessageMetaInActiveView(messageId) {
 function renderMessages() {
   messagesEl.innerHTML = "";
 
-  if (!state.activeConversationId) {
-    messagesEl.appendChild(createEmptyListNote("Выберите чат, чтобы начать переписку."));
+  const hasActiveConversation = Boolean(state.activeConversationId);
+  if (noConversationState) {
+    noConversationState.classList.toggle("hidden", hasActiveConversation);
+    noConversationState.setAttribute("aria-hidden", hasActiveConversation ? "true" : "false");
+  }
+  messagesEl.classList.toggle("hidden", !hasActiveConversation);
+  messageForm.classList.toggle("hidden", !hasActiveConversation);
+
+  if (!hasActiveConversation) {
     return;
   }
 
@@ -4129,11 +4423,52 @@ fullscreenToggleBtn.addEventListener("click", () => {
   saveUiSettings();
 });
 
-vigenereKeyInput.addEventListener("input", () => {
-  state.ui.vigenereKey = normalizeVigenereKey(vigenereKeyInput.value);
-  saveUiSettings();
-  renderMessages();
-});
+if (vigenereKeyInput) {
+  vigenereKeyInput.addEventListener("input", () => {
+    state.ui.vigenereKey = normalizeVigenereKey(vigenereKeyInput.value);
+    saveUiSettings();
+    renderMessages();
+    pulseEncryptionKeyIcon();
+    setEncryptionSaveHint("");
+    updateEncryptionUi();
+  });
+
+  vigenereKeyInput.addEventListener("focus", () => {
+    if (encInputShell) {
+      encInputShell.classList.add("is-focused");
+    }
+  });
+
+  vigenereKeyInput.addEventListener("blur", () => {
+    if (encInputShell) {
+      encInputShell.classList.remove("is-focused");
+    }
+  });
+}
+
+if (encVisibilityBtn) {
+  encVisibilityBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    toggleEncryptionVisibility();
+  });
+}
+
+if (encSaveBtn) {
+  encSaveBtn.addEventListener("click", () => {
+    if (encGlobalScramble || !vigenereKeyInput) {
+      return;
+    }
+    const raw = String(vigenereKeyInput.value || "").trim();
+    state.ui.vigenereKey = normalizeVigenereKey(vigenereKeyInput.value);
+    saveUiSettings();
+    renderMessages();
+    setEncryptionSaveHint(
+      raw ? "Ключ шифрования сохранен." : "Пустой ключ заменен на WAVE.",
+      true
+    );
+    updateEncryptionUi();
+  });
+}
 
 if (microphoneSelect) {
   microphoneSelect.addEventListener("change", () => {
@@ -4300,6 +4635,27 @@ window.addEventListener("resize", () => {
     chatView.classList.remove("chat-open");
   }
   applySidebarWidth(state.ui.sidebarWidth);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || event.defaultPrevented) {
+    return;
+  }
+  if (!state.activeConversationId || chatView.classList.contains("hidden")) {
+    return;
+  }
+  if (
+    (createGroupModal && !createGroupModal.classList.contains("hidden")) ||
+    (groupSettingsModal && !groupSettingsModal.classList.contains("hidden"))
+  ) {
+    return;
+  }
+  if (state.call.active || state.call.pendingIncoming) {
+    return;
+  }
+
+  event.preventDefault();
+  returnToMainMenu();
 });
 
 window.addEventListener("beforeunload", markPageUnloading);
