@@ -786,159 +786,336 @@
   <!-- User Settings Modal -->
   <div id="settingsPanel" class="settings-overlay hidden" role="dialog" aria-modal="true"
     aria-label="Настройки пользователя">
-    <div class="settings-modal">
-      <div class="settings-modal-header">
-        <h2 class="settings-modal-title">Настройки</h2>
-        <button id="closeSettingsBtn" class="ghost-btn icon-btn" type="button" title="Закрыть">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-            stroke-linejoin="round" width="20" height="20" aria-hidden="true">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
+    <div class="settings-modal settings-modal-tabbed">
+
+      <!-- Left sidebar -->
+      <div class="settings-tabs-sidebar">
+
+        <!-- Wave logo header -->
+        <div class="settings-sidebar-header">
+          <div class="settings-sidebar-logo-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 9c3-3 6-3 9 0s6 3 9 0" />
+              <path d="M2 15c3-3 6-3 9 0s6 3 9 0" />
+            </svg>
+          </div>
+          <div class="settings-sidebar-logo-text">
+            <span class="settings-sidebar-logo-name">Wave</span>
+            <span class="settings-sidebar-logo-sub">Настройки</span>
+          </div>
+        </div>
+
+        <!-- Tab nav -->
+        <nav class="settings-tabs-nav" role="tablist" aria-label="Разделы настроек">
+          <button class="settings-tab-btn active" data-tab="appearance" role="tab" aria-selected="true" type="button">
+            <svg class="settings-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <div class="settings-tab-text">
+              <span class="settings-tab-label">Внешний вид</span>
+              <span class="settings-tab-desc">Профиль и аватарка</span>
+            </div>
+          </button>
+          <button class="settings-tab-btn" data-tab="theme" role="tab" aria-selected="false" type="button">
+            <svg class="settings-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            <div class="settings-tab-text">
+              <span class="settings-tab-label">Отображение</span>
+              <span class="settings-tab-desc">Тема и режим экрана</span>
+            </div>
+          </button>
+          <button class="settings-tab-btn" data-tab="encryption" role="tab" aria-selected="false" type="button">
+            <svg class="settings-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="7.5" cy="15.5" r="5.5"></circle>
+              <path d="m21 2-9.6 9.6"></path>
+              <path d="m15.5 7.5 3 3L22 7l-3-3"></path>
+            </svg>
+            <div class="settings-tab-text">
+              <span class="settings-tab-label">Шифрование</span>
+              <span class="settings-tab-desc">Секретные слова</span>
+            </div>
+          </button>
+          <button class="settings-tab-btn" data-tab="sounds" role="tab" aria-selected="false" type="button">
+            <svg class="settings-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <div class="settings-tab-text">
+              <span class="settings-tab-label">Звук и уведомления</span>
+              <span class="settings-tab-desc">Микрофон и вывод</span>
+            </div>
+          </button>
+          <button class="settings-tab-btn" data-tab="security" role="tab" aria-selected="false" type="button">
+            <svg class="settings-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+            <div class="settings-tab-text">
+              <span class="settings-tab-label">Безопасность</span>
+              <span class="settings-tab-desc">Пароли и 2FA</span>
+            </div>
+          </button>
+          <button class="settings-tab-btn" data-tab="account" role="tab" aria-selected="false" type="button">
+            <svg class="settings-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+              <line x1="10" y1="11" x2="10" y2="17"></line>
+              <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+            <div class="settings-tab-text">
+              <span class="settings-tab-label">Управление</span>
+              <span class="settings-tab-desc">Удаление аккаунта</span>
+            </div>
+          </button>
+        </nav>
+
+        <!-- Decorative waves -->
+        <div class="settings-sidebar-waves" aria-hidden="true">
+          <svg class="settings-wave-svg wave-slow" viewBox="0 0 800 100" preserveAspectRatio="none">
+            <path d="M0,50 Q100,20 200,50 T400,50 T600,50 T800,50 L800,100 L0,100 Z" fill="var(--accent)" opacity="0.3" />
           </svg>
-        </button>
+          <svg class="settings-wave-svg wave-fast" viewBox="0 0 800 100" preserveAspectRatio="none">
+            <path d="M0,60 Q100,90 200,60 T400,60 T600,60 T800,60 L800,100 L0,100 Z" fill="var(--accent)" opacity="0.4" />
+          </svg>
+        </div>
+
       </div>
 
-      <div class="settings-modal-body">
-
-        <!-- Avatar section -->
-        <section class="settings-section">
-          <h3 class="settings-section-title">Аватарка</h3>
-          <div class="avatar-upload-row">
-            <div id="avatarPreview" class="avatar-preview"></div>
-            <div>
-              <input id="avatarFileInput" type="file" accept="image/*" class="hidden" />
-              <button id="avatarUploadBtn" type="button" class="ghost-btn">Загрузить фото</button>
-              <p class="settings-hint">JPG/PNG, макс 1.5MB</p>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <h3 class="settings-section-title">Внешний вид</h3>
-          <div class="settings-row theme-toggle-row">
-            <label>Тема</label>
-            <div class="theme-toggle-wrap">
-              <span class="theme-label theme-label-left">День</span>
-              <button class="theme-toggle" id="themeToggleBtn" aria-label="Переключить тему" type="button">
-                <div class="theme-knob">
-                  <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="5" fill="#c4622d"/>
-                    <g stroke="#c4622d" stroke-width="2" stroke-linecap="round">
-                      <line x1="12" y1="2" x2="12" y2="4"/>
-                      <line x1="12" y1="20" x2="12" y2="22"/>
-                      <line x1="2" y1="12" x2="4" y2="12"/>
-                      <line x1="20" y1="12" x2="22" y2="12"/>
-                      <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/>
-                      <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
-                      <line x1="19.07" y1="4.93" x2="17.66" y2="6.34"/>
-                      <line x1="6.34" y1="17.66" x2="4.93" y2="19.07"/>
-                    </g>
-                  </svg>
-                  <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="#7c9ef5"/>
-                  </svg>
-                </div>
-              </button>
-              <span class="theme-label theme-label-right">Ночь</span>
-            </div>
-          </div>
-          <div class="settings-row" style="margin-top:10px;">
-            <label>Режим отображения</label>
-            <button id="fullscreenToggleBtn" type="button" class="ghost-btn">Оконный режим</button>
-          </div>
-          <p class="settings-hint">Переключение между оконным режимом и полноэкранным.</p>
-        </section>
-
-        <section class="settings-section">
-          <h3 class="settings-section-title">Сообщения</h3>
-          <div class="settings-row">
-            <label for="vigenereKeyInput">Ключ шифрования (Vigenere)</label>
-            <input id="vigenereKeyInput" type="text" maxlength="64" placeholder="WAVE" autocomplete="off" />
-          </div>
-          <p class="settings-hint">
-            Перевод и расшифровка показываются ниже оригинала, в кавычках и более прозрачно.
-          </p>
-        </section>
-
-        <section class="settings-section">
-          <h3 class="settings-section-title">Звонки</h3>
-          <div class="voice-settings-grid">
-            <div class="voice-settings-field">
-              <label for="microphoneSelect">Микрофон</label>
-              <select id="microphoneSelect" class="voice-select">
-                <option value="">Микрофон по умолчанию</option>
-              </select>
-            </div>
-            <div class="voice-settings-field">
-              <label for="speakerSelect">Динамик</label>
-              <select id="speakerSelect" class="voice-select">
-                <option value="">Динамик по умолчанию</option>
-              </select>
-            </div>
-            <div class="voice-settings-field">
-              <label for="settingsMicVolume">Громкость микрофона</label>
-              <input id="settingsMicVolume" class="voice-slider" type="range" min="0" max="100" value="100" />
-            </div>
-            <div class="voice-settings-field">
-              <label for="settingsSpeakerVolume">Громкость динамика</label>
-              <input id="settingsSpeakerVolume" class="voice-slider" type="range" min="0" max="100" value="100" />
-            </div>
-          </div>
-          <div class="voice-settings-test-row">
-            <button id="settingsMicTestBtn" type="button" class="voice-test-btn">Mic Test</button>
-            <div id="settingsMicTestBars" class="voice-test-bars" aria-hidden="true"></div>
-          </div>
-          <p class="settings-hint">Настройте устройства и громкость для голосовых звонков.</p>
-        </section>
-
-        <!-- Push notifications -->
-        <section class="settings-section">
-          <h3 class="settings-section-title">Уведомления</h3>
-          <div class="settings-row">
-            <label>Push-уведомления</label>
-            <button id="notifToggleBtn" type="button" class="ghost-btn">Включить</button>
-          </div>
-          <p class="settings-hint">Получайте push-уведомления даже когда приложение закрыто. Установите приложение на
-            телефон для лучшего эффекта.</p>
-        </section>
-
-        <section class="settings-section">
-          <h3 class="settings-section-title">Безопасность</h3>
-          <div class="settings-row twofa-card">
-            <label>Google Authenticator (2FA)</label>
-            <p id="twoFaStatus" class="settings-hint">Загрузка статуса 2FA...</p>
-
-            <button id="twoFaSetupBtn" type="button" class="ghost-btn">
-              Включить 2FA
-            </button>
-
-            <div id="twoFaSetupPanel" class="twofa-setup hidden">
-              <p class="settings-hint">Отсканируйте QR в Google Authenticator или добавьте ключ вручную.</p>
-              <img id="twoFaQr" class="twofa-qr" alt="2FA QR" />
-              <p id="twoFaSecret" class="twofa-secret"></p>
-              <input id="twoFaEnableCodeInput" type="text" inputmode="numeric" maxlength="6" placeholder="6-значный код"
-                autocomplete="one-time-code" />
-              <button id="twoFaEnableBtn" type="button" class="ghost-btn">
-                Подтвердить и включить
-              </button>
-            </div>
-
-            <div id="twoFaDisablePanel" class="twofa-disable hidden">
-              <input id="twoFaDisableCodeInput" type="text" inputmode="numeric" maxlength="6"
-                placeholder="6-значный код для отключения" autocomplete="one-time-code" />
-              <button id="twoFaDisableBtn" type="button" class="ghost-btn">
-                Отключить 2FA
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <h3 class="settings-section-title">Аккаунт</h3>
-          <button id="deleteAccountBtn" class="ghost-btn danger-btn" type="button">
-            Удалить аккаунт
+      <!-- Right content area -->
+      <div class="settings-tabs-content">
+        <div class="settings-tabs-content-header">
+          <h2 class="settings-modal-title" id="settingsTabTitle">Внешний вид аккаунта</h2>
+          <button id="closeSettingsBtn" class="ghost-btn icon-btn" type="button" title="Закрыть">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+              stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
-        </section>
+        </div>
+
+        <!-- Tab: Внешний вид аккаунта -->
+        <div class="settings-tab-panel active" data-panel="appearance" role="tabpanel">
+          <section class="settings-section">
+            <h3 class="settings-section-title">Аватарка</h3>
+            <div class="avatar-upload-row">
+              <div id="avatarPreview" class="avatar-preview"></div>
+              <div>
+                <input id="avatarFileInput" type="file" accept="image/*" class="hidden" />
+                <button id="avatarUploadBtn" type="button" class="ghost-btn">Загрузить фото</button>
+                <p class="settings-hint">JPG/PNG, макс 1.5MB</p>
+              </div>
+            </div>
+          </section>
+          <section class="settings-section">
+            <h3 class="settings-section-title">Отображаемое имя</h3>
+            <div class="settings-row">
+              <label for="displayNameInput">Никнейм</label>
+              <input id="displayNameInput" type="text" maxlength="32" placeholder="Ваш ник" autocomplete="off" />
+            </div>
+            <p class="settings-hint">Имя, которое видят другие пользователи.</p>
+          </section>
+        </div>
+
+        <!-- Tab: Тема + режим отображения -->
+        <div class="settings-tab-panel" data-panel="theme" role="tabpanel">
+          <section class="settings-section">
+            <h3 class="settings-section-title">Тема</h3>
+            <div class="settings-row theme-toggle-row">
+              <label>Цветовая схема</label>
+              <div class="theme-toggle-wrap">
+                <span class="theme-label theme-label-left">День</span>
+                <button class="theme-toggle" id="themeToggleBtn" aria-label="Переключить тему" type="button">
+                  <div class="theme-knob">
+                    <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="5" fill="#c4622d"/>
+                      <g stroke="#c4622d" stroke-width="2" stroke-linecap="round">
+                        <line x1="12" y1="2" x2="12" y2="4"/>
+                        <line x1="12" y1="20" x2="12" y2="22"/>
+                        <line x1="2" y1="12" x2="4" y2="12"/>
+                        <line x1="20" y1="12" x2="22" y2="12"/>
+                        <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/>
+                        <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
+                        <line x1="19.07" y1="4.93" x2="17.66" y2="6.34"/>
+                        <line x1="6.34" y1="17.66" x2="4.93" y2="19.07"/>
+                      </g>
+                    </svg>
+                    <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none">
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="#7c9ef5"/>
+                    </svg>
+                  </div>
+                </button>
+                <span class="theme-label theme-label-right">Ночь</span>
+              </div>
+            </div>
+          </section>
+          <section class="settings-section">
+            <h3 class="settings-section-title">Режим отображения</h3>
+            <div class="settings-row">
+              <label>Размер окна</label>
+              <button id="fullscreenToggleBtn" type="button" class="ghost-btn">Оконный режим</button>
+            </div>
+            <p class="settings-hint">Переключение между оконным режимом и полноэкранным.</p>
+          </section>
+        </div>
+
+        <!-- Tab: Слова шифрования -->
+        <div class="settings-tab-panel" data-panel="encryption" role="tabpanel">
+          <section class="settings-section">
+            <h3 class="settings-section-title">Ключ шифрования</h3>
+            <div class="settings-row">
+              <label for="vigenereKeyInput">Ключ шифрования (Vigenere)</label>
+              <input id="vigenereKeyInput" type="text" maxlength="64" placeholder="WAVE" autocomplete="off" />
+            </div>
+            <p class="settings-hint">
+              Перевод и расшифровка показываются ниже оригинала, в кавычках и более прозрачно.
+            </p>
+          </section>
+        </div>
+
+        <!-- Tab: Звуки + уведомления -->
+        <div class="settings-tab-panel" data-panel="sounds" role="tabpanel">
+          <section class="settings-section">
+            <h3 class="settings-section-title">Устройства звука</h3>
+
+            <!-- Hidden selects — populated and read by existing JS -->
+            <select id="microphoneSelect" class="audio-select-hidden" aria-hidden="true" tabindex="-1">
+              <option value="">Микрофон по умолчанию</option>
+            </select>
+            <select id="speakerSelect" class="audio-select-hidden" aria-hidden="true" tabindex="-1">
+              <option value="">Динамик по умолчанию</option>
+            </select>
+
+            <div class="audio-devices-list">
+
+              <!-- Mic block -->
+              <div class="audio-device-block">
+                <p class="audio-device-label">Устройство ввода</p>
+                <div class="audio-dropdown" id="micDropdown">
+                  <button class="audio-dropdown-btn" id="micDropdownBtn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="audio-dropdown-btn-left">
+                      <svg class="audio-dropdown-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="22"/>
+                      </svg>
+                      <span class="audio-dropdown-name" id="micSelectedName">Микрофон по умолчанию</span>
+                    </span>
+                    <svg class="audio-dropdown-chevron" id="micDropdownChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M6 9l6 6 6-6"/>
+                    </svg>
+                  </button>
+                  <div class="audio-dropdown-panel" id="micDropdownPanel" role="listbox" aria-label="Выберите микрофон"></div>
+                </div>
+                <div class="audio-volume-row">
+                  <button class="audio-mute-btn" id="micMuteToggle" type="button" title="Вкл/выкл микрофон" aria-label="Включить или выключить микрофон">
+                    <svg class="audio-mute-icon" id="settingsMicMuteIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                      <line x1="12" y1="19" x2="12" y2="22"/>
+                    </svg>
+                  </button>
+                  <input id="settingsMicVolume" class="audio-slider" type="range" min="0" max="100" value="100" />
+                  <span class="audio-vol-pct" id="micVolPctDisplay">100%</span>
+                </div>
+              </div>
+
+              <!-- Speaker block -->
+              <div class="audio-device-block">
+                <p class="audio-device-label">Устройство вывода</p>
+                <div class="audio-dropdown" id="speakerDropdown">
+                  <button class="audio-dropdown-btn" id="speakerDropdownBtn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="audio-dropdown-btn-left">
+                      <svg class="audio-dropdown-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
+                        <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+                      </svg>
+                      <span class="audio-dropdown-name" id="speakerSelectedName">Динамик по умолчанию</span>
+                    </span>
+                    <svg class="audio-dropdown-chevron" id="speakerDropdownChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M6 9l6 6 6-6"/>
+                    </svg>
+                  </button>
+                  <div class="audio-dropdown-panel" id="speakerDropdownPanel" role="listbox" aria-label="Выберите динамик"></div>
+                </div>
+                <div class="audio-volume-row">
+                  <button class="audio-mute-btn" id="speakerMuteToggle" type="button" title="Вкл/выкл звук" aria-label="Включить или выключить звук">
+                    <svg class="audio-mute-icon" id="settingsSpeakerMuteIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                    </svg>
+                  </button>
+                  <input id="settingsSpeakerVolume" class="audio-slider" type="range" min="0" max="100" value="100" />
+                  <span class="audio-vol-pct" id="speakerVolPctDisplay">100%</span>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="voice-settings-test-row">
+              <button id="settingsMicTestBtn" type="button" class="voice-test-btn">Тест микрофона</button>
+              <div id="settingsMicTestBars" class="voice-test-bars" aria-hidden="true"></div>
+            </div>
+            <p class="settings-hint">Настройте устройства и громкость для голосовых звонков.</p>
+          </section>
+          <section class="settings-section">
+            <h3 class="settings-section-title">Уведомления</h3>
+            <div class="settings-row">
+              <label>Push-уведомления</label>
+              <button id="notifToggleBtn" type="button" class="ghost-btn">Включить</button>
+            </div>
+            <p class="settings-hint">Получайте push-уведомления даже когда приложение закрыто.</p>
+          </section>
+        </div>
+
+        <!-- Tab: Безопасность -->
+        <div class="settings-tab-panel" data-panel="security" role="tabpanel">
+          <section class="settings-section">
+            <h3 class="settings-section-title">Двухфакторная аутентификация</h3>
+            <div class="settings-row twofa-card">
+              <label>Google Authenticator (2FA)</label>
+              <p id="twoFaStatus" class="settings-hint">Загрузка статуса 2FA...</p>
+
+              <button id="twoFaSetupBtn" type="button" class="ghost-btn">
+                Включить 2FA
+              </button>
+
+              <div id="twoFaSetupPanel" class="twofa-setup hidden">
+                <p class="settings-hint">Отсканируйте QR в Google Authenticator или добавьте ключ вручную.</p>
+                <img id="twoFaQr" class="twofa-qr" alt="2FA QR" />
+                <p id="twoFaSecret" class="twofa-secret"></p>
+                <input id="twoFaEnableCodeInput" type="text" inputmode="numeric" maxlength="6" placeholder="6-значный код"
+                  autocomplete="one-time-code" />
+                <button id="twoFaEnableBtn" type="button" class="ghost-btn">
+                  Подтвердить и включить
+                </button>
+              </div>
+
+              <div id="twoFaDisablePanel" class="twofa-disable hidden">
+                <input id="twoFaDisableCodeInput" type="text" inputmode="numeric" maxlength="6"
+                  placeholder="6-значный код для отключения" autocomplete="one-time-code" />
+                <button id="twoFaDisableBtn" type="button" class="ghost-btn">
+                  Отключить 2FA
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Tab: Управление аккаунтом -->
+        <div class="settings-tab-panel" data-panel="account" role="tabpanel">
+          <section class="settings-section">
+            <h3 class="settings-section-title">Управление аккаунтом</h3>
+            <p class="settings-hint" style="margin-bottom:16px;">Здесь вы можете управлять своим аккаунтом. Будьте осторожны — некоторые действия необратимы.</p>
+            <button id="deleteAccountBtn" class="ghost-btn danger-btn" type="button">
+              Удалить аккаунт
+            </button>
+          </section>
+        </div>
 
       </div>
     </div>

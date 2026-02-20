@@ -3797,6 +3797,33 @@ settingsPanel.addEventListener("click", (event) => {
   }
 });
 
+// Settings tab switching
+const settingsTabTitles = {
+  appearance: "Внешний вид аккаунта",
+  theme: "Тема и режим отображения",
+  encryption: "Слова шифрования",
+  sounds: "Звук и уведомления",
+  security: "Безопасность",
+  account: "Управление аккаунтом",
+};
+const settingsTabTitle = document.getElementById("settingsTabTitle");
+
+document.querySelectorAll(".settings-tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll(".settings-tab-btn").forEach((b) => {
+      b.classList.toggle("active", b === btn);
+      b.setAttribute("aria-selected", b === btn ? "true" : "false");
+    });
+    document.querySelectorAll(".settings-tab-panel").forEach((panel) => {
+      panel.classList.toggle("active", panel.dataset.panel === tab);
+    });
+    if (settingsTabTitle) {
+      settingsTabTitle.textContent = settingsTabTitles[tab] || "";
+    }
+  });
+});
+
 deleteAccountBtn.addEventListener("click", async () => {
   if (!state.me) {
     return;
@@ -5943,5 +5970,201 @@ document.addEventListener("click", (e) => {
 });
 
 window.addEventListener("beforeunload", stopMicTest);
+
+// ── Custom audio device dropdowns (settings panel) ──
+(function () {
+  const micSelect = document.getElementById("microphoneSelect");
+  const speakerSelect = document.getElementById("speakerSelect");
+  const micDropdownBtn = document.getElementById("micDropdownBtn");
+  const micDropdownPanel = document.getElementById("micDropdownPanel");
+  const micChevron = document.getElementById("micDropdownChevron");
+  const micNameEl = document.getElementById("micSelectedName");
+  const speakerDropdownBtn = document.getElementById("speakerDropdownBtn");
+  const speakerDropdownPanel = document.getElementById("speakerDropdownPanel");
+  const speakerChevron = document.getElementById("speakerDropdownChevron");
+  const speakerNameEl = document.getElementById("speakerSelectedName");
+  const micVolSlider = document.getElementById("settingsMicVolume");
+  const speakerVolSlider = document.getElementById("settingsSpeakerVolume");
+  const micPctEl = document.getElementById("micVolPctDisplay");
+  const speakerPctEl = document.getElementById("speakerVolPctDisplay");
+  const micMuteToggle = document.getElementById("micMuteToggle");
+  const speakerMuteToggle = document.getElementById("speakerMuteToggle");
+
+  const SVG_MIC_ON = `<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/>`;
+  const SVG_MIC_OFF = `<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="22"/>`;
+  const SVG_VOL_ON = `<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>`;
+  const SVG_VOL_OFF = `<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>`;
+
+  let micPrevVol2 = 75;
+  let speakerPrevVol2 = 75;
+
+  function syncDropdownName(select, nameEl) {
+    if (!select || !nameEl) return;
+    const opt = select.options[select.selectedIndex];
+    nameEl.textContent = opt ? opt.textContent : "По умолчанию";
+  }
+
+  function buildOptionHTML(isMic) {
+    return isMic
+      ? `<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/>`
+      : `<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>`;
+  }
+
+  function rebuildDropdown(select, panel, nameEl, isMic) {
+    if (!select || !panel) return;
+    panel.innerHTML = "";
+    Array.from(select.options).forEach((opt) => {
+      const isSelected = opt.value === select.value;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "audio-dropdown-option" + (isSelected ? " selected" : "");
+      btn.dataset.value = opt.value;
+      btn.setAttribute("role", "option");
+      btn.setAttribute("aria-selected", isSelected ? "true" : "false");
+      btn.innerHTML = `
+        <span class="audio-option-left">
+          <svg class="audio-option-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${buildOptionHTML(isMic)}</svg>
+          <span class="audio-option-name">${opt.textContent}</span>
+        </span>
+        ${isSelected ? `<svg class="audio-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>` : ""}
+      `;
+      btn.addEventListener("click", () => {
+        select.value = opt.value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        syncDropdownName(select, nameEl);
+        closeDropdown(panel, isMic ? micDropdownBtn : speakerDropdownBtn, isMic ? micChevron : speakerChevron);
+        panel.querySelectorAll(".audio-dropdown-option").forEach((b) => {
+          const sel = b.dataset.value === opt.value;
+          b.classList.toggle("selected", sel);
+          b.setAttribute("aria-selected", sel ? "true" : "false");
+          const existingCheck = b.querySelector(".audio-option-check");
+          if (sel && !existingCheck) {
+            b.insertAdjacentHTML("beforeend", `<svg class="audio-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`);
+          } else if (!sel && existingCheck) {
+            existingCheck.remove();
+          }
+        });
+      });
+      panel.appendChild(btn);
+    });
+    syncDropdownName(select, nameEl);
+  }
+
+  function openDropdown(panel, btn, chevron) {
+    panel.classList.add("open");
+    btn.classList.add("open");
+    chevron.classList.add("open");
+    btn.setAttribute("aria-expanded", "true");
+  }
+
+  function closeDropdown(panel, btn, chevron) {
+    panel.classList.remove("open");
+    btn.classList.remove("open");
+    chevron.classList.remove("open");
+    btn.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleDropdown(panel, btn, chevron, otherPanel, otherBtn, otherChevron) {
+    const isOpen = panel.classList.contains("open");
+    closeDropdown(otherPanel, otherBtn, otherChevron);
+    if (isOpen) closeDropdown(panel, btn, chevron);
+    else openDropdown(panel, btn, chevron);
+  }
+
+  if (micDropdownBtn) {
+    micDropdownBtn.addEventListener("click", () => {
+      toggleDropdown(micDropdownPanel, micDropdownBtn, micChevron, speakerDropdownPanel, speakerDropdownBtn, speakerChevron);
+    });
+  }
+
+  if (speakerDropdownBtn) {
+    speakerDropdownBtn.addEventListener("click", () => {
+      toggleDropdown(speakerDropdownPanel, speakerDropdownBtn, speakerChevron, micDropdownPanel, micDropdownBtn, micChevron);
+    });
+  }
+
+  document.addEventListener("mousedown", (e) => {
+    const micRoot = document.getElementById("micDropdown");
+    if (micRoot && !micRoot.contains(e.target)) closeDropdown(micDropdownPanel, micDropdownBtn, micChevron);
+    const spkRoot = document.getElementById("speakerDropdown");
+    if (spkRoot && !spkRoot.contains(e.target)) closeDropdown(speakerDropdownPanel, speakerDropdownBtn, speakerChevron);
+  });
+
+  // Observe hidden selects for option changes (device enumeration)
+  function watchSelect(select, panel, nameEl, isMic) {
+    if (!select) return;
+    new MutationObserver(() => rebuildDropdown(select, panel, nameEl, isMic))
+      .observe(select, { childList: true });
+  }
+
+  watchSelect(micSelect, micDropdownPanel, micNameEl, true);
+  watchSelect(speakerSelect, speakerDropdownPanel, speakerNameEl, false);
+  rebuildDropdown(micSelect, micDropdownPanel, micNameEl, true);
+  rebuildDropdown(speakerSelect, speakerDropdownPanel, speakerNameEl, false);
+
+  // Volume percentage
+  function updateVolPct(slider, el) {
+    if (slider && el) el.textContent = slider.value + "%";
+  }
+
+  function updateSettingsMicIcon(val) {
+    const icon = document.getElementById("settingsMicMuteIcon");
+    if (icon) icon.innerHTML = val === 0 ? SVG_MIC_OFF : SVG_MIC_ON;
+  }
+
+  function updateSettingsSpeakerIcon(val) {
+    const icon = document.getElementById("settingsSpeakerMuteIcon");
+    if (icon) icon.innerHTML = val === 0 ? SVG_VOL_OFF : SVG_VOL_ON;
+  }
+
+  if (micVolSlider) {
+    micVolSlider.addEventListener("input", () => {
+      const val = parseInt(micVolSlider.value, 10);
+      updateVolPct(micVolSlider, micPctEl);
+      updateSettingsMicIcon(val);
+      if (val > 0) micPrevVol2 = val;
+    });
+  }
+
+  if (speakerVolSlider) {
+    speakerVolSlider.addEventListener("input", () => {
+      const val = parseInt(speakerVolSlider.value, 10);
+      updateVolPct(speakerVolSlider, speakerPctEl);
+      updateSettingsSpeakerIcon(val);
+      if (val > 0) speakerPrevVol2 = val;
+    });
+  }
+
+  if (micMuteToggle && micVolSlider) {
+    micMuteToggle.addEventListener("click", () => {
+      const cur = parseInt(micVolSlider.value, 10);
+      micVolSlider.value = cur === 0 ? String(micPrevVol2 || 75) : "0";
+      micVolSlider.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  if (speakerMuteToggle && speakerVolSlider) {
+    speakerMuteToggle.addEventListener("click", () => {
+      const cur = parseInt(speakerVolSlider.value, 10);
+      speakerVolSlider.value = cur === 0 ? String(speakerPrevVol2 || 75) : "0";
+      speakerVolSlider.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  // Sync display when settings panel becomes visible
+  const settingsPanelEl = document.getElementById("settingsPanel");
+  if (settingsPanelEl) {
+    new MutationObserver(() => {
+      if (!settingsPanelEl.classList.contains("hidden")) {
+        updateVolPct(micVolSlider, micPctEl);
+        updateVolPct(speakerVolSlider, speakerPctEl);
+        if (micVolSlider) updateSettingsMicIcon(parseInt(micVolSlider.value, 10));
+        if (speakerVolSlider) updateSettingsSpeakerIcon(parseInt(speakerVolSlider.value, 10));
+        rebuildDropdown(micSelect, micDropdownPanel, micNameEl, true);
+        rebuildDropdown(speakerSelect, speakerDropdownPanel, speakerNameEl, false);
+      }
+    }).observe(settingsPanelEl, { attributes: true, attributeFilter: ["class"] });
+  }
+})();
 
 init();
