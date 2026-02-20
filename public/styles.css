@@ -2680,18 +2680,32 @@ html.theme-changing .theme-icon-moon {
 
 /* ===== TABLET & MOBILE (≤ 950px) ===== */
 @media (max-width: 950px) {
+  html,
+  body {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
   .app-shell {
     padding: 0;
+    height: 100dvh;
+    overflow: hidden;
   }
 
   .chat-view {
     width: 100%;
     height: 100vh;
     height: 100dvh;
+    max-height: 100dvh;
     border-radius: 0;
     border: none;
     grid-template-columns: 1fr;
     box-shadow: none;
+  }
+
+  .auth-view {
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .sidebar-resize-handle {
@@ -3042,7 +3056,7 @@ html.theme-changing .theme-icon-moon {
   }
 
   .active-call-content {
-    padding: 24px 14px 112px;
+    padding: 0;
   }
 
   .active-call-name {
@@ -3053,30 +3067,53 @@ html.theme-changing .theme-icon-moon {
     font-size: 0.9rem;
   }
 
-  .active-call-avatar-peer {
-    width: 132px;
-    height: 132px;
+  .active-call-panel {
+    height: min(360px, 42dvh);
   }
 
+  .active-call-stage {
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .active-call-avatar-peer,
   .active-call-avatar-me {
-    width: 82px;
-    height: 82px;
+    width: 104px;
+    height: 104px;
   }
 
-  .active-call-controls {
-    bottom: 18px;
+  .active-call-bottom-overlay {
+    left: 14px;
+    right: 14px;
+    bottom: 12px;
+  }
+
+  .active-call-controls-bar {
     gap: 8px;
-    padding: 8px;
+    bottom: 12px;
   }
 
-  .active-call-control {
-    width: 82px;
-    min-height: 66px;
-    border-radius: 14px;
+  .control-group-main {
+    padding: 6px;
+    gap: 6px;
   }
 
-  .active-call-control-end {
-    width: 108px;
+  .active-call-control-pill {
+    height: 34px;
+    min-width: 34px;
+    padding: 0 8px;
+  }
+
+  .active-call-control-pill svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .active-call-control-danger,
+  .active-call-control-accept {
+    width: 52px;
+    height: 46px;
+    border-radius: 10px;
   }
 
   /* Voice player */
@@ -3649,7 +3686,7 @@ html.theme-changing .theme-icon-moon {
   }
 
   .active-call-content {
-    padding: 18px 10px 102px;
+    padding: 0;
   }
 
   .active-call-label {
@@ -3665,37 +3702,69 @@ html.theme-changing .theme-icon-moon {
     min-height: 18px;
   }
 
-  .active-call-avatars {
-    gap: 14px;
-    margin-top: 14px;
+  .active-call-panel {
+    height: min(320px, 38dvh);
+  }
+
+  .active-call-stage {
+    gap: 10px;
+    padding: 12px 10px 64px;
   }
 
   .active-call-avatar-peer {
-    width: 112px;
-    height: 112px;
+    width: 88px;
+    height: 88px;
   }
 
   .active-call-avatar-me {
-    width: 72px;
-    height: 72px;
-    margin-bottom: -5px;
+    width: 88px;
+    height: 88px;
   }
 
-  .active-call-controls {
-    bottom: 12px;
-    width: calc(100vw - 18px);
-    justify-content: space-between;
-    border-radius: 16px;
+  .active-call-bottom-overlay {
+    left: 10px;
+    right: 10px;
+    bottom: 8px;
   }
 
-  .active-call-control {
-    width: calc(33.33% - 6px);
-    min-height: 60px;
-    border-radius: 12px;
+  .active-call-controls-bar {
+    right: 0;
+    left: auto;
+    transform: none;
+    bottom: 8px;
+    gap: 6px;
   }
 
-  .active-call-control-end {
-    width: calc(33.33% - 6px);
+  .active-call-name {
+    max-width: 52vw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+
+  .control-group-main {
+    padding: 4px;
+    gap: 4px;
+    border-radius: 10px;
+  }
+
+  .active-call-control-pill {
+    min-width: 30px;
+    height: 30px;
+    padding: 0 6px;
+  }
+
+  .active-call-control-pill svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .active-call-control-danger,
+  .active-call-control-accept {
+    width: 42px;
+    height: 38px;
+    border-radius: 9px;
   }
 
   .active-call-control-text {
