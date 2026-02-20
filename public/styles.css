@@ -1653,6 +1653,69 @@ textarea:focus {
   gap: 6px;
 }
 
+.voice-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.voice-settings-field {
+  display: grid;
+  gap: 8px;
+}
+
+.voice-select {
+  width: 100%;
+}
+
+.voice-slider {
+  width: 100%;
+  accent-color: #6a6ff5;
+}
+
+.voice-settings-test-row {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.voice-test-btn {
+  min-width: 104px;
+  height: 40px;
+  border: 1px solid #5b62f2;
+  background: linear-gradient(180deg, #6670ff, #5460ee);
+  color: #fff;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.voice-test-btn.testing {
+  background: linear-gradient(180deg, #747a86, #5b6270);
+  border-color: #707788;
+}
+
+.voice-test-bars {
+  flex: 1;
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: repeat(48, minmax(3px, 1fr));
+  align-items: end;
+  gap: 4px;
+}
+
+.voice-test-bar {
+  height: 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text-muted) 45%, transparent);
+  transition: height 0.1s linear, background 0.1s linear;
+}
+
+.voice-test-bar.active {
+  background: #6a6ff5;
+}
+
 /* ===== THEME TOGGLE ===== */
 .theme-toggle-row {
   align-items: center;
@@ -2928,6 +2991,16 @@ html.theme-changing .theme-icon-moon {
     font-size: 0.86rem;
   }
 
+  .voice-settings-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .voice-settings-test-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .settings-hint {
     font-size: 0.72rem;
   }
@@ -4107,7 +4180,8 @@ html.theme-changing .theme-icon-moon {
   border-top: none;
   border-bottom-left-radius: 14px;
   border-bottom-right-radius: 14px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   z-index: 9999;
   /* Hidden state */
   visibility: hidden;
@@ -4119,6 +4193,16 @@ html.theme-changing .theme-icon-moon {
     opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1),
     transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
     visibility 0s linear 0.18s;
+}
+
+.cpop-device-list.open-up {
+  border-top: 1px solid #4a4e57;
+  border-bottom: none;
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  transform-origin: bottom center;
 }
 
 .cpop-device-list.open {
