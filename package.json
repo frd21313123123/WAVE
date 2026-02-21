@@ -18,5 +18,8 @@
     "jsonwebtoken": "^9.0.2",
     "web-push": "^3.6.7",
     "ws": "^8.18.0"
+  },
+  "overrides": {
+    "bn.js": "^5.2.3"
   }
 }

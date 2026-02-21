@@ -207,6 +207,28 @@ const ALLOWED_TRANSLATION_LANGS = new Set([
 ]);
 const ALLOWED_THEMES = new Set(["light", "dark"]);
 const ENC_SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+const SAFE_AVATAR_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i;
+
+function getSafeAvatarUrl(value) {
+  const avatarUrl = String(value || "").trim();
+  if (!avatarUrl || !SAFE_AVATAR_DATA_URL_PATTERN.test(avatarUrl)) {
+    return "";
+  }
+  return avatarUrl;
+}
+
+function setAvatarImageSource(imageElement, avatarUrl) {
+  if (!imageElement) {
+    return false;
+  }
+  const safeAvatarUrl = getSafeAvatarUrl(avatarUrl);
+  if (!safeAvatarUrl) {
+    imageElement.removeAttribute("src");
+    return false;
+  }
+  imageElement.src = safeAvatarUrl;
+  return true;
+}
 
 function setActionButtonLabel(button, label) {
   const labelNode = button?.querySelector(".chat-action-label");
@@ -658,16 +680,16 @@ function setActiveCallAvatar(avatarEl, avatarImgEl, avatarUrl, displayName) {
   avatarEl.dataset.initial = getInitial(displayName);
   avatarImgEl.alt = displayName;
 
-  if (!avatarUrl) {
+  if (!avatarUrl || !setAvatarImageSource(avatarImgEl, avatarUrl)) {
     avatarImgEl.removeAttribute("src");
     avatarImgEl.classList.add("hidden");
     return;
   }
 
   avatarImgEl.onerror = () => {
+    avatarImgEl.removeAttribute("src");
     avatarImgEl.classList.add("hidden");
   };
-  avatarImgEl.src = avatarUrl;
   avatarImgEl.classList.remove("hidden");
 }
 
@@ -3253,10 +3275,11 @@ function renderConversationList() {
       button.classList.add("pinned");
     }
 
-    if (avatarUrl) {
+    const safeAvatarUrl = getSafeAvatarUrl(avatarUrl);
+    if (safeAvatarUrl) {
       button.classList.add("has-avatar");
       const avatarImg = document.createElement("img");
-      avatarImg.src = avatarUrl;
+      avatarImg.src = safeAvatarUrl;
       avatarImg.alt = title;
       avatarImg.className = "list-item-avatar";
       button.appendChild(avatarImg);
@@ -3517,7 +3540,11 @@ function createMessageRow(message, deletingIds = new Set()) {
     for (const [emoji, userIds] of Object.entries(grouped)) {
       const badge = document.createElement("span");
       badge.className = "reaction-badge" + (userIds.includes(state.me?.id) ? " mine" : "");
-      badge.innerHTML = `${emoji} <span class="reaction-count">${userIds.length}</span>`;
+      badge.append(document.createTextNode(`${emoji} `));
+      const reactionCount = document.createElement("span");
+      reactionCount.className = "reaction-count";
+      reactionCount.textContent = String(userIds.length);
+      badge.appendChild(reactionCount);
       badge.addEventListener("click", async () => {
         try {
           await api(`/api/conversations/${message.conversationId}/messages/${message.id}/reactions`, { method: "POST", body: { emoji } });
@@ -3885,6 +3912,8 @@ async function loadConversations() {
 }
 
 function closeSocket() {
+  clearInterval(state.pingInterval);
+  state.pingInterval = null;
   if (state.socket) {
     state.socket.close();
     state.socket = null;
@@ -3899,6 +3928,15 @@ function connectSocket() {
   state.socket = socket;
 
   socket.addEventListener("open", () => {
+    state.reconnectAttempts = 0;
+    state.pingInterval = setInterval(() => {
+      if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+        state.socket.send(JSON.stringify({ type: "ping" }));
+      } else {
+        clearInterval(state.pingInterval);
+        state.pingInterval = null;
+      }
+    }, 25000);
     if (!state.me) {
       return;
     }
@@ -4025,6 +4063,8 @@ function connectSocket() {
   });
 
   socket.addEventListener("close", () => {
+    clearInterval(state.pingInterval);
+    state.pingInterval = null;
     state.socket = null;
     if (state.pageUnloading) {
       return;
@@ -4038,11 +4078,14 @@ function connectSocket() {
       setCallStatus("Соединение с сервером потеряно.");
     }
     if (state.me) {
+      const attempt = state.reconnectAttempts || 0;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
+      state.reconnectAttempts = attempt + 1;
       setTimeout(() => {
         if (!state.socket && state.me) {
           connectSocket();
         }
-      }, 1500);
+      }, delay);
     }
   });
 }
@@ -5149,9 +5192,10 @@ displayNameSaveBtn.addEventListener("click", async () => {
 
 function updateAvatarPreview() {
   avatarPreview.innerHTML = "";
-  if (state.me?.avatarUrl) {
+  const safeAvatarUrl = getSafeAvatarUrl(state.me?.avatarUrl);
+  if (safeAvatarUrl) {
     const img = document.createElement("img");
-    img.src = state.me.avatarUrl;
+    img.src = safeAvatarUrl;
     img.alt = "Avatar";
     avatarPreview.appendChild(img);
   }
@@ -5555,9 +5599,10 @@ function renderGroupSettingsHeader(conv) {
 
   // Avatar
   gsAvatarPreview.innerHTML = "";
-  if (conv.avatarUrl) {
+  const safeGroupAvatarUrl = getSafeAvatarUrl(conv.avatarUrl);
+  if (safeGroupAvatarUrl) {
     const img = document.createElement("img");
-    img.src = conv.avatarUrl;
+    img.src = safeGroupAvatarUrl;
     img.alt = conv.name || "Группа";
     gsAvatarPreview.appendChild(img);
   } else {
@@ -5582,9 +5627,10 @@ function renderGroupSettingsMembers(conv) {
     // Avatar
     const avatarDiv = document.createElement("div");
     avatarDiv.className = "gs-member-avatar";
-    if (member.avatarUrl) {
+    const safeMemberAvatarUrl = getSafeAvatarUrl(member.avatarUrl);
+    if (safeMemberAvatarUrl) {
       const img = document.createElement("img");
-      img.src = member.avatarUrl;
+      img.src = safeMemberAvatarUrl;
       img.alt = memberDisplayName;
       avatarDiv.appendChild(img);
     } else {

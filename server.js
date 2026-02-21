@@ -15,9 +15,29 @@ const { WebSocketServer } = require("ws");
 
 const { JsonStore } = require("./storage");
 
+function readRequiredEnv(name, { minLength = 1, forbiddenValues = [] } = {}) {
+  const value = String(process.env[name] || "").trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  if (value.length < minLength) {
+    throw new Error(`Environment variable ${name} must be at least ${minLength} characters`);
+  }
+  if (forbiddenValues.includes(value)) {
+    throw new Error(`Environment variable ${name} must be rotated and cannot use the default value`);
+  }
+  return value;
+}
+
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+const JWT_SECRET = readRequiredEnv("JWT_SECRET", {
+  minLength: 32,
+  forbiddenValues: [
+    "change_me",
+    "dev_secret_change_me",
+  ],
+});
 const COOKIE_SECURE_MODE = String(process.env.COOKIE_SECURE || "auto")
   .trim()
   .toLowerCase();
@@ -43,24 +63,58 @@ const ALLOWED_TRANSLATION_LANGS = new Set([
   "uk",
   "pl",
 ]);
+const HEARTBEAT_INTERVAL_MS = 30000;
+const OFFLINE_QUEUE_MAX = 100;
+const OFFLINE_QUEUE_TTL_MS = 5 * 60 * 1000;
 const LOGIN_2FA_CHALLENGE_TTL = "5m";
 const TOTP_WINDOW = 1;
 const TOTP_PERIOD_MS = 30 * 1000;
 const TOTP_DIGITS = 6;
 const TOTP_BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const TWO_FA_ISSUER = "Wave Messenger";
+const MAX_AVATAR_BYTES = Math.floor(1.5 * 1024 * 1024);
+const AVATAR_BASE64_LENGTH_LIMIT = Math.ceil((MAX_AVATAR_BYTES * 4) / 3) + 4;
+const AVATAR_DATA_URL_PATTERN = /^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/i;
+const REACTION_PATTERN = /^[\p{Extended_Pictographic}\u200d\uFE0F]+$/u;
+const AUTH_RATE_LIMIT_MESSAGE = "Слишком много попыток. Попробуйте позже.";
+const SECURITY_CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https://api.qrserver.com",
+  "media-src 'self' data: blob:",
+  "connect-src 'self' ws: wss:",
+  "manifest-src 'self'",
+  "worker-src 'self'",
+  "object-src 'none'",
+].join("; ");
 
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "BMrCnig_P00U_1oqQ5g8ZDGdh4VjMEfMeiHgSOcrRZPPR_Z3fIDOqqMI0dC71IQASKYKR8de4YSkSlCXibWILAg";
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "x6uSkjR_Aq2b1T4QTiY1J48COvv34mYPqHh7iBGgEuE";
-const VAPID_EMAIL = process.env.VAPID_EMAIL || "mailto:admin@wavemessenger.app";
+const VAPID_PUBLIC_KEY = readRequiredEnv("VAPID_PUBLIC_KEY", {
+  minLength: 60,
+  forbiddenValues: [
+    "BMrCnig_P00U_1oqQ5g8ZDGdh4VjMEfMeiHgSOcrRZPPR_Z3fIDOqqMI0dC71IQASKYKR8de4YSkSlCXibWILAg",
+  ],
+});
+const VAPID_PRIVATE_KEY = readRequiredEnv("VAPID_PRIVATE_KEY", {
+  minLength: 30,
+  forbiddenValues: [
+    "x6uSkjR_Aq2b1T4QTiY1J48COvv34mYPqHh7iBGgEuE",
+  ],
+});
+const VAPID_EMAIL = readRequiredEnv("VAPID_EMAIL", { minLength: 10 });
 
 try {
   webPush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 } catch (error) {
-  console.error("Failed to configure Web Push VAPID keys:", error.message);
+  throw new Error(`Failed to configure Web Push VAPID keys: ${error.message}`);
 }
 
 const pushSubscriptionsByUser = new Map();
+const authRateLimitBuckets = new Map();
 
 const store = new JsonStore(path.join(__dirname, "data", "db.json"), {
   users: [],
@@ -70,10 +124,23 @@ const store = new JsonStore(path.join(__dirname, "data", "db.json"), {
 });
 
 const app = express();
+app.disable("x-powered-by");
 app.set("trust proxy", TRUST_PROXY);
 app.use(compression());
 app.use(express.json({ limit: "5mb" }));
 app.use(cookieParser());
+app.use((req, res, next) => {
+  res.setHeader("Content-Security-Policy", SECURITY_CSP);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  if (req.secure || req.headers["x-forwarded-proto"] === "https") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  return next();
+});
 
 function normalize(value) {
   return String(value || "").trim();
@@ -128,6 +195,156 @@ function validateDisplayName(displayName) {
 
   return null;
 }
+
+function normalizeReactionEmoji(value) {
+  const emoji = String(value || "").trim();
+  if (!emoji || emoji.length > 16) {
+    return "";
+  }
+  return REACTION_PATTERN.test(emoji) ? emoji : "";
+}
+
+function sanitizeAvatarDataUrlForResponse(value) {
+  const avatar = String(value || "").trim();
+  if (!avatar || !AVATAR_DATA_URL_PATTERN.test(avatar)) {
+    return null;
+  }
+  return avatar;
+}
+
+function validateAndNormalizeAvatarDataUrl(value, { allowEmpty = false } = {}) {
+  const avatar = String(value || "").trim();
+  if (!avatar) {
+    if (allowEmpty) {
+      return { ok: true, value: null };
+    }
+    return { ok: false, error: "Нет данных аватарки" };
+  }
+
+  const match = avatar.match(AVATAR_DATA_URL_PATTERN);
+  if (!match) {
+    return {
+      ok: false,
+      error: "Поддерживаются только изображения PNG/JPEG/WEBP/GIF в формате data URL",
+    };
+  }
+
+  const mime = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
+  const base64Body = match[2].replace(/\s+/g, "");
+  if (!base64Body) {
+    return { ok: false, error: "Пустые данные аватарки" };
+  }
+  if (base64Body.length > AVATAR_BASE64_LENGTH_LIMIT) {
+    return { ok: false, error: "Аватарка слишком большая (макс 1.5MB)" };
+  }
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64Body) || base64Body.length % 4 !== 0) {
+    return { ok: false, error: "Некорректный формат аватарки" };
+  }
+
+  let decoded;
+  try {
+    decoded = Buffer.from(base64Body, "base64");
+  } catch {
+    return { ok: false, error: "Некорректные данные аватарки" };
+  }
+
+  if (!decoded.length) {
+    return { ok: false, error: "Некорректные данные аватарки" };
+  }
+  if (decoded.length > MAX_AVATAR_BYTES) {
+    return { ok: false, error: "Аватарка слишком большая (макс 1.5MB)" };
+  }
+
+  const canonicalBase64 = decoded.toString("base64");
+  if (canonicalBase64.replace(/=+$/g, "") !== base64Body.replace(/=+$/g, "")) {
+    return { ok: false, error: "Некорректные данные аватарки" };
+  }
+
+  return { ok: true, value: `data:${mime};base64,${canonicalBase64}` };
+}
+
+function getAuthRateLimitKey(req, scope) {
+  const ip = normalize(req.ip || req.socket?.remoteAddress || "unknown");
+  let identity = "";
+  if (scope === "register") {
+    identity = normalizeLower(req.body?.email || req.body?.username);
+  } else if (scope === "login") {
+    identity = normalizeLower(req.body?.login);
+  } else if (scope === "login-2fa") {
+    identity = normalize(String(req.body?.challengeToken || "")).slice(0, 64);
+  }
+  return `${scope}:${ip}:${identity}`;
+}
+
+function cleanupAuthRateLimitBuckets(now = Date.now()) {
+  for (const [key, bucket] of authRateLimitBuckets.entries()) {
+    const activeAttempts = bucket.attempts.filter((timestamp) => now - timestamp <= bucket.windowMs);
+    const blocked = bucket.blockedUntil > now;
+    if (!blocked && activeAttempts.length === 0) {
+      authRateLimitBuckets.delete(key);
+      continue;
+    }
+    bucket.attempts = activeAttempts;
+    authRateLimitBuckets.set(key, bucket);
+  }
+}
+
+function createAuthRateLimiter(scope, { windowMs, maxAttempts, blockMs }) {
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = getAuthRateLimitKey(req, scope);
+    const bucket = authRateLimitBuckets.get(key) || {
+      attempts: [],
+      blockedUntil: 0,
+      windowMs,
+    };
+
+    if (bucket.blockedUntil > now) {
+      const retryAfterSeconds = Math.ceil((bucket.blockedUntil - now) / 1000);
+      res.setHeader("Retry-After", String(retryAfterSeconds));
+      return res.status(429).json({ error: AUTH_RATE_LIMIT_MESSAGE });
+    }
+
+    bucket.attempts = bucket.attempts.filter(
+      (timestamp) => now - timestamp <= windowMs
+    );
+
+    if (bucket.attempts.length >= maxAttempts) {
+      bucket.attempts = [];
+      bucket.blockedUntil = now + blockMs;
+      bucket.windowMs = windowMs;
+      authRateLimitBuckets.set(key, bucket);
+      res.setHeader("Retry-After", String(Math.ceil(blockMs / 1000)));
+      return res.status(429).json({ error: AUTH_RATE_LIMIT_MESSAGE });
+    }
+
+    bucket.attempts.push(now);
+    bucket.windowMs = windowMs;
+    authRateLimitBuckets.set(key, bucket);
+
+    if (authRateLimitBuckets.size > 5000 || Math.random() < 0.01) {
+      cleanupAuthRateLimitBuckets(now);
+    }
+
+    return next();
+  };
+}
+
+const registerAuthRateLimit = createAuthRateLimiter("register", {
+  windowMs: 15 * 60 * 1000,
+  maxAttempts: 10,
+  blockMs: 30 * 60 * 1000,
+});
+const loginAuthRateLimit = createAuthRateLimiter("login", {
+  windowMs: 15 * 60 * 1000,
+  maxAttempts: 20,
+  blockMs: 30 * 60 * 1000,
+});
+const login2faAuthRateLimit = createAuthRateLimiter("login-2fa", {
+  windowMs: 10 * 60 * 1000,
+  maxAttempts: 10,
+  blockMs: 30 * 60 * 1000,
+});
 
 function decodeHtmlEntities(value) {
   return String(value || "")
@@ -280,7 +497,7 @@ function toPublicUser(user) {
     email: user.email,
     createdAt: user.createdAt,
     twoFactorEnabled: Boolean(user.twoFactor?.enabled),
-    avatarUrl: user.avatarUrl || null,
+    avatarUrl: sanitizeAvatarDataUrlForResponse(user.avatarUrl),
   };
 }
 
@@ -403,7 +620,7 @@ function buildConversationPayload(
       id: conversation.id,
       type: "group",
       name: conversation.name || "Группа",
-      avatarUrl: conversation.avatarUrl || null,
+      avatarUrl: sanitizeAvatarDataUrlForResponse(conversation.avatarUrl),
       creatorId: conversation.creatorId || conversation.participantIds[0] || null,
       participants,
       participantIds: conversation.participantIds,
@@ -472,6 +689,36 @@ function validateRegistration(username, email, password) {
 const socketsByUser = new Map();
 const lastSeenByUser = new Map();
 
+const offlineMessageQueue = new Map();
+const NON_QUEUEABLE_TYPES = new Set(["typing", "call:signal", "presence:update", "pong"]);
+
+function queueMessageForUser(userId, payload) {
+  if (NON_QUEUEABLE_TYPES.has(payload?.type)) return;
+  if (!offlineMessageQueue.has(userId)) {
+    offlineMessageQueue.set(userId, []);
+  }
+  const queue = offlineMessageQueue.get(userId);
+  const now = Date.now();
+  const trimmed = queue.filter((item) => now - item.queuedAt < OFFLINE_QUEUE_TTL_MS);
+  if (trimmed.length >= OFFLINE_QUEUE_MAX) {
+    trimmed.shift();
+  }
+  trimmed.push({ payload, queuedAt: now });
+  offlineMessageQueue.set(userId, trimmed);
+}
+
+function flushQueuedMessages(userId, socket) {
+  const queue = offlineMessageQueue.get(userId);
+  if (!queue || queue.length === 0) return;
+  const now = Date.now();
+  for (const item of queue) {
+    if (now - item.queuedAt < OFFLINE_QUEUE_TTL_MS && socket.readyState === socket.OPEN) {
+      socket.send(JSON.stringify(item.payload));
+    }
+  }
+  offlineMessageQueue.delete(userId);
+}
+
 function addSocket(userId, socket) {
   if (!socketsByUser.has(userId)) {
     socketsByUser.set(userId, new Set());
@@ -502,7 +749,8 @@ function isUserOnline(userId) {
 
 function sendToUser(userId, payload) {
   const sockets = socketsByUser.get(userId);
-  if (!sockets) {
+  if (!sockets || sockets.size === 0) {
+    queueMessageForUser(userId, payload);
     return;
   }
   const serialized = JSON.stringify(payload);
@@ -575,7 +823,7 @@ function getLanAddresses() {
   return [...new Set(addresses)];
 }
 
-app.post("/api/auth/register", async (req, res) => {
+app.post("/api/auth/register", registerAuthRateLimit, async (req, res) => {
   const username = normalize(req.body.username);
   const email = normalize(req.body.email);
   const password = String(req.body.password || "");
@@ -632,7 +880,7 @@ app.post("/api/auth/register", async (req, res) => {
   }
 });
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", loginAuthRateLimit, async (req, res) => {
   const login = normalizeLower(req.body.login);
   const password = String(req.body.password || "");
 
@@ -672,7 +920,7 @@ app.post("/api/auth/login", async (req, res) => {
   return res.json({ user: toPublicUser(user) });
 });
 
-app.post("/api/auth/login/2fa", async (req, res) => {
+app.post("/api/auth/login/2fa", login2faAuthRateLimit, async (req, res) => {
   const challengeToken = String(req.body.challengeToken || "");
   const token = normalizeOtpToken(req.body.token);
 
@@ -958,12 +1206,18 @@ app.post("/api/translate", requireAuth, async (req, res) => {
     url.searchParams.set("q", text);
     url.searchParams.set("langpair", `${sourceLang}|${targetLang}`);
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    let response;
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       throw new Error(`Translate API HTTP ${response.status}`);
@@ -1792,9 +2046,11 @@ app.delete("/api/conversations/:id", requireAuth, async (req, res) => {
 
 // --- Avatar upload ---
 app.post("/api/auth/avatar", requireAuth, async (req, res) => {
-  const avatarData = String(req.body.avatar || "").trim();
-  if (!avatarData) return res.status(400).json({ error: "Нет данных аватарки" });
-  if (avatarData.length > 2 * 1024 * 1024) return res.status(400).json({ error: "Аватарка слишком большая (макс 1.5MB)" });
+  const avatarResult = validateAndNormalizeAvatarDataUrl(req.body.avatar);
+  if (!avatarResult.ok) {
+    return res.status(400).json({ error: avatarResult.error });
+  }
+  const avatarData = avatarResult.value;
   try {
     await store.withWriteLock((data) => {
       const user = data.users.find((u) => u.id === req.user.id);
@@ -1944,8 +2200,16 @@ app.post("/api/conversations/group", requireAuth, async (req, res) => {
 app.patch("/api/conversations/:id/group", requireAuth, async (req, res) => {
   const conversationId = req.params.id;
   const newName = normalize(req.body.name);
+  let normalizedAvatarUrl;
   if (newName !== undefined && newName !== null && req.body.name !== undefined) {
     if (!newName || newName.length > 64) return res.status(400).json({ error: "Название группы: 1-64 символа" });
+  }
+  if (req.body.avatarUrl !== undefined) {
+    const avatarResult = validateAndNormalizeAvatarDataUrl(req.body.avatarUrl, { allowEmpty: true });
+    if (!avatarResult.ok) {
+      return res.status(400).json({ error: avatarResult.error });
+    }
+    normalizedAvatarUrl = avatarResult.value;
   }
   try {
     await store.withWriteLock((data) => {
@@ -1954,8 +2218,7 @@ app.patch("/api/conversations/:id/group", requireAuth, async (req, res) => {
       if (!conv.participantIds.includes(req.user.id)) throw Object.assign(new Error("Вы не участник группы"), { code: "FORBIDDEN" });
       if (newName) conv.name = newName;
       if (req.body.avatarUrl !== undefined) {
-        const av = String(req.body.avatarUrl || "").trim();
-        conv.avatarUrl = av || null;
+        conv.avatarUrl = normalizedAvatarUrl;
       }
       conv.updatedAt = new Date().toISOString();
     });
@@ -2130,8 +2393,8 @@ app.patch("/api/conversations/:id/messages/:messageId", requireAuth, async (req,
 app.post("/api/conversations/:id/messages/:messageId/reactions", requireAuth, async (req, res) => {
   const conversationId = req.params.id;
   const messageId = req.params.messageId;
-  const emoji = normalize(req.body.emoji);
-  if (!emoji || emoji.length > 4) return res.status(400).json({ error: "Некорректная реакция" });
+  const emoji = normalizeReactionEmoji(req.body.emoji);
+  if (!emoji) return res.status(400).json({ error: "Некорректная реакция" });
   try {
     const result = await store.withWriteLock((data) => {
       const conv = data.conversations.find((c) => c.id === conversationId);
@@ -2312,16 +2575,21 @@ wss.on("connection", async (socket, req) => {
     return;
   }
 
+  socket.isAlive = true;
+  socket.on("pong", () => { socket.isAlive = true; });
+
   const cameOnline = addSocket(user.id, socket);
   if (cameOnline) {
     broadcastPresenceChange(user.id, true);
   }
+  console.log(`[WS] connected: ${user.username} (${user.id})`);
   socket.send(
     JSON.stringify({
       type: "ready",
       user: toPublicUser(user),
     })
   );
+  flushQueuedMessages(user.id, socket);
 
   socket.on("message", async (raw) => {
     let payload;
@@ -2405,17 +2673,31 @@ wss.on("connection", async (socket, req) => {
   socket.on("close", () => {
     const wentOffline = removeSocket(user.id, socket);
     if (wentOffline) {
+      console.log(`[WS] disconnected: ${user.username} (${user.id})`);
       broadcastPresenceChange(user.id, false);
     }
   });
 
-  socket.on("error", () => {
+  socket.on("error", (err) => {
+    console.error(`[WS] socket error for ${user.username} (${user.id}):`, err.message);
     const wentOffline = removeSocket(user.id, socket);
     if (wentOffline) {
       broadcastPresenceChange(user.id, false);
     }
   });
 });
+
+const heartbeatTimer = setInterval(() => {
+  for (const client of wss.clients) {
+    if (!client.isAlive) {
+      client.terminate();
+      continue;
+    }
+    client.isAlive = false;
+    client.ping();
+  }
+}, HEARTBEAT_INTERVAL_MS);
+wss.on("close", () => clearInterval(heartbeatTimer));
 
 store
   .init()

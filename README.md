@@ -17,6 +17,9 @@
 ```bash
 cmd /c npm install
 copy .env.example .env
+# Обязательно: задайте безопасный JWT_SECRET (минимум 32 символа)
+# и сгенерируйте VAPID-ключи:
+# npx web-push generate-vapid-keys
 cmd /c npm run dev
 ```
 
@@ -60,6 +63,9 @@ cmd /c npm start
 - `PORT` - порт сервера (по умолчанию `3000`)
 - `HOST` - интерфейс прослушивания (`0.0.0.0` для внешнего доступа)
 - `JWT_SECRET` - секрет подписи JWT
+- `VAPID_PUBLIC_KEY` - публичный VAPID-ключ для push
+- `VAPID_PRIVATE_KEY` - приватный VAPID-ключ для push
+- `VAPID_EMAIL` - контакт для VAPID (формат `mailto:...`)
 - `COOKIE_SECURE` - `auto`, `true` или `false`
 - `TRUST_PROXY` - значение для `express trust proxy`
 - `PUBLIC_URL` - опционально, публичный URL для логов

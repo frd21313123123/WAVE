@@ -27,8 +27,18 @@
   --messages-pattern:
     linear-gradient(45deg, rgba(117, 117, 117, 0.08) 25%, transparent 25%),
     linear-gradient(-45deg, rgba(117, 117, 117, 0.05) 25%, transparent 25%);
+  --messages-pattern-opacity: 0.1;
   --surface-hover: #f4f1eb;
   --shadow-app: 0 28px 70px -34px rgba(30, 30, 30, 0.18);
+  --bubble-bg-base: #ffffff;
+  --bubble-bg-mine: #e7f1ff;
+  --bubble-bg-their: #ffffff;
+  --bubble-border-base: rgba(62, 83, 109, 0.2);
+  --bubble-border-mine: rgba(95, 139, 190, 0.5);
+  --bubble-border-their: rgba(83, 103, 129, 0.28);
+  --bubble-text: #1f2c3b;
+  --bubble-meta: #5f7898;
+  --bubble-shadow: 0 10px 22px -18px rgba(30, 30, 30, 0.28);
   --chat-action-shell-bg: #ece7dc;
   --chat-action-shell-border: rgba(30, 30, 30, 0.12);
   --chat-action-shell-shadow: 0 16px 28px -24px rgba(30, 30, 30, 0.46);
@@ -71,8 +81,18 @@
   --messages-pattern:
     linear-gradient(45deg, rgba(138, 142, 153, 0.16) 25%, transparent 25%),
     linear-gradient(-45deg, rgba(138, 142, 153, 0.11) 25%, transparent 25%);
+  --messages-pattern-opacity: 0.12;
   --surface-hover: #262a3a;
   --shadow-app: 0 28px 70px -34px rgba(0, 0, 0, 0.86);
+  --bubble-bg-base: #0d243d;
+  --bubble-bg-mine: #1f5f9a;
+  --bubble-bg-their: #0a1f36;
+  --bubble-border-base: rgba(77, 124, 183, 0.26);
+  --bubble-border-mine: rgba(84, 150, 214, 0.58);
+  --bubble-border-their: rgba(61, 93, 132, 0.55);
+  --bubble-text: #edf5ff;
+  --bubble-meta: #8fb8e1;
+  --bubble-shadow: 0 10px 22px -18px rgba(1, 9, 20, 0.95);
   --chat-action-shell-bg: #161b29;
   --chat-action-shell-border: rgba(255, 255, 255, 0.08);
   --chat-action-shell-shadow: 0 18px 34px -26px rgba(0, 0, 0, 0.9);
@@ -3643,7 +3663,7 @@ html.theme-changing .theme-icon-moon {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  background: linear-gradient(180deg, #081322 0%, #07101d 100%);
+  background: var(--messages-bg);
 }
 
 .messages::before {
@@ -3653,7 +3673,7 @@ html.theme-changing .theme-icon-moon {
   pointer-events: none;
   background: var(--messages-pattern);
   background-size: 28px 28px;
-  opacity: 0.12;
+  opacity: var(--messages-pattern-opacity);
 }
 
 .messages>* {
@@ -3914,21 +3934,21 @@ html.theme-changing .theme-icon-moon {
   position: relative;
   border-radius: 14px;
   padding: 8px 12px 7px;
-  border: 1px solid rgba(77, 124, 183, 0.26);
-  background: #0d243d;
-  box-shadow: 0 10px 22px -18px rgba(1, 9, 20, 0.95);
+  border: 1px solid var(--bubble-border-base);
+  background: var(--bubble-bg-base);
+  box-shadow: var(--bubble-shadow);
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .message-row.mine .bubble {
-  background: #1f5f9a;
-  border-color: rgba(84, 150, 214, 0.58);
+  background: var(--bubble-bg-mine);
+  border-color: var(--bubble-border-mine);
   border-bottom-right-radius: 14px;
 }
 
 .message-row.their .bubble {
-  background: #0a1f36;
-  border-color: rgba(61, 93, 132, 0.55);
+  background: var(--bubble-bg-their);
+  border-color: var(--bubble-border-their);
   border-bottom-left-radius: 14px;
 }
 
@@ -3957,7 +3977,7 @@ html.theme-changing .theme-icon-moon {
   margin: 0;
   font-size: 0.92rem;
   line-height: 1.35;
-  color: #edf5ff;
+  color: var(--bubble-text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -3991,7 +4011,7 @@ html.theme-changing .theme-icon-moon {
 .bubble-meta {
   margin-top: 4px;
   font-size: 0.69rem;
-  color: #8fb8e1;
+  color: var(--bubble-meta);
   text-align: right;
   letter-spacing: 0.01em;
 }
