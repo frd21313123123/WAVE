@@ -200,6 +200,15 @@ const ALLOWED_TRANSLATION_LANGS = new Set([
 const ALLOWED_THEMES = new Set(["light", "dark"]);
 const ENC_SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
 
+function setActionButtonLabel(button, label) {
+  const labelNode = button?.querySelector(".chat-action-label");
+  if (labelNode) {
+    labelNode.textContent = label;
+    return;
+  }
+  button.textContent = label;
+}
+
 let encShowKey = false;
 let encGlobalScramble = false;
 let encGlobalScrambleInterval = null;
@@ -216,6 +225,7 @@ const state = {
   conversations: [],
   activeConversationId: null,
   messagesByConversation: new Map(),
+  loadedMessagesConversationIds: new Set(),
   pendingOutgoingByClientId: new Map(),
   socket: null,
   pageUnloading: false,
@@ -864,7 +874,7 @@ function updateCallUi() {
 
   callBtn.disabled = (disabledByContext || hasPendingIncoming) && !callActive;
   callBtn.classList.toggle("active", callActive);
-  callBtn.textContent = callActive ? "Завершить" : "Позвонить";
+  setActionButtonLabel(callBtn, callActive ? "Завершить" : "Позвонить");
   if (callActive) {
     callBtn.title = "";
   } else if (!conversation) {
@@ -1549,7 +1559,10 @@ function updateBlockUserUi() {
 
   blockUserBtn.disabled = !canToggle || state.blockActionInFlight;
   blockUserBtn.classList.toggle("active", blockedByMe);
-  blockUserBtn.textContent = blockedByMe ? "Разблокировать" : "Заблокировать";
+  setActionButtonLabel(
+    blockUserBtn,
+    blockedByMe ? "Разблокировать" : "Заблокировать"
+  );
 }
 
 function updateComposerUi() {
@@ -1575,7 +1588,7 @@ function updateChatLockUi() {
 
   chatLockBtn.disabled = !canLock;
   chatLockBtn.classList.toggle("active", locked);
-  chatLockBtn.textContent = locked ? "Чат защищен" : "Защитить чат";
+  setActionButtonLabel(chatLockBtn, locked ? "Чат защищен" : "Защитить чат");
 
   chatLockOverlay.classList.toggle("hidden", !locked);
   chatMain.classList.toggle("chat-locked", locked);
@@ -1690,7 +1703,7 @@ function updateDeleteUi() {
   deleteToolbar.classList.toggle("hidden", !isDeleteModeVisible);
   deleteModeBtn.classList.toggle("active", state.deleteMode);
   deleteModeBtn.disabled = !hasConversation || locked;
-  deleteModeBtn.textContent = "Удаление";
+  setActionButtonLabel(deleteModeBtn, "Удаление");
   deleteSelectionInfo.textContent = `Выбрано: ${selectedCount}`;
   deleteSelectedBtn.disabled = selectedCount === 0 || locked;
   deleteConversationBtn.disabled = !hasConversation || locked;
@@ -1970,6 +1983,7 @@ async function removeConversationFromState(conversationId) {
     (conversation) => conversation.id !== conversationId
   );
   state.messagesByConversation.delete(conversationId);
+  state.loadedMessagesConversationIds.delete(conversationId);
   state.deletingMessageIdsByConversation.delete(conversationId);
   state.readRequestsInFlight.delete(conversationId);
   if (isConversationPinned(conversationId)) {
@@ -2067,6 +2081,7 @@ function showAuth() {
   state.conversations = [];
   state.activeConversationId = null;
   state.messagesByConversation = new Map();
+  state.loadedMessagesConversationIds = new Set();
   state.pendingOutgoingByClientId = new Map();
   state.translationCache = new Map();
   state.translationRequests = new Map();
@@ -3285,18 +3300,15 @@ function mergeServerMessageWithLocalMedia(serverMessage, localMessage) {
 }
 
 function getMessageMetaText(message, mine) {
+  const timeText = formatTime(message.createdAt);
   if (mine) {
-    const readMarker = message.pending
-      ? "\u043e\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u0435\u0442\u0441\u044f..."
-      : message.readAt
-        ? "\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e"
-        : "\u0434\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u043e";
-    return `\u0412\u044b, ${formatDateTime(message.createdAt)} \u00b7 ${readMarker}`;
+    if (message.pending) {
+      return `${timeText} \u231b`;
+    }
+    return `${timeText} ${message.readAt ? "\u2713\u2713" : "\u2713"}`.trim();
   }
 
-  return `${message.sender?.username || "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c"}, ${formatDateTime(
-    message.createdAt
-  )}`;
+  return timeText;
 }
 
 function createMessageRow(message, deletingIds = new Set()) {
@@ -3723,12 +3735,13 @@ function renderSearchResults(users) {
   }
 }
 async function loadMessages(conversationId) {
-  if (state.messagesByConversation.has(conversationId)) {
+  if (state.loadedMessagesConversationIds.has(conversationId)) {
     return;
   }
 
   const payload = await api(`/api/conversations/${conversationId}/messages?limit=200`);
   state.messagesByConversation.set(conversationId, payload.messages || []);
+  state.loadedMessagesConversationIds.add(conversationId);
 }
 
 async function selectConversation(conversationId) {
@@ -3761,6 +3774,7 @@ async function loadConversations() {
   state.activeConversationId = null;
   state.deletingMessageIdsByConversation = new Map();
   state.readRequestsInFlight = new Set();
+  state.loadedMessagesConversationIds = new Set();
   state.pendingOutgoingByClientId = new Map();
   state.deleteMode = false;
   state.selectedMessageIds.clear();
@@ -4541,6 +4555,7 @@ messageInput.addEventListener("keydown", (event) => {
 });
 
 let screenshotPasteInFlight = false;
+let messageSubmitInFlight = false;
 messageInput.addEventListener("paste", async (event) => {
   event.preventDefault();
 
@@ -4591,6 +4606,10 @@ messageInput.addEventListener("paste", async (event) => {
 messageForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
+  if (messageSubmitInFlight) {
+    return;
+  }
+
   const activeConversation = getActiveConversation();
   if (
     !state.activeConversationId ||
@@ -4608,20 +4627,33 @@ messageForm.addEventListener("submit", async (event) => {
 
   const encrypted = state.ui.vigenereEnabled;
   const text = encrypted ? vigenereEncrypt(plainText, state.ui.vigenereKey) : plainText;
+  const replyToMessageBeforeSend = state.replyToMessage;
 
   try {
+    messageSubmitInFlight = true;
     const body = encrypted ? { text, encryption: { type: "vigenere" } } : { text };
-    if (state.replyToMessage) {
-      body.replyToId = state.replyToMessage.id;
+    if (replyToMessageBeforeSend) {
+      body.replyToId = replyToMessageBeforeSend.id;
     }
-    await sendMessageWithOptimistic(body);
-    playOutgoingMessageSound();
     messageInput.value = "";
     messageInput.style.height = "auto";
     state.replyToMessage = null;
     replyBar.classList.add("hidden");
+    await sendMessageWithOptimistic(body);
+    playOutgoingMessageSound();
+    authStatus.textContent = "";
   } catch (error) {
     authStatus.textContent = error.message;
+    messageInput.value = plainText;
+    messageInput.style.height = "auto";
+    messageInput.style.height = `${Math.min(messageInput.scrollHeight, 130)}px`;
+    if (replyToMessageBeforeSend) {
+      state.replyToMessage = replyToMessageBeforeSend;
+      replyBarText.textContent = getMessageTypePreview(replyToMessageBeforeSend, "Сообщение").slice(0, 80);
+      replyBar.classList.remove("hidden");
+    }
+  } finally {
+    messageSubmitInFlight = false;
   }
 });
 

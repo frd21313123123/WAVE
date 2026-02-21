@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const bcrypt = require("bcryptjs");
+const compression = require("compression");
 const cookieParser = require("cookie-parser");
 const express = require("express");
 const jwt = require("jsonwebtoken");
@@ -22,6 +23,7 @@ const TRUST_PROXY = Number(process.env.TRUST_PROXY || 1);
 const PUBLIC_URL = String(process.env.PUBLIC_URL || "").trim();
 const TOKEN_COOKIE_NAME = "messenger_token";
 const TOKEN_LIFETIME_MS = 1000 * 60 * 60 * 24 * 7;
+const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_TRANSLATE_LENGTH = 4000;
 const TRANSLATE_API_URL =
@@ -65,6 +67,7 @@ const store = new JsonStore(path.join(__dirname, "data", "db.json"), {
 
 const app = express();
 app.set("trust proxy", TRUST_PROXY);
+app.use(compression());
 app.use(express.json({ limit: "5mb" }));
 app.use(cookieParser());
 
@@ -533,7 +536,7 @@ app.post("/api/auth/register", async (req, res) => {
 
   const usernameLower = username.toLowerCase();
   const emailLower = email.toLowerCase();
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
   try {
     const result = await store.withWriteLock((data) => {
@@ -2115,7 +2118,17 @@ async function sendPushNotificationToUser(userId, payload) {
   }
 }
 
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"), {
+  // 1 hour for versioned assets; sw.js and index.html must always revalidate
+  setHeaders(res, filePath) {
+    const name = path.basename(filePath);
+    if (name === "sw.js" || name === "index.html") {
+      res.setHeader("Cache-Control", "no-cache");
+    } else {
+      res.setHeader("Cache-Control", "public, max-age=3600");
+    }
+  },
+}));
 
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api")) {

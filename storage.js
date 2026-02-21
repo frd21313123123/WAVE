@@ -7,6 +7,7 @@ class JsonStore {
     this.defaultData = defaultData;
     this.initPromise = null;
     this.queue = Promise.resolve();
+    this._cache = null; // in-memory copy; null = not yet loaded
   }
 
   async init() {
@@ -32,18 +33,28 @@ class JsonStore {
 
   async read() {
     await this.init();
+    if (this._cache !== null) {
+      return this._cache; // read-only callers (GET endpoints) don't mutate — return reference
+    }
     const raw = await fs.readFile(this.filePath, "utf8");
-    return JSON.parse(raw);
+    this._cache = JSON.parse(raw);
+    return this._cache;
   }
 
   async write(data) {
     await this.init();
     await fs.writeFile(this.filePath, JSON.stringify(data, null, 2), "utf8");
+    this._cache = data; // update cache only after a successful write
   }
 
   async withWriteLock(mutator) {
     this.queue = this.queue.then(async () => {
-      const data = await this.read();
+      // Clone before mutation so GET readers always see a consistent snapshot.
+      const data = JSON.parse(JSON.stringify(
+        this._cache !== null ? this._cache : JSON.parse(await fs.readFile(this.filePath, "utf8"))
+      ));
+      if (this._cache === null) this._cache = data;
+
       const result = await mutator(data);
       await this.write(data);
       return result;
