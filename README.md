@@ -16,6 +16,7 @@
 
 ```bash
 cmd /c npm install
+copy .env.example .env
 cmd /c npm run dev
 ```
 

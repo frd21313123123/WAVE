@@ -3,6 +3,8 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 
+require("dotenv").config({ path: path.join(__dirname, ".env"), override: true });
+
 const bcrypt = require("bcryptjs");
 const compression = require("compression");
 const cookieParser = require("cookie-parser");
@@ -26,6 +28,8 @@ const TOKEN_LIFETIME_MS = 1000 * 60 * 60 * 24 * 7;
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_TRANSLATE_LENGTH = 4000;
+const MAX_DISPLAY_NAME_LENGTH = 32;
+const DISPLAY_NAME_ALLOWED_PATTERN = /^[\p{L}\p{N}_.\- ']+$/u;
 const TRANSLATE_API_URL =
   process.env.TRANSLATE_API_URL || "https://api.mymemory.translated.net/get";
 const ALLOWED_TRANSLATION_LANGS = new Set([
@@ -77,6 +81,52 @@ function normalize(value) {
 
 function normalizeLower(value) {
   return normalize(value).toLowerCase();
+}
+
+function normalizeDisplayName(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function getDisplayNameLower(user) {
+  const existingLower = normalizeLower(user?.displayNameLower);
+  if (existingLower) {
+    return existingLower;
+  }
+  return normalizeDisplayName(user?.displayName).toLowerCase();
+}
+
+function getPublicName(user) {
+  const displayName = normalizeDisplayName(user?.displayName);
+  if (displayName) {
+    return displayName;
+  }
+  return normalize(user?.username);
+}
+
+function validateDisplayName(displayName) {
+  if (!displayName) {
+    return null;
+  }
+
+  if (displayName.length > MAX_DISPLAY_NAME_LENGTH) {
+    return `Никнейм не может быть длиннее ${MAX_DISPLAY_NAME_LENGTH} символов`;
+  }
+
+  if (/[\u0000-\u001f\u007f]/.test(displayName)) {
+    return "Никнейм содержит недопустимые символы";
+  }
+
+  if (!DISPLAY_NAME_ALLOWED_PATTERN.test(displayName)) {
+    return "Никнейм может содержать буквы, цифры, пробел, точку, дефис, апостроф и _";
+  }
+
+  if (!/[\p{L}\p{N}]/u.test(displayName)) {
+    return "Никнейм должен содержать хотя бы одну букву или цифру";
+  }
+
+  return null;
 }
 
 function decodeHtmlEntities(value) {
@@ -226,6 +276,7 @@ function toPublicUser(user) {
   return {
     id: user.id,
     username: user.username,
+    displayName: normalizeDisplayName(user.displayName) || null,
     email: user.email,
     createdAt: user.createdAt,
     twoFactorEnabled: Boolean(user.twoFactor?.enabled),
@@ -557,6 +608,8 @@ app.post("/api/auth/register", async (req, res) => {
         id: crypto.randomUUID(),
         username,
         usernameLower,
+        displayName: null,
+        displayNameLower: null,
         email,
         emailLower,
         passwordHash,
@@ -594,6 +647,12 @@ app.post("/api/auth/login", async (req, res) => {
 
   if (!user) {
     return res.status(401).json({ error: "Неверный логин или пароль" });
+  }
+
+  if (!user.passwordHash) {
+    return res.status(401).json({
+      error: "Password is not set for this account",
+    });
   }
 
   const passwordMatch = await bcrypt.compare(password, user.passwordHash);
@@ -936,8 +995,8 @@ app.post("/api/translate", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/users", requireAuth, async (req, res) => {
-  const search = normalizeLower(req.query.search);
+async function handleUsersSearch(req, res) {
+  const search = normalizeLower(req.query.search || req.query.q);
   if (search.length < 2) {
     return res.json({ users: [] });
   }
@@ -945,15 +1004,24 @@ app.get("/api/users", requireAuth, async (req, res) => {
   const state = await store.read();
   const users = state.users
     .filter((user) => user.id !== req.user.id)
-    .filter(
-      (user) =>
-        user.usernameLower.includes(search) || user.emailLower.includes(search)
-    )
+    .filter((user) => {
+      const usernameLower = normalizeLower(user.usernameLower || user.username);
+      const emailLower = normalizeLower(user.emailLower || user.email);
+      const displayNameLower = getDisplayNameLower(user);
+      return (
+        usernameLower.includes(search) ||
+        emailLower.includes(search) ||
+        displayNameLower.includes(search)
+      );
+    })
     .slice(0, 30)
     .map(toPublicUser);
 
   return res.json({ users });
-});
+}
+
+app.get("/api/users", requireAuth, handleUsersSearch);
+app.get("/api/users/search", requireAuth, handleUsersSearch);
 
 async function toggleUserBlock(req, res, shouldBlock) {
   const targetUserId = normalize(req.params.id);
@@ -1369,7 +1437,7 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
 
       if (participantId !== req.user.id) {
         sendPushNotificationToUser(participantId, {
-          title: sender ? sender.username : "Новое сообщение",
+          title: sender ? getPublicName(sender) : "Новое сообщение",
           body: messagePayload.messageType === "voice"
             ? "🎤 Голосовое сообщение"
             : messagePayload.messageType === "image"
@@ -1737,6 +1805,100 @@ app.post("/api/auth/avatar", requireAuth, async (req, res) => {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Не удалось сохранить аватарку" });
+  }
+});
+
+// --- Profile update (displayName) ---
+app.put("/api/auth/profile", requireAuth, async (req, res) => {
+  const displayName = normalizeDisplayName(req.body.displayName);
+  const displayNameValidationError = validateDisplayName(displayName);
+  if (displayNameValidationError) {
+    return res.status(400).json({ error: displayNameValidationError });
+  }
+
+  const displayNameLower = displayName ? displayName.toLowerCase() : null;
+
+  try {
+    const result = await store.withWriteLock((data) => {
+      const user = data.users.find((u) => u.id === req.user.id);
+      if (!user) throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });
+
+      if (displayNameLower) {
+        const displayNameTaken = data.users.some((candidate) => {
+          if (candidate.id === req.user.id) {
+            return false;
+          }
+
+          return (
+            getDisplayNameLower(candidate) === displayNameLower ||
+            normalizeLower(candidate.usernameLower || candidate.username) === displayNameLower
+          );
+        });
+
+        if (displayNameTaken) {
+          throw Object.assign(
+            new Error("\u042d\u0442\u043e\u0442 \u043d\u0438\u043a\u043d\u0435\u0439\u043c \u0443\u0436\u0435 \u0437\u0430\u043d\u044f\u0442"),
+            {
+              code: "DISPLAY_NAME_TAKEN",
+            }
+          );
+        }
+      }
+
+      user.displayName = displayName || null;
+      user.displayNameLower = displayNameLower;
+
+      const conversationIds = data.conversations
+        .filter((conversation) => conversation.participantIds.includes(req.user.id))
+        .map((conversation) => conversation.id);
+
+      return {
+        displayName: user.displayName || null,
+        conversationIds,
+      };
+    });
+
+    if (result.conversationIds.length > 0) {
+      const state = await store.read();
+      const usersById = new Map(state.users.map((user) => [user.id, user]));
+      const messagesById = new Map(
+        state.messages.map((message) => [message.id, message])
+      );
+      const conversationsById = new Map(
+        state.conversations.map((conversation) => [conversation.id, conversation])
+      );
+
+      for (const conversationId of result.conversationIds) {
+        const conversation = conversationsById.get(conversationId);
+        if (!conversation) {
+          continue;
+        }
+
+        for (const participantId of conversation.participantIds) {
+          const conversationPayload = buildConversationPayload(
+            conversation,
+            participantId,
+            usersById,
+            messagesById
+          );
+          sendToUser(participantId, {
+            type: "conversation:update",
+            conversation: conversationPayload,
+          });
+        }
+      }
+    }
+
+    return res.json({ displayName: result.displayName });
+  } catch (e) {
+    if (e.code === "DISPLAY_NAME_TAKEN") {
+      return res.status(409).json({ error: e.message });
+    }
+
+    console.error(e);
+    return res
+      .status(500)
+      .json({ error: "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043d\u0438\u043a\u043d\u0435\u0439\u043c" });
   }
 });
 
@@ -2181,9 +2343,16 @@ wss.on("connection", async (socket, req) => {
         const s = await store.read();
         const conv = s.conversations.find((c) => c.id === convId);
         if (!conv || !conv.participantIds.includes(user.id)) return;
+        const currentUser = s.users.find((item) => item.id === user.id) || user;
         for (const pid of conv.participantIds) {
           if (pid !== user.id) {
-            sendToUser(pid, { type: "typing", conversationId: convId, userId: user.id, username: user.username });
+            sendToUser(pid, {
+              type: "typing",
+              conversationId: convId,
+              userId: user.id,
+              username: currentUser.username,
+              displayName: getPublicName(currentUser),
+            });
           }
         }
       } catch { }

@@ -59,6 +59,9 @@ const encVisibilityEyeOff = document.getElementById("encVisibilityEyeOff");
 const encSaveBtn = document.getElementById("encSaveBtn");
 const encSaveHint = document.getElementById("encSaveHint");
 const encStatusValue = document.getElementById("encStatusValue");
+const encEntropyValue = document.getElementById("encEntropyValue");
+const encTimeToCrack = document.getElementById("encTimeToCrack");
+const encSecurityIcon = document.getElementById("encSecurityIcon");
 const encKeyIcon = document.getElementById("encKeyIcon");
 const encStrengthBars = Array.from(document.querySelectorAll(".enc-strength-bar"));
 const loginOtpLabel = document.getElementById("loginOtpLabel");
@@ -67,7 +70,6 @@ const loginOtpCancelBtn = document.getElementById("loginOtpCancelBtn");
 const loginSubmitBtn = document.getElementById("loginSubmitBtn");
 const loginPrimaryFields = document.getElementById("loginPrimaryFields");
 const authTabs = document.getElementById("authTabs");
-const authSocialSection = document.getElementById("authSocialSection");
 const authThemeToggleBtn = document.getElementById("authThemeToggleBtn");
 const authTitle = document.getElementById("authTitle");
 const authCaption = document.getElementById("authCaption");
@@ -145,6 +147,9 @@ const groupCreateStatus = document.getElementById("groupCreateStatus");
 const avatarPreview = document.getElementById("avatarPreview");
 const avatarFileInput = document.getElementById("avatarFileInput");
 const avatarUploadBtn = document.getElementById("avatarUploadBtn");
+const displayNameInput = document.getElementById("displayNameInput");
+const displayNameSaveBtn = document.getElementById("displayNameSaveBtn");
+const displayNameStatus = document.getElementById("displayNameStatus");
 const notifToggleBtn = document.getElementById("notifToggleBtn");
 const groupSettingsHeaderBtn = document.getElementById("groupSettingsHeaderBtn");
 const groupSettingsModal = document.getElementById("groupSettingsModal");
@@ -185,6 +190,9 @@ const MESSAGE_SOUND_SRC = "/sound-message.mp3";
 const OUTGOING_MESSAGE_SOUND_SRC = "/zvukovoe-uvedomlenie-kontakta.mp3";
 const SCREENSHOT_MESSAGE_TEXT = "🖼 Скриншот";
 const MAX_SCREENSHOT_SIZE_BYTES = 3 * 1024 * 1024;
+const MAX_DISPLAY_NAME_LENGTH = 32;
+const DISPLAY_NAME_ALLOWED_PATTERN = /^[\p{L}\p{N}_.\- ']+$/u;
+const DISPLAY_NAME_HINT_TEXT = "1-32 символа: буквы, цифры, пробел, точка, дефис, апостроф и _.";
 const ALLOWED_TRANSLATION_LANGS = new Set([
   "off",
   "en",
@@ -336,9 +344,6 @@ function renderAuthLayoutState() {
   loginOtpCancelBtn.classList.toggle("hidden", !isTwoFactorStep);
   if (authTabs) {
     authTabs.classList.toggle("hidden", isTwoFactorStep);
-  }
-  if (authSocialSection) {
-    authSocialSection.classList.toggle("hidden", isTwoFactorStep);
   }
   if (authBrand) {
     authBrand.classList.toggle("hidden", isTwoFactorStep);
@@ -777,10 +782,10 @@ function renderActiveCallOverlay() {
     )
     : getActiveCallConversation();
   const peerName = hasIncomingPending
-    ? (pendingCall?.callerName || callConversation?.participant?.username || "Собеседник")
-    : (callConversation?.participant?.username || "Собеседник");
+    ? (pendingCall?.callerName || getDisplayName(callConversation?.participant) || "Собеседник")
+    : (getDisplayName(callConversation?.participant) || "Собеседник");
   const peerAvatarUrl = callConversation?.participant?.avatarUrl || "";
-  const meName = state.me?.username || "Вы";
+  const meName = getDisplayName(state.me) || "Вы";
   const meAvatarUrl = state.me?.avatarUrl || "";
 
   if (activeCallName) {
@@ -1464,7 +1469,7 @@ async function handleCallSignal(payload) {
     const callerConversation =
       getConversationById(conversationId) || getConversationByParticipantId(fromUserId);
     const resolvedConversationId = callerConversation?.id || conversationId;
-    const callerName = callerConversation?.participant?.username || "Собеседник";
+    const callerName = getDisplayName(callerConversation?.participant) || "Собеседник";
     state.call.pendingIncoming = {
       fromUserId,
       conversationId: resolvedConversationId,
@@ -1920,7 +1925,7 @@ function renderActiveConversationHeader() {
     chatPresence.classList.remove("online", "offline");
     groupSettingsHeaderBtn.classList.remove("hidden");
   } else {
-    chatTitle.textContent = conversation.participant?.username || "Диалог";
+    chatTitle.textContent = getDisplayName(conversation.participant) || "Диалог";
     const isOnline = Boolean(conversation.participant?.online);
     if (isOnline) {
       chatPresence.textContent = "онлайн";
@@ -2562,19 +2567,55 @@ function clearEncryptionVisualTimers() {
   }
 }
 
-function getEncryptionSecurityLevel(rawKey) {
-  const length = String(rawKey || "").trim().length;
-  if (!length) return 0;
-  if (length < 5) return 1;
-  if (length < 10) return 2;
-  return 3;
-}
+function getEncryptionMetrics(rawKey) {
+  const value = String(rawKey || "");
+  const length = value.length;
+  if (!value.trim()) {
+    return {
+      level: 0,
+      entropy: 0,
+      crackTime: "Мгновенно",
+      label: "Нет данных",
+    };
+  }
 
-function getEncryptionStatusText(level) {
-  if (level <= 0) return "ОЖИДАНИЕ ВВОДА";
-  if (level === 1) return "СЛАБЫЙ КЛЮЧ";
-  if (level === 2) return "СРЕДНИЙ КЛЮЧ";
-  return "НАДЕЖНЫЙ КЛЮЧ";
+  const hasNumbers = /\d/.test(value);
+  const hasSpecial = /[!@#$%^&*()_+\-=:;?,./\\[\]{}]/.test(value);
+  const hasLower = /[a-z]/.test(value);
+  const hasUpper = /[A-Z]/.test(value);
+  const hasMixed = hasLower && hasUpper;
+
+  let level = 1;
+  if (length >= 6 && hasNumbers) level = 2;
+  if (length >= 9 && hasNumbers && hasSpecial) level = 3;
+  if (length >= 12 && hasNumbers && hasSpecial && hasMixed) level = 4;
+
+  let entropy = Math.round(length * 3.3);
+  if (hasNumbers) entropy += 10;
+  if (hasSpecial) entropy += 15;
+  if (hasMixed) entropy += 10;
+  entropy = Math.min(entropy, 128);
+
+  const crackTimeByLevel = {
+    1: "2 секунды",
+    2: "4 дня",
+    3: "12 лет",
+    4: "2.5 млн лет",
+  };
+  const labelByLevel = {
+    0: "Нет данных",
+    1: "Слабая",
+    2: "Средняя",
+    3: "Хорошая",
+    4: "Отличная",
+  };
+
+  return {
+    level,
+    entropy,
+    crackTime: crackTimeByLevel[level] || "Мгновенно",
+    label: labelByLevel[level] || "Нет данных",
+  };
 }
 
 function setEncryptionSaveHint(text = "", isSuccess = false) {
@@ -2609,14 +2650,25 @@ function updateEncryptionVisibilityIcon() {
 
 function updateEncryptionStrength() {
   const rawValue = String(vigenereKeyInput?.value || "");
-  const level = getEncryptionSecurityLevel(rawValue);
+  const metrics = getEncryptionMetrics(rawValue);
+  const level = metrics.level;
 
   if (encStatusValue) {
-    encStatusValue.textContent = getEncryptionStatusText(level);
-    encStatusValue.classList.remove("level-1", "level-2", "level-3");
-    if (level > 0) {
-      encStatusValue.classList.add(`level-${Math.min(level, 3)}`);
-    }
+    encStatusValue.textContent = metrics.label;
+    encStatusValue.classList.remove("level-0", "level-1", "level-2", "level-3", "level-4");
+    encStatusValue.classList.add(`level-${Math.min(Math.max(level, 0), 4)}`);
+  }
+
+  if (encEntropyValue) {
+    encEntropyValue.textContent = String(metrics.entropy);
+  }
+
+  if (encTimeToCrack) {
+    encTimeToCrack.textContent = metrics.crackTime;
+  }
+
+  if (encSecurityIcon) {
+    encSecurityIcon.classList.toggle("is-strong", level >= 3);
   }
 
   if (encStrengthBars.length) {
@@ -2624,7 +2676,7 @@ function updateEncryptionStrength() {
       const step = index + 1;
       const active = level >= step;
       bar.classList.toggle("active", active);
-      bar.classList.remove("level-1", "level-2", "level-3");
+      bar.classList.remove("level-1", "level-2", "level-3", "level-4");
       if (active) {
         bar.classList.add(`level-${step}`);
       }
@@ -2635,7 +2687,6 @@ function updateEncryptionStrength() {
     encSaveBtn.disabled = rawValue.trim().length === 0 || encGlobalScramble;
   }
 }
-
 function renderEncryptionVisual() {
   if (!encVisualLayer || !vigenereKeyInput) {
     return;
@@ -2973,6 +3024,41 @@ function formatDateTime(dateString) {
   });
 }
 
+function getDisplayName(user) {
+  if (!user) return "";
+  return normalizeDisplayNameInput(user.displayName || user.username || "");
+}
+
+function normalizeDisplayNameInput(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function validateDisplayNameInput(displayName) {
+  if (!displayName) {
+    return null;
+  }
+
+  if (displayName.length > MAX_DISPLAY_NAME_LENGTH) {
+    return `Никнейм не может быть длиннее ${MAX_DISPLAY_NAME_LENGTH} символов`;
+  }
+
+  if (/[\u0000-\u001f\u007f]/.test(displayName)) {
+    return "Никнейм содержит недопустимые символы";
+  }
+
+  if (!DISPLAY_NAME_ALLOWED_PATTERN.test(displayName)) {
+    return "Никнейм может содержать буквы, цифры, пробел, точку, дефис, апостроф и _";
+  }
+
+  if (!/[\p{L}\p{N}]/u.test(displayName)) {
+    return "Никнейм должен содержать хотя бы одну букву или цифру";
+  }
+
+  return null;
+}
+
 function getInitial(text) {
   const trimmed = String(text || "").trim();
   if (!trimmed) {
@@ -3150,7 +3236,7 @@ function renderConversationList() {
 
     const isGroup = conversation.type === "group";
     const pinned = isConversationPinned(conversation.id);
-    const title = isGroup ? (conversation.name || "Группа") : (conversation.participant ? conversation.participant.username : "Диалог");
+    const title = isGroup ? (conversation.name || "Группа") : (conversation.participant ? getDisplayName(conversation.participant) : "Диалог");
     const avatarUrl = isGroup
       ? conversation.avatarUrl || null
       : conversation.participant?.avatarUrl || null;
@@ -3694,22 +3780,30 @@ function renderSearchResults(users) {
   }
 
   for (const user of users) {
+    const displayName = getDisplayName(user) || "Пользователь";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "list-item";
-    button.dataset.initial = getInitial(user.username);
+    button.dataset.initial = getInitial(displayName);
 
     const row = document.createElement("div");
     row.className = "item-row";
 
     const titleEl = document.createElement("p");
     titleEl.className = "item-title";
-    titleEl.textContent = user.username;
+    titleEl.textContent = displayName;
     row.appendChild(titleEl);
 
     const emailEl = document.createElement("p");
     emailEl.className = "item-sub";
-    emailEl.textContent = user.email;
+    const subParts = [];
+    if (user.username) {
+      subParts.push(`@${user.username}`);
+    }
+    if (user.email) {
+      subParts.push(user.email);
+    }
+    emailEl.textContent = subParts.join(" • ");
 
     button.appendChild(row);
     button.appendChild(emailEl);
@@ -3825,7 +3919,7 @@ function connectSocket() {
       const added = mergedPending ? false : addMessage(payload.message);
       if (payload.message.senderId !== state.me?.id) {
         playIncomingMessageSound();
-        const senderName = payload.message.sender?.username || "Новое сообщение";
+        const senderName = getDisplayName(payload.message.sender) || "Новое сообщение";
         const previewText = getMessageTypePreview(payload.message, "Новое сообщение").slice(0, 60);
         showPushNotification(senderName, previewText);
       }
@@ -3880,7 +3974,7 @@ function connectSocket() {
     }
 
     if (payload.type === "typing" && payload.conversationId === state.activeConversationId && payload.userId !== state.me?.id) {
-      showTypingIndicator(payload.username || "Кто-то");
+      showTypingIndicator(payload.displayName || payload.username || "Кто-то");
       clearTimeout(state.typingTimers.get(payload.userId));
       state.typingTimers.set(payload.userId, setTimeout(() => { hideTypingIndicator(); state.typingTimers.delete(payload.userId); }, 3000));
     }
@@ -3959,7 +4053,7 @@ async function bootstrapSession(user) {
   resetVigenereKey();
   saveUiSettings();
   setChatLockStatus("");
-  meName.textContent = `${user.username} (${user.email})`;
+  meName.textContent = `${getDisplayName(user) || user.username} (${user.email})`;
   showChat();
   authStatus.textContent = "";
   resetLoginTwoFactorStep();
@@ -4092,6 +4186,8 @@ settingsBtn.addEventListener("click", () => {
   setSettingsPanelOpen(willOpen);
   if (willOpen && state.me) {
     refreshTwoFaStatus();
+    displayNameInput.value = state.me.displayName || "";
+    displayNameStatus.textContent = DISPLAY_NAME_HINT_TEXT;
   }
 });
 
@@ -4857,7 +4953,12 @@ ctxForward.addEventListener("click", () => {
   const msg = messages.find((m) => m.id === state.contextMenuMessageId);
   if (!msg) { hideContextMenu(); return; }
   hideContextMenu();
-  const convNames = state.conversations.filter((c) => c.id !== state.activeConversationId).map((c, i) => `${i + 1}. ${c.type === "group" ? c.name : (c.participant?.username || "Чат")}`);
+  const convNames = state.conversations
+    .filter((c) => c.id !== state.activeConversationId)
+    .map(
+      (c, i) =>
+        `${i + 1}. ${c.type === "group" ? c.name : (getDisplayName(c.participant) || "Чат")}`
+    );
   if (convNames.length === 0) { alert("Нет других чатов для пересылки"); return; }
   const choice = prompt("Переслать в чат:\n" + convNames.join("\n") + "\n\nВведите номер:");
   const idx = parseInt(choice, 10) - 1;
@@ -5023,6 +5124,29 @@ avatarFileInput.addEventListener("change", async () => {
   reader.readAsDataURL(file);
 });
 
+displayNameSaveBtn.addEventListener("click", async () => {
+  const value = normalizeDisplayNameInput(displayNameInput.value);
+  const validationError = validateDisplayNameInput(value);
+  if (validationError) {
+    displayNameStatus.textContent = validationError;
+    return;
+  }
+
+  displayNameInput.value = value;
+  try {
+    displayNameSaveBtn.disabled = true;
+    const payload = await api("/api/auth/profile", { method: "PUT", body: { displayName: value } });
+    if (state.me) state.me.displayName = payload.displayName || null;
+    meName.textContent = `${getDisplayName(state.me) || state.me.username} (${state.me.email})`;
+    displayNameStatus.textContent = "Никнейм сохранён!";
+    setTimeout(() => { displayNameStatus.textContent = DISPLAY_NAME_HINT_TEXT; }, 2500);
+  } catch (e) {
+    displayNameStatus.textContent = e.message;
+  } finally {
+    displayNameSaveBtn.disabled = false;
+  }
+});
+
 function updateAvatarPreview() {
   avatarPreview.innerHTML = "";
   if (state.me?.avatarUrl) {
@@ -5065,10 +5189,13 @@ function getAvatarGradient(value) {
 }
 
 function createGroupUserAvatar(user, className) {
+  const displayName = getDisplayName(user) || user.email || "U";
   const avatar = document.createElement("span");
   avatar.className = className;
-  avatar.textContent = getTwoInitials(user.username || user.email || "U");
-  avatar.style.background = getAvatarGradient(user.id || user.username || user.email || "");
+  avatar.textContent = getTwoInitials(displayName);
+  avatar.style.background = getAvatarGradient(
+    user.id || user.username || user.email || displayName
+  );
   return avatar;
 }
 
@@ -5157,11 +5284,18 @@ function renderGroupMemberResults(users = [], query = "") {
 
     const nameEl = document.createElement("span");
     nameEl.className = "create-group-contact-name";
-    nameEl.textContent = user.username || "Пользователь";
+    nameEl.textContent = getDisplayName(user) || "Пользователь";
 
     const handleEl = document.createElement("span");
     handleEl.className = "create-group-contact-handle";
-    handleEl.textContent = user.email || "";
+    const details = [];
+    if (user.username) {
+      details.push(`@${user.username}`);
+    }
+    if (user.email) {
+      details.push(user.email);
+    }
+    handleEl.textContent = details.join(" • ");
 
     info.append(nameEl, handleEl);
 
@@ -5202,7 +5336,7 @@ function renderGroupSelectedMembers() {
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
     removeBtn.className = "create-group-selected-remove";
-    removeBtn.setAttribute("aria-label", `Удалить ${member.username || "участника"}`);
+    removeBtn.setAttribute("aria-label", `Удалить ${getDisplayName(member) || "участника"}`);
     removeBtn.innerHTML = `
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" aria-hidden="true">
         <path d="M18 6 6 18"></path>
@@ -5217,11 +5351,11 @@ function renderGroupSelectedMembers() {
 
     const name = document.createElement("span");
     name.className = "create-group-selected-name";
-    const firstName = String(member.username || "")
+    const firstName = String(getDisplayName(member) || "")
       .trim()
       .split(/\s+/)
       .filter(Boolean)[0];
-    name.textContent = firstName || member.username || "Участник";
+    name.textContent = firstName || getDisplayName(member) || "Участник";
 
     item.append(avatar, removeBtn, name);
     groupSelectedMembers.appendChild(item);
@@ -5441,6 +5575,7 @@ function renderGroupSettingsMembers(conv) {
   const participants = conv.participants || [];
 
   for (const member of participants) {
+    const memberDisplayName = getDisplayName(member) || member.username || "—";
     const li = document.createElement("li");
     li.className = "gs-member-item";
 
@@ -5450,10 +5585,10 @@ function renderGroupSettingsMembers(conv) {
     if (member.avatarUrl) {
       const img = document.createElement("img");
       img.src = member.avatarUrl;
-      img.alt = member.username;
+      img.alt = memberDisplayName;
       avatarDiv.appendChild(img);
     } else {
-      avatarDiv.textContent = (member.username || "?").charAt(0).toUpperCase();
+      avatarDiv.textContent = memberDisplayName.charAt(0).toUpperCase();
     }
     li.appendChild(avatarDiv);
 
@@ -5462,7 +5597,7 @@ function renderGroupSettingsMembers(conv) {
     infoDiv.className = "gs-member-info";
     const nameP = document.createElement("p");
     nameP.className = "gs-member-name";
-    nameP.textContent = member.username || "—";
+    nameP.textContent = memberDisplayName;
 
     if (member.id === creatorId) {
       const badge = document.createElement("span");
@@ -5496,7 +5631,7 @@ function renderGroupSettingsMembers(conv) {
       kickBtn.textContent = "Удалить";
       kickBtn.title = "Удалить участника из группы";
       kickBtn.addEventListener("click", async () => {
-        if (!confirm(`Удалить ${member.username} из группы?`)) return;
+        if (!confirm(`Удалить ${memberDisplayName} из группы?`)) return;
         try {
           const payload = await api(`/api/conversations/${conv.id}/members/${member.id}`, { method: "DELETE" });
           upsertConversation(payload.conversation);
@@ -5612,7 +5747,7 @@ gsAddMemberSearch.addEventListener("input", () => {
   if (!query) { gsAddMemberResults.innerHTML = ""; return; }
   gsSearchTimeout = setTimeout(async () => {
     try {
-      const results = await api(`/api/users/search?q=${encodeURIComponent(query)}`);
+      const results = await api(`/api/users?search=${encodeURIComponent(query)}`);
       const conv = getActiveConversation();
       if (!conv) return;
       const currentIds = new Set(conv.participantIds || []);
@@ -5620,10 +5755,13 @@ gsAddMemberSearch.addEventListener("input", () => {
       for (const user of (results.users || results || [])) {
         if (currentIds.has(user.id)) continue;
         if (user.id === state.me?.id) continue;
+        const displayName = getDisplayName(user) || user.email || "Пользователь";
         const li = document.createElement("li");
         li.className = "list-item";
         li.style.cursor = "pointer";
-        li.textContent = user.username || user.email;
+        li.textContent = user.username
+          ? `${displayName} (@${user.username})`
+          : displayName;
         li.addEventListener("click", async () => {
           try {
             const payload = await api(`/api/conversations/${conv.id}/members`, {
@@ -5636,7 +5774,7 @@ gsAddMemberSearch.addEventListener("input", () => {
             openGroupSettings(); // refresh
             gsAddMemberSearch.value = "";
             gsAddMemberResults.innerHTML = "";
-            gsStatus.textContent = `${user.username} добавлен ✓`;
+            gsStatus.textContent = `${displayName} добавлен ✓`;
             setTimeout(() => { gsStatus.textContent = ""; }, 2000);
           } catch (e) {
             gsStatus.textContent = e.message || "Ошибка";
@@ -5832,7 +5970,7 @@ function showPushNotification(title, body) {
 // ========================
 function getConversationTitle(conversation) {
   if (conversation.type === "group") return conversation.name || "Группа";
-  return conversation.participant ? conversation.participant.username : "Диалог";
+  return conversation.participant ? getDisplayName(conversation.participant) : "Диалог";
 }
 
 function getConversationAvatar(conversation) {
@@ -6556,3 +6694,5 @@ window.addEventListener("beforeunload", stopMicTest);
 })();
 
 init();
+
+

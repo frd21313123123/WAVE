@@ -3372,6 +3372,139 @@ html.theme-changing .theme-icon-moon {
   }
 }
 
+/* Encryption block v2 overrides */
+.enc-header-modern {
+  align-items: flex-start;
+  padding: 16px 18px 12px;
+}
+
+.enc-breadcrumbs {
+  margin: 0 0 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-subtle);
+}
+
+.enc-breadcrumbs span {
+  opacity: 0.7;
+  margin: 0 5px;
+}
+
+.enc-subhint {
+  margin-top: -6px;
+  margin-bottom: 2px;
+}
+
+.enc-metrics-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 76%, var(--bg-base));
+}
+
+.enc-metrics-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.enc-metrics-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.enc-security-icon {
+  color: var(--text-subtle);
+  transition: color 0.2s ease, filter 0.2s ease;
+}
+
+.enc-security-icon.is-strong {
+  color: var(--accent);
+  filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.5));
+}
+
+.enc-metrics-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.enc-entropy-value {
+  font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-subtle);
+}
+
+.enc-entropy-value strong {
+  color: var(--accent);
+}
+
+.enc-metrics-card .enc-strength-bars {
+  position: static;
+  transform: none;
+  height: 7px;
+  gap: 5px;
+}
+
+.enc-metrics-card .enc-strength-bar {
+  flex: 1;
+  width: auto;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.enc-metrics-card .enc-strength-bar.active.level-1 {
+  background: #f43f5e;
+  box-shadow: none;
+}
+
+.enc-metrics-card .enc-strength-bar.active.level-2 {
+  background: #f59e0b;
+  box-shadow: none;
+}
+
+.enc-metrics-card .enc-strength-bar.active.level-3 {
+  background: color-mix(in srgb, var(--accent) 82%, white);
+  box-shadow: none;
+}
+
+.enc-metrics-card .enc-strength-bar.active.level-4 {
+  background: var(--accent);
+  box-shadow: 0 0 9px rgba(var(--accent-rgb), 0.45);
+}
+
+.enc-metrics-card .enc-status-row {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.75rem;
+}
+
+.enc-time-value {
+  font-size: 0.74rem;
+  color: var(--text-subtle);
+}
+
+.enc-time-value strong {
+  color: var(--text-main);
+  font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+}
+
+.enc-status-value.level-0 {
+  color: var(--text-subtle);
+}
+
+.enc-status-value.level-4 {
+  color: var(--accent);
+  text-shadow: 0 0 7px rgba(var(--accent-rgb), 0.5);
+}
+
 .icon-btn {
   display: flex;
   align-items: center;

@@ -240,30 +240,6 @@
 
           <button type="submit" class="primary-btn auth-submit-btn">Начать общение</button>
         </form>
-
-        <div class="auth-social" id="authSocialSection">
-          <div class="auth-divider">
-            <span>или с помощью</span>
-          </div>
-          <button type="button" class="auth-social-btn">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true">
-              <path
-                d="M21.35 11.1h-9.17v2.97h5.25a4.5 4.5 0 0 1-1.95 2.95v2.45h3.15c1.84-1.7 2.9-4.2 2.9-7.16 0-.4-.03-.8-.18-1.21Z">
-              </path>
-              <path
-                d="M12.18 21.5c2.63 0 4.85-.86 6.47-2.33l-3.15-2.45c-.88.58-2 .93-3.32.93-2.55 0-4.7-1.72-5.48-4.04H3.43v2.52A9.81 9.81 0 0 0 12.18 21.5Z">
-              </path>
-              <path
-                d="M6.7 13.62a5.88 5.88 0 0 1 0-3.74V7.36H3.43a9.91 9.91 0 0 0 0 8.78l3.27-2.52Z">
-              </path>
-              <path
-                d="M12.18 6.35c1.43 0 2.7.5 3.7 1.44l2.76-2.77A9.75 9.75 0 0 0 12.18 2.5 9.81 9.81 0 0 0 3.43 7.36L6.7 9.88c.77-2.32 2.93-4.03 5.48-4.03Z">
-              </path>
-            </svg>
-            Google
-          </button>
-        </div>
-
         <p class="status-text auth-status" id="authStatus"></p>
       </div>
     </section>
@@ -1022,8 +998,9 @@
             <div class="settings-row">
               <label for="displayNameInput">Никнейм</label>
               <input id="displayNameInput" type="text" maxlength="32" placeholder="Ваш ник" autocomplete="off" />
+              <button id="displayNameSaveBtn" type="button" class="ghost-btn">Сохранить</button>
             </div>
-            <p class="settings-hint">Имя, которое видят другие пользователи.</p>
+            <p class="settings-hint" id="displayNameStatus">1-32 символа: буквы, цифры, пробел, точка, дефис, апостроф и _.</p>
           </section>
         </div>
 
@@ -1076,17 +1053,10 @@
               <div class="enc-card-grid" aria-hidden="true"></div>
               <div class="enc-card-glow" aria-hidden="true"></div>
 
-              <header class="enc-header">
-                <div class="enc-shield-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-                    stroke-linejoin="round" width="22" height="22">
-                    <path d="M12 3 5 6v6c0 5 3.3 8.7 7 10 3.7-1.3 7-5 7-10V6z"></path>
-                    <path d="m9 12 2 2 4-4"></path>
-                  </svg>
-                </div>
+              <header class="enc-header enc-header-modern">
                 <div class="enc-header-text">
-                  <h3 class="enc-title">Аутентификация</h3>
-                  <p class="enc-subtitle">Требуется секретный ключ</p>
+                  <p class="enc-breadcrumbs">Настройки <span>/</span> Безопасность</p>
+                  <h3 class="enc-title">Ключ шифрования</h3>
                 </div>
               </header>
 
@@ -1098,8 +1068,11 @@
                     <path d="m21 2-9.6 9.6"></path>
                     <path d="m15.5 7.5 3 3L22 7l-3-3"></path>
                   </svg>
-                  Введите ключ шифрования
+                  Мастер-пароль
                 </label>
+                <p class="settings-hint enc-subhint">
+                  Используется для сквозного шифрования (E2EE) ваших данных. Мы не храним этот ключ на серверах.
+                </p>
 
                 <div id="encInputShell" class="enc-input-shell">
                   <div class="enc-border-flow" aria-hidden="true"></div>
@@ -1130,12 +1103,31 @@
                         </path>
                       </svg>
                     </button>
+                  </div>
+                </div>
 
-                    <div class="enc-strength-bars" aria-hidden="true">
-                      <span class="enc-strength-bar" data-level="1"></span>
-                      <span class="enc-strength-bar" data-level="2"></span>
-                      <span class="enc-strength-bar" data-level="3"></span>
+                <div class="enc-metrics-card">
+                  <div class="enc-metrics-head">
+                    <div class="enc-metrics-title-wrap">
+                      <svg id="encSecurityIcon" class="enc-security-icon" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        width="16" height="16" aria-hidden="true">
+                        <path d="M12 3 5 6v6c0 5 3.3 8.7 7 10 3.7-1.3 7-5 7-10V6z"></path>
+                        <path d="m9 12 2 2 4-4"></path>
+                      </svg>
+                      <span class="enc-metrics-title">Анализ стойкости</span>
                     </div>
+                    <span class="enc-entropy-value"><strong id="encEntropyValue">0</strong> BITS</span>
+                  </div>
+                  <div class="enc-strength-bars" aria-hidden="true">
+                    <span class="enc-strength-bar" data-level="1"></span>
+                    <span class="enc-strength-bar" data-level="2"></span>
+                    <span class="enc-strength-bar" data-level="3"></span>
+                    <span class="enc-strength-bar" data-level="4"></span>
+                  </div>
+                  <div class="enc-status-row">
+                    <span class="enc-status-label">Оценка: <strong id="encStatusValue" class="enc-status-value">Нет данных</strong></span>
+                    <span class="enc-time-value">Брутфорс: <strong id="encTimeToCrack">Мгновенно</strong></span>
                   </div>
                 </div>
 
@@ -1149,13 +1141,8 @@
                   <span class="enc-save-shine" aria-hidden="true"></span>
                 </button>
 
-                <div class="enc-status-row">
-                  <span class="enc-status-label">СТАТУС:</span>
-                  <span id="encStatusValue" class="enc-status-value">ОЖИДАНИЕ ВВОДА</span>
-                </div>
-
                 <p id="encSaveHint" class="settings-hint enc-save-hint">
-                  Перевод и расшифровка показываются ниже оригинала, в кавычках и более прозрачно.
+                  Ключ используется локально для шифрования и расшифровки сообщений.
                 </p>
               </div>
             </div>
@@ -1338,9 +1325,6 @@
       </div>
     </div>
   </div>
-
-
-
   <script src="./app.js"></script>
 </body>
 
