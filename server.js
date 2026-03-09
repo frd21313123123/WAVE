@@ -525,7 +525,7 @@ function shouldUseSecureCookie(req) {
 }
 
 function setAuthCookie(req, res, userId) {
-  const token = jwt.sign({ userId }, JWT_SECRET, { expiresIn: "7d" });
+  const token = jwt.sign({ type: "session", userId }, JWT_SECRET, { expiresIn: "7d" });
   res.cookie(TOKEN_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -549,6 +549,9 @@ async function getAuthUserFromToken(token) {
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+    if (payload?.type && payload.type !== "session") {
+      return null;
+    }
     const state = await store.read();
     return state.users.find((user) => user.id === payload.userId) || null;
   } catch {
@@ -2724,4 +2727,3 @@ store
     console.error("Failed to initialize storage", error);
     process.exit(1);
   });
-
