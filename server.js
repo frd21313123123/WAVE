@@ -3,7 +3,7 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 
-require("dotenv").config({ path: path.join(__dirname, ".env"), override: true });
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const bcrypt = require("bcryptjs");
 const compression = require("compression");
@@ -36,6 +36,7 @@ const JWT_SECRET = readRequiredEnv("JWT_SECRET", {
   forbiddenValues: [
     "change_me",
     "dev_secret_change_me",
+    "replace_with_min_32_chars_random_secret",
   ],
 });
 const COOKIE_SECURE_MODE = String(process.env.COOKIE_SECURE || "auto")
@@ -2724,4 +2725,3 @@ store
     console.error("Failed to initialize storage", error);
     process.exit(1);
   });
-
