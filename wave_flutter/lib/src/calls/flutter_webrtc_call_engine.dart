@@ -143,6 +143,10 @@ class FlutterWebRtcCallEngine extends CallMediaEngine {
 
   @override
   Future<void> addRemoteIceCandidate(Map<String, dynamic> candidate) async {
+    if (!_isValidIceCandidate(candidate)) {
+      return;
+    }
+
     final peerConnection = _peerConnection;
     if (peerConnection == null || !_remoteDescriptionReady) {
       _pendingRemoteIceCandidates.add(Map<String, dynamic>.from(candidate));
@@ -332,7 +336,7 @@ class FlutterWebRtcCallEngine extends CallMediaEngine {
 
     peerConnection.onIceCandidate = (RTCIceCandidate candidate) {
       final payload = candidate.toMap();
-      if (payload is Map) {
+      if (payload is Map<String, dynamic> && _isValidIceCandidate(payload)) {
         _localIceController.add(Map<String, dynamic>.from(payload));
       }
     };
@@ -545,6 +549,11 @@ class FlutterWebRtcCallEngine extends CallMediaEngine {
       data['sdpMid']?.toString(),
       parsedMLine,
     );
+  }
+
+  bool _isValidIceCandidate(Map<String, dynamic> data) {
+    final value = data['candidate']?.toString().trim();
+    return value != null && value.isNotEmpty;
   }
 
   Map<String, dynamic> _audioConstraints() {
