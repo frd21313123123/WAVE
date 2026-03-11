@@ -1,14 +1,24 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../calls/calls.dart';
+import '../config/app_config.dart';
 import '../controllers/chat_controller.dart';
 import '../controllers/session_controller.dart';
 import '../models/app_models.dart';
+import '../models/call_models.dart';
 import '../services/api_client.dart';
+import '../settings/avatar_upload.dart';
+import '../settings/settings_controller.dart';
+import '../settings/wave_settings_sheet.dart';
 import '../widgets/wave_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -21,20 +31,78 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _composerController = TextEditingController();
   final _scrollController = ScrollController();
+  final _imagePicker = ImagePicker();
+  final _callTonePlayer = AudioPlayer(playerId: 'wave-call-tone');
   String? _lastConversationId;
   int _lastMessageCount = 0;
+  CallController? _callController;
+  SettingsController? _settingsController;
+  CallUiState _lastCallState = const CallUiState.idle();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final callController = context.read<CallController>();
+    if (!identical(_callController, callController)) {
+      _callController?.removeListener(_handleCallStateChanged);
+      _callController = callController;
+      _lastCallState = callController.state;
+      callController.addListener(_handleCallStateChanged);
+      unawaited(callController.activate());
+    }
+
+    final settingsController = context.read<SettingsController>();
+    if (!identical(_settingsController, settingsController)) {
+      _settingsController = settingsController;
+    }
+  }
 
   @override
   void dispose() {
+    _callController?.removeListener(_handleCallStateChanged);
+    unawaited(_callController?.deactivate() ?? Future<void>.value());
+    unawaited(_callTonePlayer.dispose());
     _composerController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleCallStateChanged() {
+    final nextState = _callController?.state ?? const CallUiState.idle();
+    final previousState = _lastCallState;
+    _lastCallState = nextState;
+
+    final soundsEnabled =
+        _settingsController?.settings.callSoundsEnabled ?? true;
+    final hadIncoming = previousState.pendingIncoming != null;
+    final hasIncoming = nextState.pendingIncoming != null;
+
+    if (!hadIncoming && hasIncoming && soundsEnabled) {
+      unawaited(_startIncomingTone());
+    } else if (hadIncoming && !hasIncoming) {
+      unawaited(_stopIncomingTone());
+    }
+
+    if (previousState.hasLiveCall && nextState.isIdle && soundsEnabled) {
+      unawaited(_playDisconnectCue(nextState.disconnectReason));
+    }
+    if (nextState.hasLiveCall) {
+      unawaited(_stopIncomingTone());
+    }
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final session = context.watch<SessionController>();
     final chat = context.watch<ChatController>();
+    final settings = context.watch<SettingsController>();
+    final callController = context.watch<CallController>();
+    final callState = callController.state;
     final currentUser = session.currentUser!;
     final activeConversation = chat.activeConversation;
     final messages = chat.activeMessages;
@@ -44,18 +112,76 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final conversationPane = _ConversationPane(
       currentUser: currentUser,
+      settingsController: settings,
       conversations: chat.conversations,
       activeConversationId: chat.activeConversationId,
       onSelectConversation: (conversationId) async {
         await chat.openConversation(conversationId);
-        if (mounted && !isWide) {
-          Navigator.of(context).maybePop();
+        if (!context.mounted || isWide) {
+          return;
         }
+        Navigator.of(context).maybePop();
       },
       onNewChat: _openNewChatSheet,
       onNewGroup: _openNewGroupSheet,
-      onOpenProfile: _openProfileSheet,
+      onOpenProfile: _openSettingsSheet,
     );
+
+    final conversationBody = isWide
+        ? Row(
+            children: [
+              SizedBox(width: 360, child: conversationPane),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: _ChatPane(
+                  currentUser: currentUser,
+                  settingsController: settings,
+                  conversation: activeConversation,
+                  messages: messages,
+                  typingDisplayName: chat.typingDisplayName,
+                  composerController: _composerController,
+                  scrollController: _scrollController,
+                  onComposerChanged: (_) => chat.sendTypingSignal(),
+                  onSend: () => _sendMessage(chat),
+                  onEditMessage: (message) => _editMessage(chat, message),
+                  onStartAudioCall: () =>
+                      _startOutgoingCall(videoRequested: false),
+                  onStartVideoCall: () =>
+                      _startOutgoingCall(videoRequested: true),
+                ),
+              ),
+            ],
+          )
+        : _ChatPane(
+            currentUser: currentUser,
+            settingsController: settings,
+            conversation: activeConversation,
+            messages: messages,
+            typingDisplayName: chat.typingDisplayName,
+            composerController: _composerController,
+            scrollController: _scrollController,
+            onComposerChanged: (_) => chat.sendTypingSignal(),
+            onSend: () => _sendMessage(chat),
+            onEditMessage: (message) => _editMessage(chat, message),
+            onStartAudioCall: () => _startOutgoingCall(videoRequested: false),
+            onStartVideoCall: () => _startOutgoingCall(videoRequested: true),
+          );
+
+    if (callState.hasLiveCall) {
+      return Scaffold(
+        body: SafeArea(
+          child: ActiveCallSheet(
+            state: callState,
+            mediaEngine: callController.mediaEngine,
+            onEnd: () => unawaited(callController.endCall()),
+            onToggleMute: () => unawaited(callController.toggleMuted()),
+            onToggleSpeaker: () => unawaited(callController.toggleSpeaker()),
+            onToggleCamera: () => unawaited(callController.toggleCamera()),
+            expandToFill: true,
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       drawer: isWide
@@ -74,45 +200,25 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.person_add_alt_1_rounded),
           ),
           IconButton(
-            onPressed: _openProfileSheet,
+            onPressed: _openSettingsSheet,
             tooltip: 'Профиль',
             icon: const Icon(Icons.tune_rounded),
           ),
           const SizedBox(width: 6),
         ],
       ),
-      body: SafeArea(
-        child: isWide
-            ? Row(
-                children: [
-                  SizedBox(width: 360, child: conversationPane),
-                  const VerticalDivider(width: 1),
-                  Expanded(
-                    child: _ChatPane(
-                      currentUser: currentUser,
-                      conversation: activeConversation,
-                      messages: messages,
-                      typingDisplayName: chat.typingDisplayName,
-                      composerController: _composerController,
-                      scrollController: _scrollController,
-                      onComposerChanged: (_) => chat.sendTypingSignal(),
-                      onSend: () => _sendMessage(chat),
-                      onEditMessage: (message) => _editMessage(chat, message),
-                    ),
-                  ),
-                ],
-              )
-            : _ChatPane(
-                currentUser: currentUser,
-                conversation: activeConversation,
-                messages: messages,
-                typingDisplayName: chat.typingDisplayName,
-                composerController: _composerController,
-                scrollController: _scrollController,
-                onComposerChanged: (_) => chat.sendTypingSignal(),
-                onSend: () => _sendMessage(chat),
-                onEditMessage: (message) => _editMessage(chat, message),
-              ),
+      body: Stack(
+        children: [
+          SafeArea(child: conversationBody),
+          if (callState.pendingIncoming != null)
+            IncomingCallSheet(
+              state: callState,
+              onAccept: () => unawaited(_acceptIncomingCall()),
+              onReject: () => unawaited(callController.rejectIncomingCall()),
+              onAcceptWithVideo: () =>
+                  unawaited(_acceptIncomingCall(videoRequested: true)),
+            ),
+        ],
       ),
     );
   }
@@ -146,10 +252,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _sendMessage(ChatController chat) async {
     final text = _composerController.text;
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      return;
+    }
+    final settings = context.read<SettingsController>();
+    final payload = settings.buildOutgoingTextPayload(normalized);
     _composerController.clear();
 
     try {
-      await chat.sendTextMessage(text);
+      await chat.sendTextMessageWithPayload(
+        rawText: normalized,
+        requestBody: payload,
+        optimisticText: normalized,
+        optimisticEncryption: null,
+      );
     } on ApiException catch (error) {
       _composerController.text = text;
       _composerController.selection = TextSelection.collapsed(
@@ -165,7 +282,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _editMessage(ChatController chat, ChatMessage message) async {
-    final controller = TextEditingController(text: message.text);
+    final settings = context.read<SettingsController>();
+    final controller = TextEditingController(
+      text: settings.decodeMessageText(message),
+    );
     await showDialog<void>(
       context: context,
       builder: (context) {
@@ -184,20 +304,26 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             FilledButton(
               onPressed: () async {
+                final navigator = Navigator.of(context);
+                final messenger = ScaffoldMessenger.of(context);
                 try {
+                  final nextText = controller.text.trim();
+                  final textForTransport = settings.isMessageEncrypted(message)
+                      ? settings.encryptMessage(nextText)
+                      : nextText;
                   await chat.editMessage(
                     conversationId: message.conversationId,
                     messageId: message.id,
-                    text: controller.text,
+                    text: textForTransport,
                   );
-                  if (mounted) {
-                    Navigator.of(context).pop();
+                  if (context.mounted) {
+                    navigator.pop();
                   }
                 } on ApiException catch (error) {
-                  if (!mounted) {
+                  if (!context.mounted) {
                     return;
                   }
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     SnackBar(content: Text(error.message)),
                   );
                 }
@@ -238,20 +364,186 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _openProfileSheet() async {
+  Future<void> _openSettingsSheet() async {
     final session = context.read<SessionController>();
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _ProfileSheet(session: session),
+    final settings = context.read<SettingsController>();
+    await showWaveSettingsSheet<void>(
+      context,
+      controller: settings,
+      useRootNavigator: true,
+      onPickAvatar: _pickAvatarUploadData,
+      onRunMicrophoneTest: _runMicrophoneTest,
+      onPreviewCallTone: _previewCallTone,
+      onLogoutRequested: () async {
+        final navigator = Navigator.of(context, rootNavigator: true);
+        navigator.pop();
+        await session.logout();
+      },
     );
+  }
+
+  Future<void> _startOutgoingCall({required bool videoRequested}) async {
+    final chat = context.read<ChatController>();
+    final conversation = chat.activeConversation;
+    final peer = conversation?.participant;
+    if (conversation == null || conversation.isGroup || peer == null) {
+      return;
+    }
+
+    try {
+      await context.read<CallController>().startOutgoingCall(
+            peer: peer,
+            conversationId: conversation.id,
+            videoRequested: videoRequested,
+          );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    }
+  }
+
+  Future<void> _acceptIncomingCall({bool? videoRequested}) async {
+    try {
+      await context.read<CallController>().acceptIncomingCall(
+            videoRequested: videoRequested,
+          );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    }
+  }
+
+  Future<void> _previewCallTone() async {
+    final appConfig = context.read<AppConfig>();
+    await _callTonePlayer.stop();
+    await _callTonePlayer.setReleaseMode(ReleaseMode.stop);
+    await _callTonePlayer.play(
+      UrlSource('${appConfig.baseUrl}/sound-call.mp3'),
+      volume: _callToneVolume,
+    );
+  }
+
+  Future<void> _startIncomingTone() async {
+    final appConfig = context.read<AppConfig>();
+    await _callTonePlayer.stop();
+    await _callTonePlayer.setReleaseMode(ReleaseMode.loop);
+    await _callTonePlayer.play(
+      UrlSource('${appConfig.baseUrl}/sound-call.mp3'),
+      volume: _callToneVolume,
+    );
+  }
+
+  Future<void> _stopIncomingTone() async {
+    await _callTonePlayer.stop();
+    await _callTonePlayer.setReleaseMode(ReleaseMode.stop);
+  }
+
+  Future<void> _playDisconnectCue(CallDisconnectReason reason) async {
+    final appConfig = context.read<AppConfig>();
+    final soundName = switch (reason) {
+      CallDisconnectReason.rejected => 'call-rejected.mp3',
+      CallDisconnectReason.none => null,
+      _ => 'call-ended.mp3',
+    };
+    if (soundName == null) {
+      return;
+    }
+    await _callTonePlayer.stop();
+    await _callTonePlayer.setReleaseMode(ReleaseMode.stop);
+    await _callTonePlayer.play(
+      UrlSource('${appConfig.baseUrl}/$soundName'),
+      volume: _callToneVolume,
+    );
+  }
+
+  Future<void> _runMicrophoneTest() async {
+    final stream = await navigator.mediaDevices.getUserMedia(
+      <String, dynamic>{
+        'audio': <String, dynamic>{
+          'echoCancellation': true,
+          'noiseSuppression': true,
+          'autoGainControl': true,
+        },
+        'video': false,
+      },
+    );
+    for (final track in stream.getTracks()) {
+      await track.stop();
+    }
+    await stream.dispose();
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Microphone test completed.')),
+    );
+  }
+
+  Future<AvatarUploadData?> _pickAvatarUploadData() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Gallery'),
+                onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Camera'),
+                onTap: () => Navigator.of(context).pop(ImageSource.camera),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (source == null) {
+      return null;
+    }
+
+    final file = await _imagePicker.pickImage(
+      source: source,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 88,
+    );
+    if (file == null) {
+      return null;
+    }
+
+    final bytes = await file.readAsBytes();
+    return AvatarUploadData(
+      bytes: bytes,
+      fileName: file.name,
+      mimeType: _mimeTypeForFile(file),
+    );
+  }
+
+  double get _callToneVolume {
+    final rawVolume = _settingsController?.settings.speakerVolume ?? 100;
+    return rawVolume.clamp(0, 100) / 100;
   }
 }
 
 class _ConversationPane extends StatelessWidget {
   const _ConversationPane({
     required this.currentUser,
+    required this.settingsController,
     required this.conversations,
     required this.activeConversationId,
     required this.onSelectConversation,
@@ -261,6 +553,7 @@ class _ConversationPane extends StatelessWidget {
   });
 
   final PublicUser currentUser;
+  final SettingsController settingsController;
   final List<ConversationSummary> conversations;
   final String? activeConversationId;
   final Future<void> Function(String conversationId) onSelectConversation;
@@ -427,7 +720,10 @@ class _ConversationPane extends StatelessWidget {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        _conversationPreview(conversation),
+                                        _conversationPreviewDecoded(
+                                          conversation,
+                                          settingsController,
+                                        ),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                         style: Theme.of(context)
@@ -459,6 +755,7 @@ class _ConversationPane extends StatelessWidget {
 class _ChatPane extends StatelessWidget {
   const _ChatPane({
     required this.currentUser,
+    required this.settingsController,
     required this.conversation,
     required this.messages,
     required this.typingDisplayName,
@@ -467,9 +764,12 @@ class _ChatPane extends StatelessWidget {
     required this.onComposerChanged,
     required this.onSend,
     required this.onEditMessage,
+    required this.onStartAudioCall,
+    required this.onStartVideoCall,
   });
 
   final PublicUser currentUser;
+  final SettingsController settingsController;
   final ConversationSummary? conversation;
   final List<ChatMessage> messages;
   final String? typingDisplayName;
@@ -478,6 +778,8 @@ class _ChatPane extends StatelessWidget {
   final ValueChanged<String> onComposerChanged;
   final VoidCallback onSend;
   final ValueChanged<ChatMessage> onEditMessage;
+  final VoidCallback onStartAudioCall;
+  final VoidCallback onStartVideoCall;
 
   @override
   Widget build(BuildContext context) {
@@ -489,6 +791,10 @@ class _ChatPane extends StatelessWidget {
     final partner = active.participant;
     final scheme = Theme.of(context).colorScheme;
     final canSend = !active.blockedMe;
+    final canStartCall = !active.isGroup &&
+        !active.blockedByMe &&
+        !active.blockedMe &&
+        partner != null;
 
     return Container(
       color: Colors.white.withValues(alpha: 0.55),
@@ -539,6 +845,18 @@ class _ChatPane extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (canStartCall) ...[
+                  IconButton(
+                    onPressed: onStartAudioCall,
+                    tooltip: 'Voice call',
+                    icon: const Icon(Icons.call_rounded),
+                  ),
+                  IconButton(
+                    onPressed: onStartVideoCall,
+                    tooltip: 'Video call',
+                    icon: const Icon(Icons.videocam_rounded),
+                  ),
+                ],
               ],
             ),
           ),
@@ -565,6 +883,10 @@ class _ChatPane extends StatelessWidget {
                 final senderName = active.isGroup && !isMine
                     ? _senderNameFor(active, message.senderId, message.sender)
                     : null;
+                final displayText =
+                    settingsController.decodeMessageText(message);
+                final encrypted =
+                    settingsController.isMessageEncrypted(message);
 
                 return GestureDetector(
                   onLongPress: canEdit ? () => onEditMessage(message) : null,
@@ -572,6 +894,8 @@ class _ChatPane extends StatelessWidget {
                     message: message,
                     isMine: isMine,
                     senderName: senderName,
+                    displayText: displayText,
+                    encrypted: encrypted,
                   ),
                 );
               },
@@ -608,7 +932,11 @@ class _ChatPane extends StatelessWidget {
                       decoration: InputDecoration(
                         hintText:
                             canSend ? 'Сообщение' : 'Сообщения недоступны',
-                        prefixIcon: const Icon(Icons.waves_rounded),
+                        prefixIcon: Icon(
+                          settingsController.settings.vigenereEnabled
+                              ? Icons.lock_outline_rounded
+                              : Icons.waves_rounded,
+                        ),
                       ),
                       onChanged: onComposerChanged,
                       onSubmitted: (_) => onSend(),
@@ -637,11 +965,15 @@ class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
     required this.isMine,
+    required this.displayText,
+    required this.encrypted,
     this.senderName,
   });
 
   final ChatMessage message;
   final bool isMine;
+  final String displayText;
+  final bool encrypted;
   final String? senderName;
 
   @override
@@ -689,6 +1021,30 @@ class _MessageBubble extends StatelessWidget {
                           ),
                     ),
                   ),
+                if (encrypted)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: textColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        child: Text(
+                          'Encrypted',
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: textColor.withValues(alpha: 0.82),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                        ),
+                      ),
+                    ),
+                  ),
                 if (message.isImage && imageBytes != null) ...[
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
@@ -697,11 +1053,11 @@ class _MessageBubble extends StatelessWidget {
                       fit: BoxFit.cover,
                     ),
                   ),
-                  if (message.text.trim().isNotEmpty &&
-                      message.text.trim() != '🖼 Скриншот') ...[
+                  if (displayText.trim().isNotEmpty &&
+                      displayText.trim() != '🖼 Скриншот') ...[
                     const SizedBox(height: 10),
                     Text(
-                      message.text,
+                      displayText,
                       style: TextStyle(color: textColor),
                     ),
                   ],
@@ -719,7 +1075,7 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 ] else ...[
                   Text(
-                    message.text,
+                    displayText,
                     style: TextStyle(
                       color: textColor,
                       height: 1.38,
@@ -831,11 +1187,14 @@ class _NewChatSheet extends StatefulWidget {
 
 class _NewChatSheetState extends State<_NewChatSheet> {
   final _searchController = TextEditingController();
+  Timer? _searchDebounce;
   bool _loading = false;
   List<PublicUser> _results = const [];
+  int _searchSequence = 0;
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -884,17 +1243,19 @@ class _NewChatSheetState extends State<_NewChatSheet> {
                           title: Text(user.displayNameOrUsername),
                           subtitle: Text('@${user.username} • ${user.email}'),
                           onTap: () async {
+                            final navigator = Navigator.of(context);
+                            final messenger = ScaffoldMessenger.of(context);
                             try {
                               final conversation = await widget.chat
                                   .createDirectConversation(user.id);
-                              if (mounted) {
-                                Navigator.of(context).pop(conversation);
+                              if (context.mounted) {
+                                navigator.pop(conversation);
                               }
                             } on ApiException catch (error) {
-                              if (!mounted) {
+                              if (!context.mounted) {
                                 return;
                               }
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 SnackBar(content: Text(error.message)),
                               );
                             }
@@ -910,7 +1271,10 @@ class _NewChatSheetState extends State<_NewChatSheet> {
   }
 
   Future<void> _runSearch(String value) async {
-    if (value.trim().length < 2) {
+    _searchDebounce?.cancel();
+    final trimmed = value.trim();
+    if (trimmed.length < 2) {
+      _searchSequence += 1;
       setState(() {
         _results = const [];
         _loading = false;
@@ -922,20 +1286,24 @@ class _NewChatSheetState extends State<_NewChatSheet> {
       _loading = true;
     });
 
-    try {
-      final results = await widget.chat.searchUsers(value);
-      if (mounted) {
+    final searchId = ++_searchSequence;
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        final results = await widget.chat.searchUsers(trimmed);
+        if (!mounted || searchId != _searchSequence) {
+          return;
+        }
         setState(() {
           _results = results;
         });
+      } finally {
+        if (mounted && searchId == _searchSequence) {
+          setState(() {
+            _loading = false;
+          });
+        }
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-    }
+    });
   }
 }
 
@@ -951,13 +1319,16 @@ class _NewGroupSheet extends StatefulWidget {
 class _NewGroupSheetState extends State<_NewGroupSheet> {
   final _nameController = TextEditingController();
   final _searchController = TextEditingController();
+  Timer? _searchDebounce;
   bool _loading = false;
   bool _creating = false;
   List<PublicUser> _results = const [];
   final Map<String, PublicUser> _selected = <String, PublicUser>{};
+  int _searchSequence = 0;
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _nameController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -1072,7 +1443,10 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
   }
 
   Future<void> _runSearch(String value) async {
-    if (value.trim().length < 2) {
+    _searchDebounce?.cancel();
+    final trimmed = value.trim();
+    if (trimmed.length < 2) {
+      _searchSequence += 1;
       setState(() {
         _results = const [];
         _loading = false;
@@ -1084,20 +1458,24 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
       _loading = true;
     });
 
-    try {
-      final results = await widget.chat.searchUsers(value);
-      if (mounted) {
+    final searchId = ++_searchSequence;
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        final results = await widget.chat.searchUsers(trimmed);
+        if (!mounted || searchId != _searchSequence) {
+          return;
+        }
         setState(() {
           _results = results;
         });
+      } finally {
+        if (mounted && searchId == _searchSequence) {
+          setState(() {
+            _loading = false;
+          });
+        }
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-    }
+    });
   }
 
   Future<void> _createGroup() async {
@@ -1204,20 +1582,21 @@ class _ProfileSheetState extends State<_ProfileSheet> {
               onPressed: _savingProfile
                   ? null
                   : () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       setState(() {
                         _savingProfile = true;
                       });
                       try {
                         await widget.session
                             .updateDisplayName(_displayNameController.text);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                        if (context.mounted) {
+                          messenger.showSnackBar(
                             const SnackBar(content: Text('Профиль обновлён')),
                           );
                         }
                       } on ApiException catch (error) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                        if (context.mounted) {
+                          messenger.showSnackBar(
                             SnackBar(content: Text(error.message)),
                           );
                         }
@@ -1234,9 +1613,10 @@ class _ProfileSheetState extends State<_ProfileSheet> {
             const SizedBox(height: 24),
             FilledButton.tonalIcon(
               onPressed: () async {
+                final navigator = Navigator.of(context);
                 await widget.session.logout();
-                if (mounted) {
-                  Navigator.of(context).pop();
+                if (context.mounted) {
+                  navigator.pop();
                 }
               },
               icon: const Icon(Icons.logout_rounded),
@@ -1249,7 +1629,10 @@ class _ProfileSheetState extends State<_ProfileSheet> {
   }
 }
 
-String _conversationPreview(ConversationSummary conversation) {
+String conversationPreviewLegacy(
+  ConversationSummary conversation,
+  SettingsController settingsController,
+) {
   final last = conversation.lastMessage;
   if (last == null) {
     return conversation.isGroup ? 'Групповой чат' : 'Сообщений пока нет';
@@ -1302,4 +1685,41 @@ Uint8List? _decodeDataImage(String? value) {
   } catch (_) {
     return null;
   }
+}
+
+String _conversationPreviewDecoded(
+  ConversationSummary conversation,
+  SettingsController settingsController,
+) {
+  final last = conversation.lastMessage;
+  if (last == null) {
+    return conversation.isGroup ? 'Group chat' : 'No messages yet';
+  }
+  if (last.isImage) {
+    return 'Image';
+  }
+  if (last.isVoice) {
+    return 'Voice message';
+  }
+  final decoded = settingsController.decodeMessageText(last).trim();
+  return decoded.isEmpty ? 'Message' : decoded;
+}
+
+String _mimeTypeForFile(XFile file) {
+  final mimeType = file.mimeType?.trim().toLowerCase();
+  if ((mimeType ?? '').startsWith('image/')) {
+    return mimeType!;
+  }
+
+  final path = file.path.toLowerCase();
+  if (path.endsWith('.png')) {
+    return 'image/png';
+  }
+  if (path.endsWith('.webp')) {
+    return 'image/webp';
+  }
+  if (path.endsWith('.gif')) {
+    return 'image/gif';
+  }
+  return 'image/jpeg';
 }

@@ -161,6 +161,7 @@ class ChatMessage {
     required String senderId,
     required String text,
     required String clientMessageId,
+    Map<String, dynamic>? encryption,
   }) {
     return ChatMessage(
       id: 'pending-$clientMessageId',
@@ -170,6 +171,7 @@ class ChatMessage {
       messageType: 'text',
       createdAt: DateTime.now(),
       clientMessageId: clientMessageId,
+      encryption: encryption,
       isPending: true,
     );
   }

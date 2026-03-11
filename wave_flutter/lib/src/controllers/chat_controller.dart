@@ -28,7 +28,8 @@ class ChatController extends ChangeNotifier {
   DateTime? _lastTypingSentAt;
   int _sendSequence = 0;
 
-  List<ConversationSummary> get conversations => List.unmodifiable(_conversations);
+  List<ConversationSummary> get conversations =>
+      List.unmodifiable(_conversations);
   String? get activeConversationId => _activeConversationId;
   String? get typingDisplayName => _typingDisplayName;
   bool get isBootstrapping => _isBootstrapping;
@@ -74,11 +75,11 @@ class ChatController extends ChangeNotifier {
     _loadedMessagesConversationIds.clear();
     notifyListeners();
 
-    _realtimeSubscription ??= realtimeService.events.listen(_handleRealtimeEvent);
+    _realtimeSubscription ??=
+        realtimeService.events.listen(_handleRealtimeEvent);
     try {
       await loadConversations();
-    } catch (_) {
-    }
+    } catch (_) {}
     await realtimeService.activate();
 
     _isBootstrapping = false;
@@ -115,7 +116,8 @@ class ChatController extends ChangeNotifier {
     final payload = await apiClient.get('/api/conversations');
     final parsed = ((payload['conversations'] as List?) ?? const [])
         .whereType<Map>()
-        .map((item) => ConversationSummary.fromJson(Map<String, dynamic>.from(item)))
+        .map((item) =>
+            ConversationSummary.fromJson(Map<String, dynamic>.from(item)))
         .toList();
 
     _conversations
@@ -155,7 +157,8 @@ class ChatController extends ChangeNotifier {
 
   Future<void> markConversationAsRead(String conversationId) async {
     try {
-      final payload = await apiClient.post('/api/conversations/$conversationId/read');
+      final payload =
+          await apiClient.post('/api/conversations/$conversationId/read');
       final conversation = payload['conversation'];
       if (conversation is Map<String, dynamic>) {
         _upsertConversation(
@@ -188,7 +191,8 @@ class ChatController extends ChangeNotifier {
 
     final now = DateTime.now();
     if (_lastTypingSentAt != null &&
-        now.difference(_lastTypingSentAt!) < const Duration(milliseconds: 900)) {
+        now.difference(_lastTypingSentAt!) <
+            const Duration(milliseconds: 900)) {
       return;
     }
 
@@ -200,10 +204,28 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<void> sendTextMessage(String rawText) async {
+    await sendTextMessageWithPayload(
+      rawText: rawText,
+      requestBody: null,
+      optimisticText: null,
+      optimisticEncryption: null,
+    );
+  }
+
+  Future<void> sendTextMessageWithPayload({
+    required String rawText,
+    Map<String, dynamic>? requestBody,
+    String? optimisticText,
+    Map<String, dynamic>? optimisticEncryption,
+  }) async {
     final conversationId = _activeConversationId;
     final currentUser = _currentUser;
     final text = rawText.trim();
-    if (conversationId == null || currentUser == null || text.isEmpty) {
+    final outboundText = (requestBody?['text']?.toString() ?? rawText).trim();
+    if (conversationId == null ||
+        currentUser == null ||
+        text.isEmpty ||
+        outboundText.isEmpty) {
       return;
     }
 
@@ -213,20 +235,24 @@ class ChatController extends ChangeNotifier {
     final optimisticMessage = ChatMessage.optimistic(
       conversationId: conversationId,
       senderId: currentUser.id,
-      text: text,
+      text: optimisticText?.trim().isNotEmpty == true
+          ? optimisticText!.trim()
+          : outboundText,
       clientMessageId: clientMessageId,
+      encryption: optimisticEncryption,
     )..sender = currentUser;
 
     _mergeIncomingMessage(optimisticMessage);
     notifyListeners();
 
     try {
+      final body = <String, dynamic>{
+        ...(requestBody ?? <String, dynamic>{'text': text}),
+        'clientMessageId': clientMessageId,
+      };
       final payload = await apiClient.post(
         '/api/conversations/$conversationId/messages',
-        data: {
-          'text': text,
-          'clientMessageId': clientMessageId,
-        },
+        data: body,
       );
 
       final messageJson = payload['message'];
@@ -344,7 +370,8 @@ class ChatController extends ChangeNotifier {
       case 'message:new':
         final messageJson = event['message'];
         if (messageJson is Map<String, dynamic>) {
-          final message = ChatMessage.fromJson(Map<String, dynamic>.from(messageJson));
+          final message =
+              ChatMessage.fromJson(Map<String, dynamic>.from(messageJson));
           _mergeIncomingMessage(message);
           if (message.conversationId == _activeConversationId &&
               message.senderId != _currentUser?.id) {
@@ -374,8 +401,9 @@ class ChatController extends ChangeNotifier {
         if (conversationId == _activeConversationId &&
             userId != null &&
             userId != _currentUser?.id) {
-          _typingDisplayName =
-              event['displayName']?.toString() ?? event['username']?.toString() ?? 'Печатает';
+          _typingDisplayName = event['displayName']?.toString() ??
+              event['username']?.toString() ??
+              'Печатает';
           _typingTimers[userId]?.cancel();
           _typingTimers[userId] = Timer(const Duration(seconds: 3), () {
             _typingTimers.remove(userId);
@@ -391,7 +419,8 @@ class ChatController extends ChangeNotifier {
           _applyPresenceUpdate(
             userId: userId,
             online: event['online'] == true,
-            lastSeenAt: DateTime.tryParse(event['lastSeenAt']?.toString() ?? '')?.toLocal(),
+            lastSeenAt: DateTime.tryParse(event['lastSeenAt']?.toString() ?? '')
+                ?.toLocal(),
           );
           notifyListeners();
         }
@@ -420,7 +449,8 @@ class ChatController extends ChangeNotifier {
       case 'conversation:deleted':
         final conversationId = event['conversationId']?.toString();
         if (conversationId != null) {
-          _conversations.removeWhere((conversation) => conversation.id == conversationId);
+          _conversations
+              .removeWhere((conversation) => conversation.id == conversationId);
           _messagesByConversation.remove(conversationId);
           _loadedMessagesConversationIds.remove(conversationId);
           if (_activeConversationId == conversationId) {
@@ -468,7 +498,8 @@ class ChatController extends ChangeNotifier {
 
   void _removeMessageByClientId(String conversationId, String clientMessageId) {
     final bucket = _messagesByConversation[conversationId];
-    bucket?.removeWhere((message) => message.clientMessageId == clientMessageId);
+    bucket
+        ?.removeWhere((message) => message.clientMessageId == clientMessageId);
   }
 
   void _applyEditedMessage(ChatMessage message) {
@@ -528,7 +559,8 @@ class ChatController extends ChangeNotifier {
   }
 
   void _upsertConversation(ConversationSummary conversation) {
-    final index = _conversations.indexWhere((item) => item.id == conversation.id);
+    final index =
+        _conversations.indexWhere((item) => item.id == conversation.id);
     if (index >= 0) {
       _conversations[index] = conversation;
     } else {

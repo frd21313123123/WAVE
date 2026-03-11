@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
@@ -199,6 +201,23 @@ class SessionController extends ChangeNotifier {
       await _persistSession(_currentUser!);
       notifyListeners();
     }
+  }
+
+  void synchronizeCurrentUser(PublicUser user) {
+    _currentUser = PublicUser.fromJson(user.toJson());
+    _status = SessionStatus.authenticated;
+    _errorMessage = null;
+    chatController.updateCurrentUser(_currentUser!);
+    unawaited(_persistSession(_currentUser!));
+    notifyListeners();
+  }
+
+  Future<void> handleAccountDeleted() async {
+    await _clearSessionState(clearCookies: false, clearCache: true);
+    _challengeToken = null;
+    _errorMessage = null;
+    _setBusy(false);
+    notifyListeners();
   }
 
   void resetTwoFactorFlow() {

@@ -172,6 +172,48 @@ function getPublicName(user) {
   return normalize(user?.username);
 }
 
+function normalizeUserSearchQuery(value) {
+  return normalizeLower(value).replace(/^@+/, "");
+}
+
+function getUserSearchRank(user, search) {
+  const usernameLower = normalizeLower(user.usernameLower || user.username);
+  const emailLower = normalizeLower(user.emailLower || user.email);
+  const displayNameLower = getDisplayNameLower(user);
+
+  const candidates = [
+    { value: usernameLower, exactRank: 0, prefixRank: 1, containsRank: 2 },
+    { value: displayNameLower, exactRank: 3, prefixRank: 4, containsRank: 5 },
+    { value: emailLower, exactRank: 6, prefixRank: 7, containsRank: 8 },
+  ];
+
+  let bestRank = null;
+  for (const candidate of candidates) {
+    if (!candidate.value) {
+      continue;
+    }
+    if (candidate.value === search) {
+      bestRank = bestRank === null
+        ? candidate.exactRank
+        : Math.min(bestRank, candidate.exactRank);
+      continue;
+    }
+    if (candidate.value.startsWith(search)) {
+      bestRank = bestRank === null
+        ? candidate.prefixRank
+        : Math.min(bestRank, candidate.prefixRank);
+      continue;
+    }
+    if (candidate.value.includes(search)) {
+      bestRank = bestRank === null
+        ? candidate.containsRank
+        : Math.min(bestRank, candidate.containsRank);
+    }
+  }
+
+  return bestRank;
+}
+
 function validateDisplayName(displayName) {
   if (!displayName) {
     return null;
@@ -1250,7 +1292,7 @@ app.post("/api/translate", requireAuth, async (req, res) => {
 });
 
 async function handleUsersSearch(req, res) {
-  const search = normalizeLower(req.query.search || req.query.q);
+  const search = normalizeUserSearchQuery(req.query.search || req.query.q);
   if (search.length < 2) {
     return res.json({ users: [] });
   }
@@ -1258,18 +1300,22 @@ async function handleUsersSearch(req, res) {
   const state = await store.read();
   const users = state.users
     .filter((user) => user.id !== req.user.id)
-    .filter((user) => {
-      const usernameLower = normalizeLower(user.usernameLower || user.username);
-      const emailLower = normalizeLower(user.emailLower || user.email);
-      const displayNameLower = getDisplayNameLower(user);
-      return (
-        usernameLower.includes(search) ||
-        emailLower.includes(search) ||
-        displayNameLower.includes(search)
+    .map((user) => ({
+      user,
+      rank: getUserSearchRank(user, search),
+    }))
+    .filter((entry) => entry.rank !== null)
+    .sort((left, right) => {
+      if (left.rank !== right.rank) {
+        return left.rank - right.rank;
+      }
+
+      return String(right.user.createdAt || "").localeCompare(
+        String(left.user.createdAt || "")
       );
     })
-    .slice(0, 30)
-    .map(toPublicUser);
+    .slice(0, 50)
+    .map((entry) => toPublicUser(entry.user));
 
   return res.json({ users });
 }

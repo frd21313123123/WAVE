@@ -71,3 +71,4 @@ coverage/
 # Misc
 .history/
 .tools/
+artifacts/apk/

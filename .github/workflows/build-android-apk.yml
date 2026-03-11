@@ -1,0 +1,56 @@
+name: Build Android APK
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: build-android-apk-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.41.4"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: wave_flutter
+
+      - name: Analyze project
+        run: flutter analyze
+        working-directory: wave_flutter
+
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x gradlew
+        working-directory: wave_flutter/android
+
+      - name: Build release APK
+        run: ./gradlew --no-daemon clean assembleRelease
+        working-directory: wave_flutter/android
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-android-apk-${{ github.run_number }}
+          path: wave_flutter/android/build/app/outputs/apk/release/*.apk
+          if-no-files-found: error
