@@ -1,0 +1,41 @@
+- generic [ref=e19]:
+  - table [ref=e21]:
+    - rowgroup [ref=e22]:
+      - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка расписание мобильная версия" [ref=e23]:
+        - cell "сообщения Федор Левченко, РД 24-1с" [ref=e24]:
+          - generic "сообщения" [ref=e25] [cursor=pointer]
+          - generic [ref=e27]: Федор Левченко, РД 24-1с
+        - cell "выход из системы" [ref=e28]:
+          - button "выход из системы" [ref=e29] [cursor=pointer]:
+            - img [ref=e30]
+        - cell "техподдержка" [ref=e31]:
+          - button "техподдержка" [ref=e32] [cursor=pointer]:
+            - img [ref=e33]
+        - cell "расписание" [ref=e34]:
+          - button "расписание" [ref=e35] [cursor=pointer]:
+            - img [ref=e36]
+        - cell "мобильная версия" [ref=e37]:
+          - button "мобильная версия" [ref=e38] [cursor=pointer]:
+            - img [ref=e39]
+  - generic [ref=e41]:
+    - generic [ref=e42]: Тренировочный тест
+    - generic [ref=e43]: л.р.1 - Политропные процессы
+  - generic [ref=e45]:
+    - button "предметы" [ref=e47] [cursor=pointer]
+    - button "темы" [ref=e49] [cursor=pointer]
+    - button "задания" [ref=e51] [cursor=pointer]
+    - button "текущее задание" [ref=e53] [cursor=pointer]
+  - table [ref=e54]:
+    - rowgroup [ref=e55]:
+      - 'row "0 9 : 5 9" [ref=e91]':
+        - 'cell "0 9 : 5 9" [ref=e92]':
+          - generic [ref=e58]:
+            - generic [ref=e59]: "0"
+            - generic [ref=e60]: "9"
+            - generic [ref=e61]: ":"
+            - generic [ref=e62]: "5"
+            - generic [ref=e63]: "9"
+        - cell [ref=e64]
+        - cell [ref=e65]
+  - paragraph [ref=e88]: "round-trip time: 101 ms"
+  - paragraph [ref=e90]: © 2002-2026 WebMaster

@@ -1,0 +1,75 @@
+- generic [ref=e4]:
+  - table [ref=e6]:
+    - rowgroup [ref=e7]:
+      - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка расписание мобильная версия" [ref=e8]:
+        - cell "сообщения Федор Левченко, РД 24-1с" [ref=e9]:
+          - generic "сообщения" [ref=e10] [cursor=pointer]
+          - generic [ref=e12]: Федор Левченко, РД 24-1с
+        - cell "выход из системы" [ref=e13]:
+          - button "выход из системы" [ref=e14] [cursor=pointer]:
+            - img [ref=e15]
+        - cell "техподдержка" [ref=e16]:
+          - button "техподдержка" [ref=e17] [cursor=pointer]:
+            - img [ref=e18]
+        - cell "расписание" [ref=e19]:
+          - button "расписание" [ref=e20] [cursor=pointer]:
+            - img [ref=e21]
+        - cell "мобильная версия" [ref=e22]:
+          - button "мобильная версия" [ref=e23] [cursor=pointer]:
+            - img [ref=e24]
+  - generic [ref=e26]:
+    - generic [ref=e27]: Тренировочный тест
+    - generic [ref=e28]: л.р.1 - Политропные процессы
+  - generic [ref=e30]:
+    - button "предметы" [ref=e32] [cursor=pointer]
+    - button "темы" [ref=e34] [cursor=pointer]
+    - button "задания" [ref=e36] [cursor=pointer]
+    - button "текущее задание" [ref=e38] [cursor=pointer]
+  - table [ref=e39]:
+    - rowgroup [ref=e40]:
+      - 'row "0 8 : 5 0 ★★★" [ref=e105]':
+        - 'cell "0 8 : 5 0" [ref=e106]':
+          - generic [ref=e43]:
+            - generic [ref=e44]: "0"
+            - generic [ref=e45]: "8"
+            - generic [ref=e46]: ":"
+            - generic [ref=e47]: "5"
+            - generic [ref=e48]: "0"
+        - cell [ref=e49]
+        - cell "★★★" [ref=e107]:
+          - generic [ref=e81]: ★★★
+  - generic [ref=e51]:
+    - generic [ref=e82]:
+      - paragraph [ref=e108]: Какой набор энергетических характеристик соответствует процессу 0-4 на приведенной диаграмме?
+      - img [ref=e110]
+      - table [ref=e111]:
+        - rowgroup [ref=e112]:
+          - row "1. Работа положительная; газ охлаждается." [ref=e113]:
+            - cell "1." [ref=e114]:
+              - generic [ref=e115] [cursor=pointer]: "1."
+            - cell "Работа положительная; газ охлаждается." [ref=e116]
+          - row "2. Работа положительная; газ нагревается." [ref=e117]:
+            - cell "2." [ref=e118]:
+              - generic [ref=e119] [cursor=pointer]: "2."
+            - cell "Работа положительная; газ нагревается." [ref=e120]
+          - row "3. Внутренняя энергия увеличивается; теплота отводится." [ref=e121]:
+            - cell "3." [ref=e122]:
+              - generic [ref=e123] [cursor=pointer]: "3."
+            - cell "Внутренняя энергия увеличивается; теплота отводится." [ref=e124]
+          - row "4. Работа отрицательная; газ нагревается." [ref=e125]:
+            - cell "4." [ref=e126]:
+              - generic [ref=e127] [cursor=pointer]: "4."
+            - cell "Работа отрицательная; газ нагревается." [ref=e128]
+          - row "5. Правильного ответа нет!" [ref=e129]:
+            - cell "5." [ref=e130]:
+              - generic [ref=e131] [cursor=pointer]: "5."
+            - cell "Правильного ответа нет!" [ref=e132]
+    - table [ref=e84]:
+      - rowgroup [ref=e85]:
+        - row "ответить" [ref=e133]:
+          - cell [ref=e134]:
+            - textbox [ref=e88]
+          - cell "ответить" [ref=e89]:
+            - button "ответить" [ref=e90] [cursor=pointer]
+  - paragraph [ref=e73]: "round-trip time: 105 ms"
+  - paragraph [ref=e75]: © 2002-2026 WebMaster

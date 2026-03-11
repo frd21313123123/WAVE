@@ -80,7 +80,7 @@ const AUTH_RATE_LIMIT_MESSAGE = "Слишком много попыток. По�
 const SECURITY_CSP = [
   "default-src 'self'",
   "base-uri 'self'",
-  "frame-ancestors 'none'",
+  "frame-ancestors 'self' http://localhost:* http://127.0.0.1:*",
   "form-action 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
@@ -132,7 +132,7 @@ app.use(cookieParser());
 app.use((req, res, next) => {
   res.setHeader("Content-Security-Policy", SECURITY_CSP);
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");

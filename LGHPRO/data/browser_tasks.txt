@@ -1,0 +1,39 @@
+[2026-03-06T19:39:57.149383+00:00] 90d76d7596a09e04
+Question:   ,    0,          ()?        .
+Source: D:\python-w1\WAVE\LGHPRO\data\latest-task-snapshot.md
+[2026-03-06T19:41:28.667668+00:00] 93d7708ad18a0796
+Question:            ?    ( < , <= , = , >= , > ).
+Source: D:\python-w1\WAVE\LGHPRO\data\latest-task-snapshot.md
+[2026-03-06T19:42:49.762434+00:00] 1c90b5f485ef722a
+Question:        ,  12%        ?    /( ).
+Source: D:\python-w1\WAVE\LGHPRO\data\latest-task-snapshot.md
+[2026-03-06T19:45:49.535820+00:00] dbd7c6cf340121d9
+Question:           ( , : 123)?
+Options:
+- 1. 
+- 2.   1 < n < 1.4
+- 3.   1 < n < k
+- 4. 
+- 5.   !
+Source: D:\python-w1\WAVE\LGHPRO\data\latest-task-snapshot.md
+[2026-03-06T19:47:22.182491+00:00] 74a8ebaa669eb49b
+Question:   :
+Options:
+- 1.        .
+- 2.       .
+- 3.        ,    .
+- 4.       ,    .
+- 5.   !
+Source: D:\python-w1\WAVE\LGHPRO\data\latest-task-snapshot.md
+[2026-03-06T19:48:53.182738+00:00] b37a3d345944ccd3
+Question:       ()   ?
+Options:
+- 1. /
+- 2. /
+- 3. /
+- 4. 
+- 5.   !
+Source: D:\python-w1\WAVE\LGHPRO\data\latest-task-snapshot.md
+[2026-03-06T20:37:07.053304+00:00] d67917ffeb5d84aa
+Question:         1. - ? (/)
+Source: D:\python-w1\WAVE\LGHPRO\data\latest-task-snapshot.md

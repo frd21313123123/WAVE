@@ -1,0 +1,47 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]: ...Hello World :)
+    - table [ref=e5]:
+      - rowgroup [ref=e6]:
+        - row "Теплотехника ПНИПУ" [ref=e7]:
+          - cell [ref=e8]:
+            - img [ref=e9]
+          - cell "Теплотехника ПНИПУ" [ref=e10]
+          - cell [ref=e11]:
+            - button [ref=e12] [cursor=pointer]:
+              - img [ref=e13]
+            - button [ref=e14] [cursor=pointer]:
+              - img [ref=e15]
+            - button [ref=e16] [cursor=pointer]:
+              - img [ref=e17]
+            - button [ref=e18] [cursor=pointer]:
+              - img [ref=e19]
+        - row "где тепло — там нет холода" [ref=e20]:
+          - cell "где тепло — там нет холода" [ref=e21]:
+            - generic [ref=e22]: где тепло — там нет холода
+  - generic [ref=e24]:
+    - button "кафедра" [ref=e25] [cursor=pointer]:
+      - img [ref=e26]
+      - text: кафедра
+    - button "лекции и методички" [ref=e27] [cursor=pointer]:
+      - img [ref=e28]
+      - text: лекции и методички
+    - button "расписание" [ref=e29] [cursor=pointer]:
+      - img [ref=e30]
+      - text: расписание
+    - button "дистанционное обучение" [ref=e31] [cursor=pointer]:
+      - img [ref=e32]
+      - text: дистанционное обучение
+  - generic [ref=e33]:
+    - generic [ref=e34]:
+      - text: Механико-технологический факультет ПНИПУ. Кафедра «Сварочное производство, метрология и технология материалов» (СПМиТМ).
+      - text: 614990, г. Пермь, Комсомольский пр. 29, ауд. 013 к.А гл.к.
+      - text: "Телефон: +7(342) 2-198-175"
+    - generic [ref=e35]:
+      - link "сайт ПНИПУ" [ref=e37] [cursor=pointer]:
+        - /url: http://pstu.ru
+      - link "НТЦ Теплотехника" [ref=e39] [cursor=pointer]:
+        - /url: ../stc_tt/
+      - link "Дистанционное обучение" [ref=e41] [cursor=pointer]:
+        - /url: ../kontr8/
+    - text: © WebMaster 2002-2026

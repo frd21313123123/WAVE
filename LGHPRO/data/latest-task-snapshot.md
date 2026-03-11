@@ -1,0 +1,51 @@
+- generic [ref=e4]:
+  - table [ref=e6]:
+    - rowgroup [ref=e7]:
+      - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка расписание мобильная версия" [ref=e8]:
+        - cell "сообщения Федор Левченко, РД 24-1с" [ref=e9]:
+          - generic "сообщения" [ref=e10] [cursor=pointer]
+          - generic [ref=e12]: Федор Левченко, РД 24-1с
+        - cell "выход из системы" [ref=e13]:
+          - button "выход из системы" [ref=e14] [cursor=pointer]:
+            - img [ref=e15]
+        - cell "техподдержка" [ref=e16]:
+          - button "техподдержка" [ref=e17] [cursor=pointer]:
+            - img [ref=e18]
+        - cell "расписание" [ref=e19]:
+          - button "расписание" [ref=e20] [cursor=pointer]:
+            - img [ref=e21]
+        - cell "мобильная версия" [ref=e22]:
+          - button "мобильная версия" [ref=e23] [cursor=pointer]:
+            - img [ref=e24]
+  - generic [ref=e26]:
+    - generic [ref=e27]: Тренировочный тест
+    - generic [ref=e28]: л.р.1 - Политропные процессы
+  - generic [ref=e30]:
+    - button "предметы" [ref=e32] [cursor=pointer]
+    - button "темы" [ref=e34] [cursor=pointer]
+    - button "задания" [ref=e36] [cursor=pointer]
+    - button "текущее задание" [ref=e38] [cursor=pointer]
+  - table [ref=e39]:
+    - rowgroup [ref=e40]:
+      - 'row "0 4 : 5 7 ★" [ref=e192]':
+        - 'cell "0 4 : 5 7" [ref=e193]':
+          - generic [ref=e43]:
+            - generic [ref=e44]: "0"
+            - generic [ref=e45]: "4"
+            - generic [ref=e46]: ":"
+            - generic [ref=e47]: "5"
+            - generic [ref=e48]: "7"
+        - cell [ref=e49]
+        - cell "★" [ref=e82]:
+          - generic [ref=e83]: ★
+  - generic [ref=e51]:
+    - paragraph [ref=e189]: Численное значение показателя адиабаты не может быть меньше 1. Так-ли это? (Да/нет)
+    - table [ref=e108]:
+      - rowgroup [ref=e109]:
+        - row "ответить" [ref=e190]:
+          - cell [ref=e191]:
+            - textbox [ref=e112]
+          - cell "ответить" [ref=e113]:
+            - button "ответить" [ref=e114] [cursor=pointer]
+  - paragraph [ref=e73]: "round-trip time: 100 ms"
+  - paragraph [ref=e75]: © 2002-2026 WebMaster

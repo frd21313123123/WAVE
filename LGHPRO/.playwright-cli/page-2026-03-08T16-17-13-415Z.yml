@@ -1,0 +1,62 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]: Включить мобильную версию?
+    - button "не надо..." [ref=e5] [cursor=pointer]
+    - button "давай!" [ref=e6] [cursor=pointer]
+  - generic [ref=e8]:
+    - table [ref=e10]:
+      - rowgroup [ref=e11]:
+        - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка мобильная версия" [ref=e12]:
+          - cell "сообщения Федор Левченко, РД 24-1с" [ref=e13]:
+            - generic "сообщения" [ref=e14] [cursor=pointer]
+            - generic [ref=e16]: Федор Левченко, РД 24-1с
+          - cell "выход из системы" [ref=e17]:
+            - button "выход из системы" [ref=e18] [cursor=pointer]:
+              - img [ref=e19]
+          - cell "техподдержка" [ref=e20]:
+            - button "техподдержка" [ref=e21] [cursor=pointer]:
+              - img [ref=e22]
+          - cell "мобильная версия" [ref=e23]:
+            - button "мобильная версия" [ref=e24] [cursor=pointer]:
+              - img [ref=e25]
+    - paragraph [ref=e26]: "Предметы для изучения:"
+    - button "Термодинамика (АД, РД)" [ref=e28] [cursor=pointer]:
+      - generic [ref=e30]: Термодинамика (АД, РД)
+    - table [ref=e31]:
+      - rowgroup [ref=e32]:
+        - row "Работа с системой" [ref=e33]:
+          - cell [ref=e34]:
+            - link [ref=e35] [cursor=pointer]:
+              - /url: ../about/kontr.pdf
+              - img [ref=e36]
+            - link [ref=e37] [cursor=pointer]:
+              - /url: ../about/kontr.ppsx
+              - img [ref=e38]
+          - cell "Работа с системой" [ref=e39]
+        - row "Характеристика системы" [ref=e40]:
+          - cell [ref=e41]:
+            - link [ref=e42] [cursor=pointer]:
+              - /url: ../about/kontr_about.pdf
+              - img [ref=e43]
+            - link [ref=e44] [cursor=pointer]:
+              - /url: ../about/kontr_about.ppsx
+              - img [ref=e45]
+          - cell "Характеристика системы" [ref=e46]
+        - row "Руководство пользователя" [ref=e47]:
+          - cell [ref=e48]:
+            - link [ref=e49] [cursor=pointer]:
+              - /url: ../about/userguide.pdf
+              - img [ref=e50]
+          - cell "Руководство пользователя" [ref=e51]:
+            - link "Руководство пользователя" [ref=e52] [cursor=pointer]:
+              - /url: ../about/userguide.pdf
+    - table [ref=e53]:
+      - rowgroup [ref=e54]:
+        - row "Уведомления на e-mail включены О системе" [ref=e55]:
+          - cell [ref=e56]:
+            - button [ref=e58] [cursor=pointer]
+          - cell "Уведомления на e-mail включены" [ref=e59]:
+            - generic [ref=e60]: Уведомления на e-mail включены
+          - cell "О системе" [ref=e61]:
+            - button "О системе" [ref=e62] [cursor=pointer]
+    - paragraph [ref=e64]: © 2002-2026 WebMaster

@@ -1,0 +1,185 @@
+- generic [ref=e4]:
+  - table [ref=e6]:
+    - rowgroup [ref=e7]:
+      - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка расписание мобильная версия" [ref=e8]:
+        - cell "сообщения Федор Левченко, РД 24-1с" [ref=e9]:
+          - generic "сообщения" [ref=e10] [cursor=pointer]
+          - generic [ref=e12]: Федор Левченко, РД 24-1с
+        - cell "выход из системы" [ref=e13]:
+          - button "выход из системы" [ref=e14] [cursor=pointer]:
+            - img [ref=e15]
+        - cell "техподдержка" [ref=e16]:
+          - button "техподдержка" [ref=e17] [cursor=pointer]:
+            - img [ref=e18]
+        - cell "расписание" [ref=e19]:
+          - button "расписание" [ref=e20] [cursor=pointer]:
+            - img [ref=e21]
+        - cell "мобильная версия" [ref=e22]:
+          - button "мобильная версия" [ref=e23] [cursor=pointer]:
+            - img [ref=e24]
+  - generic [ref=e26]:
+    - generic [ref=e27]: Тренировочный тест
+    - generic [ref=e28]: л.р.1 - Политропные процессы
+  - generic [ref=e30]:
+    - button "предметы" [ref=e32] [cursor=pointer]
+    - button "темы" [ref=e34] [cursor=pointer]
+    - button "задания" [ref=e36] [cursor=pointer]
+    - button "текущее задание" [ref=e38] [cursor=pointer]
+  - table [ref=e39]:
+    - rowgroup [ref=e40]:
+      - 'row "0 7 : 0 6 ★★" [ref=e240]':
+        - 'cell "0 7 : 0 6" [ref=e241]':
+          - generic [ref=e43]:
+            - generic [ref=e44]: "0"
+            - generic [ref=e45]: "7"
+            - generic [ref=e46]: ":"
+            - generic [ref=e47]: "0"
+            - generic [ref=e48]: "6"
+        - cell [ref=e49]
+        - cell "★★" [ref=e108]:
+          - generic [ref=e83]: ★★
+  - generic [ref=e51]:
+    - generic [ref=e84]:
+      - paragraph [ref=e109]: Восстановите содержимое закрашенной ячейки
+      - table [ref=e110]:
+        - rowgroup [ref=e111]:
+          - row "Избыточное давление, мм.вод.ст. Параметры атмосферного воздуха" [ref=e112]:
+            - cell "Избыточное давление, мм.вод.ст." [ref=e113]
+            - cell "Параметры атмосферного воздуха" [ref=e114]
+          - row "P1 изб P3 изб t, °C Pатм, Па" [ref=e115]:
+            - cell "P1 изб" [ref=e116]:
+              - text: P
+              - subscript [ref=e117]: 1 изб
+            - cell "P3 изб" [ref=e118]:
+              - text: P
+              - subscript [ref=e119]: 3 изб
+            - cell "t, °C" [ref=e120]
+            - cell "Pатм, Па" [ref=e121]:
+              - text: P
+              - subscript [ref=e122]: атм
+              - text: ", Па"
+          - row "800,000 110,000 23,000 95000,000" [ref=e123]:
+            - cell "800,000" [ref=e124]
+            - cell "110,000" [ref=e125]
+            - cell "23,000" [ref=e126]
+            - cell "95000,000" [ref=e127]
+      - table [ref=e128]:
+        - rowgroup [ref=e129]:
+          - row "Параметр/точка 1 2 3 4" [ref=e130]:
+            - cell "Параметр/точка" [ref=e131]
+            - cell "1" [ref=e132]
+            - cell "2" [ref=e133]
+            - cell "3" [ref=e134]
+            - cell "4" [ref=e135]
+          - row "P, Па 102845,360 95000,000 96078,737 95000,000" [ref=e136]:
+            - cell "P, Па" [ref=e137]
+            - cell "102845,360" [ref=e138]
+            - cell "95000,000" [ref=e139]
+            - cell "96078,737" [ref=e140]
+            - cell "95000,000" [ref=e141]
+          - row "T, K 296,150 292,825 296,150 289,511" [ref=e142]:
+            - cell "T, K" [ref=e143]
+            - cell "296,150" [ref=e144]
+            - cell "292,825" [ref=e145]
+            - cell "296,150" [ref=e146]
+            - cell "289,511" [ref=e147]
+          - row "v, м3/кг 0,826 0,885 0,885 0,875" [ref=e148]:
+            - cell "v, м3/кг" [ref=e149]
+            - cell "0,826" [ref=e150]
+            - cell "0,885" [ref=e151]
+            - cell "0,885" [ref=e152]
+            - cell "0,875" [ref=e153]
+          - row "m, кг 0,042 0,040 0,040 0,040" [ref=e154]:
+            - cell "m, кг" [ref=e155]
+            - cell "0,042" [ref=e156]
+            - cell "0,040" [ref=e157]
+            - cell "0,040" [ref=e158]
+            - cell "0,040" [ref=e159]
+      - table [ref=e160]:
+        - rowgroup [ref=e161]:
+          - row "Параметр Процессы" [ref=e162]:
+            - cell "Параметр" [ref=e163]
+            - cell "Процессы" [ref=e164]
+          - row "1-2 политропный 1-4 адиабатный 4-2 изобарный 2-3 изохорный 3-1 изотермический" [ref=e165]:
+            - cell "1-2 политропный" [ref=e166]:
+              - generic [ref=e167]:
+                - text: 1-2
+                - text: политропный
+            - cell "1-4 адиабатный" [ref=e168]:
+              - generic [ref=e169]:
+                - text: 1-4
+                - text: адиабатный
+            - cell "4-2 изобарный" [ref=e170]:
+              - generic [ref=e171]:
+                - text: 4-2
+                - text: изобарный
+            - cell "2-3 изохорный" [ref=e172]:
+              - generic [ref=e173]:
+                - text: 2-3
+                - text: изохорный
+            - cell "3-1 изотермический" [ref=e174]:
+              - generic [ref=e175]:
+                - text: 3-1
+                - text: изотермический
+          - row "n 1,166 1,400 0 ∞ 1,000" [ref=e176]:
+            - cell "n" [ref=e177]
+            - cell "1,166" [ref=e178]
+            - cell "1,400" [ref=e179]
+            - cell "0" [ref=e180]
+            - cell "∞" [ref=e181]
+            - cell "1,000" [ref=e182]
+          - row "cφ, Дж/(кг К) -1012,421 0 1004,500 717,500 ∞" [ref=e183]:
+            - cell "cφ, Дж/(кг К)" [ref=e184]:
+              - text: c
+              - subscript [ref=e185]: φ
+              - text: ", Дж/(кг К)"
+            - cell "-1012,421" [ref=e186]
+            - cell "0" [ref=e187]
+            - cell "1004,500" [ref=e188]
+            - cell "717,500" [ref=e189]
+            - cell "∞" [ref=e190]
+          - row "ΔU, Дж -97,713 -196,165 94,600 94,389 0" [ref=e191]:
+            - cell "ΔU, Дж" [ref=e192]
+            - cell "-97,713" [ref=e193]
+            - cell "-196,165" [ref=e194]
+            - cell "94,600" [ref=e195]
+            - cell "94,389" [ref=e196]
+            - cell "0" [ref=e197]
+          - row "L, Дж 235,591 196,165 37,840 0 -236,923" [ref=e198]:
+            - cell "L, Дж" [ref=e199]
+            - cell "235,591" [ref=e200]
+            - cell "196,165" [ref=e201]
+            - cell "37,840" [ref=e202]
+            - cell "0" [ref=e203]
+            - cell "-236,923" [ref=e204]
+          - row "Q, Дж 137,877 0 132,440 -236,923" [ref=e205]:
+            - cell "Q, Дж" [ref=e206]
+            - cell "137,877" [ref=e207]
+            - cell "0" [ref=e208]
+            - cell "132,440" [ref=e209]
+            - cell [ref=e210]
+            - cell "-236,923" [ref=e211]
+          - row "L', Дж 274,676 274,632 0 -37,756 -236,923" [ref=e212]:
+            - cell "L', Дж" [ref=e213]
+            - cell "274,676" [ref=e214]
+            - cell "274,632" [ref=e215]
+            - cell "0" [ref=e216]
+            - cell "-37,756" [ref=e217]
+            - cell "-236,923" [ref=e218]
+          - row "ΔI, Дж -136,799 -274,632 132,440 0" [ref=e219]:
+            - cell "ΔI, Дж" [ref=e220]
+            - cell "-136,799" [ref=e221]
+            - cell "-274,632" [ref=e222]
+            - cell "132,440" [ref=e223]
+            - cell [ref=e224]
+            - cell "0" [ref=e225]
+      - paragraph
+    - table [ref=e86]:
+      - rowgroup [ref=e87]:
+        - row "94,389 ответить" [ref=e238]:
+          - cell "94,389" [ref=e239]:
+            - textbox [ref=e90]: 94,389
+          - cell "ответить" [ref=e91]:
+            - button "ответить" [ref=e92] [cursor=pointer]
+  - paragraph [ref=e73]: "round-trip time: 126 ms"
+  - paragraph [ref=e75]: © 2002-2026 WebMaster

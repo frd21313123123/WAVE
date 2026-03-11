@@ -56,6 +56,13 @@ out/
 .vercel/
 .cache/
 .parcel-cache/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+**/android/local.properties
+**/.gradle/
+wave_flutter/.gradle_wrapper_seed/
 
 # Testing
 coverage/
@@ -63,3 +70,4 @@ coverage/
 
 # Misc
 .history/
+.tools/

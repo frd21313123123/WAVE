@@ -1,0 +1,60 @@
+- generic [ref=e4]:
+  - table [ref=e6]:
+    - rowgroup [ref=e7]:
+      - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка расписание мобильная версия" [ref=e8]:
+        - cell "сообщения Федор Левченко, РД 24-1с" [ref=e9]:
+          - generic "сообщения" [ref=e10] [cursor=pointer]
+          - generic [ref=e12]: Федор Левченко, РД 24-1с
+        - cell "выход из системы" [ref=e13]:
+          - button "выход из системы" [ref=e14] [cursor=pointer]:
+            - img [ref=e15]
+        - cell "техподдержка" [ref=e16]:
+          - button "техподдержка" [ref=e17] [cursor=pointer]:
+            - img [ref=e18]
+        - cell "расписание" [ref=e19]:
+          - button "расписание" [ref=e20] [cursor=pointer]:
+            - img [ref=e21]
+        - cell "мобильная версия" [ref=e22]:
+          - button "мобильная версия" [ref=e23] [cursor=pointer]:
+            - img [ref=e24]
+  - generic [ref=e26]:
+    - generic [ref=e27]: Тренировочный тест
+    - generic [ref=e28]: л.р.1 - Политропные процессы
+  - generic [ref=e30]:
+    - button "предметы" [ref=e32] [cursor=pointer]
+    - button "темы" [ref=e34] [cursor=pointer]
+    - button "задания" [ref=e36] [cursor=pointer]
+    - button "текущее задание" [ref=e38] [cursor=pointer]
+  - table [ref=e39]:
+    - rowgroup [ref=e40]:
+      - 'row "0 7 : 4 7" [ref=e2322]':
+        - 'cell "0 7 : 4 7" [ref=e2323]':
+          - generic [ref=e43]:
+            - generic [ref=e44]: "0"
+            - generic [ref=e45]: "7"
+            - generic [ref=e46]: ":"
+            - generic [ref=e47]: "4"
+            - generic [ref=e48]: "7"
+        - cell [ref=e49]
+        - cell [ref=e2324]
+  - generic [ref=e236]:
+    - paragraph [ref=e2325]: "Вы ответили на оценку:"
+    - img [ref=e2327]
+    - paragraph
+    - table [ref=e2328]:
+      - rowgroup [ref=e2329]:
+        - row "Фортуна улыбается только тем, кто к этому готов. Луи Пастер" [ref=e2330]:
+          - cell [ref=e2331]:
+            - img [ref=e2333]
+          - cell "Фортуна улыбается только тем, кто к этому готов. Луи Пастер" [ref=e2334]:
+            - generic [ref=e2335]:
+              - paragraph [ref=e2336]: Фортуна улыбается только тем, кто к этому готов.
+              - paragraph [ref=e2337]: Луи Пастер
+  - generic [ref=e250]:
+    - button "продолжить" [ref=e251] [cursor=pointer]
+    - button "повторить" [ref=e252] [cursor=pointer]
+  - generic [ref=e69]:
+    - paragraph [ref=e70]: Работа над ошибками
+    - button "загрузить список тестов" [ref=e72] [cursor=pointer]
+  - paragraph [ref=e73]: "round-trip time: 120 ms"
+  - paragraph [ref=e75]: © 2002-2026 WebMaster

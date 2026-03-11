@@ -1,0 +1,74 @@
+- generic [ref=e4]:
+  - table [ref=e6]:
+    - rowgroup [ref=e7]:
+      - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка расписание мобильная версия" [ref=e8]:
+        - cell "сообщения Федор Левченко, РД 24-1с" [ref=e9]:
+          - generic "сообщения" [ref=e10] [cursor=pointer]
+          - generic [ref=e12]: Федор Левченко, РД 24-1с
+        - cell "выход из системы" [ref=e13]:
+          - button "выход из системы" [ref=e14] [cursor=pointer]:
+            - img [ref=e15]
+        - cell "техподдержка" [ref=e16]:
+          - button "техподдержка" [ref=e17] [cursor=pointer]:
+            - img [ref=e18]
+        - cell "расписание" [ref=e19]:
+          - button "расписание" [ref=e20] [cursor=pointer]:
+            - img [ref=e21]
+        - cell "мобильная версия" [ref=e22]:
+          - button "мобильная версия" [ref=e23] [cursor=pointer]:
+            - img [ref=e24]
+  - generic [ref=e26]:
+    - generic [ref=e27]: Тренировочный тест
+    - generic [ref=e28]: л.р.1 - Политропные процессы
+  - generic [ref=e30]:
+    - button "предметы" [ref=e32] [cursor=pointer]
+    - button "темы" [ref=e34] [cursor=pointer]
+    - button "задания" [ref=e36] [cursor=pointer]
+    - button "текущее задание" [ref=e38] [cursor=pointer]
+  - table [ref=e39]:
+    - rowgroup [ref=e40]:
+      - 'row "0 6 : 2 4 ★" [ref=e272]':
+        - 'cell "0 6 : 2 4" [ref=e273]':
+          - generic [ref=e43]:
+            - generic [ref=e44]: "0"
+            - generic [ref=e45]: "6"
+            - generic [ref=e46]: ":"
+            - generic [ref=e47]: "2"
+            - generic [ref=e48]: "4"
+        - cell [ref=e49]
+        - cell "★" [ref=e244]:
+          - generic [ref=e83]: ★
+  - generic [ref=e51]:
+    - generic [ref=e84]:
+      - paragraph [ref=e245]: В каких единицах измеряется величина удельной (массовой) теплоемкости?
+      - table [ref=e246]:
+        - rowgroup [ref=e247]:
+          - row "1. кДж / (кмоль кг)" [ref=e248]:
+            - cell "1." [ref=e249]:
+              - generic [ref=e250] [cursor=pointer]: "1."
+            - cell "кДж / (кмоль кг)" [ref=e251]
+          - row "2. Дж / (кмоль К)" [ref=e252]:
+            - cell "2." [ref=e253]:
+              - generic [ref=e254] [cursor=pointer]: "2."
+            - cell "Дж / (кмоль К)" [ref=e255]
+          - row "3. кДж / (кг К)" [ref=e256]:
+            - cell "3." [ref=e257]:
+              - generic [ref=e258] [cursor=pointer]: "3."
+            - cell "кДж / (кг К)" [ref=e259]
+          - row "4. Дж / моль" [ref=e260]:
+            - cell "4." [ref=e261]:
+              - generic [ref=e262] [cursor=pointer]: "4."
+            - cell "Дж / моль" [ref=e263]
+          - row "5. Правильного ответа нет!" [ref=e264]:
+            - cell "5." [ref=e265]:
+              - generic [ref=e266] [cursor=pointer]: "5."
+            - cell "Правильного ответа нет!" [ref=e267]
+    - table [ref=e86]:
+      - rowgroup [ref=e87]:
+        - row "3 ответить" [ref=e274]:
+          - cell "3" [ref=e275]:
+            - textbox [ref=e90]: "3"
+          - cell "ответить" [ref=e91]:
+            - button "ответить" [ref=e92] [cursor=pointer]
+  - paragraph [ref=e73]: "round-trip time: 118 ms"
+  - paragraph [ref=e75]: © 2002-2026 WebMaster

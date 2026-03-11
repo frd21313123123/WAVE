@@ -1,0 +1,74 @@
+- generic [ref=e19]:
+  - table [ref=e21]:
+    - rowgroup [ref=e22]:
+      - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка расписание мобильная версия" [ref=e23]:
+        - cell "сообщения Федор Левченко, РД 24-1с" [ref=e24]:
+          - generic "сообщения" [ref=e25] [cursor=pointer]
+          - generic [ref=e27]: Федор Левченко, РД 24-1с
+        - cell "выход из системы" [ref=e28]:
+          - button "выход из системы" [ref=e29] [cursor=pointer]:
+            - img [ref=e30]
+        - cell "техподдержка" [ref=e31]:
+          - button "техподдержка" [ref=e32] [cursor=pointer]:
+            - img [ref=e33]
+        - cell "расписание" [ref=e34]:
+          - button "расписание" [ref=e35] [cursor=pointer]:
+            - img [ref=e36]
+        - cell "мобильная версия" [ref=e37]:
+          - button "мобильная версия" [ref=e38] [cursor=pointer]:
+            - img [ref=e39]
+  - generic [ref=e41]:
+    - generic [ref=e42]: Тренировочный тест
+    - generic [ref=e43]: л.р.1 - Политропные процессы
+  - generic [ref=e45]:
+    - button "предметы" [ref=e47] [cursor=pointer]
+    - button "темы" [ref=e49] [cursor=pointer]
+    - button "задания" [ref=e51] [cursor=pointer]
+    - button "текущее задание" [ref=e53] [cursor=pointer]
+  - table [ref=e54]:
+    - rowgroup [ref=e55]:
+      - 'row "0 5 : 4 4 ★" [ref=e143]':
+        - 'cell "0 5 : 4 4" [ref=e144]':
+          - generic [ref=e58]:
+            - generic [ref=e59]: "0"
+            - generic [ref=e60]: "5"
+            - generic [ref=e61]: ":"
+            - generic [ref=e62]: "4"
+            - generic [ref=e63]: "4"
+        - cell [ref=e64]
+        - cell "★" [ref=e97]:
+          - generic [ref=e98]: ★
+  - generic [ref=e66]:
+    - generic [ref=e99]:
+      - paragraph [ref=e116]: "Какие процессы расширения нельзя осуществить в условиях данной лабораторной работы (перечислить подряд, например: 123)?"
+      - table [ref=e117]:
+        - rowgroup [ref=e118]:
+          - row "1. изотермический" [ref=e119]:
+            - cell "1." [ref=e120]:
+              - generic [ref=e121] [cursor=pointer]: "1."
+            - cell "изотермический" [ref=e122]
+          - row "2. термодинамический с ∂C/∂T ≠ 0" [ref=e123]:
+            - cell "2." [ref=e124]:
+              - generic [ref=e125] [cursor=pointer]: "2."
+            - cell "термодинамический с ∂C/∂T ≠ 0" [ref=e126]
+          - row "3. адиабатный" [ref=e127]:
+            - cell "3." [ref=e128]:
+              - generic [ref=e129] [cursor=pointer]: "3."
+            - cell "адиабатный" [ref=e130]
+          - row "4. механический" [ref=e131]:
+            - cell "4." [ref=e132]:
+              - generic [ref=e133] [cursor=pointer]: "4."
+            - cell "механический" [ref=e134]
+          - row "5. Правильного ответа нет!" [ref=e135]:
+            - cell "5." [ref=e136]:
+              - generic [ref=e137] [cursor=pointer]: "5."
+            - cell "Правильного ответа нет!" [ref=e138]
+    - table [ref=e103]:
+      - rowgroup [ref=e104]:
+        - row "ответить" [ref=e139]:
+          - cell [ref=e140]:
+            - textbox [ref=e107]
+          - cell "ответить" [ref=e108]:
+            - button "ответить" [ref=e109] [cursor=pointer]
+  - paragraph [ref=e88]: "round-trip time: 101 ms"
+  - paragraph [ref=e90]: © 2002-2026 WebMaster

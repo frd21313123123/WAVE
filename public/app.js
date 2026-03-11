@@ -267,6 +267,7 @@ const state = {
     enabled: false,
     setupSecret: "",
     setupOtpAuthUrl: "",
+    statusRequestId: 0,
   },
   deletingMessageIdsByConversation: new Map(),
   readRequestsInFlight: new Set(),
@@ -454,8 +455,12 @@ function renderTwoFaState() {
 }
 
 async function refreshTwoFaStatus() {
+  const requestId = ++state.twoFa.statusRequestId;
   try {
     const payload = await api("/api/auth/2fa/status");
+    if (requestId !== state.twoFa.statusRequestId) {
+      return;
+    }
     state.twoFa.enabled = Boolean(payload.enabled);
     if (!state.twoFa.enabled) {
       clearTwoFaSetup();
@@ -466,6 +471,9 @@ async function refreshTwoFaStatus() {
     }
     renderTwoFaState();
   } catch {
+    if (requestId !== state.twoFa.statusRequestId) {
+      return;
+    }
     setTwoFaStatusText("Failed to load 2FA status.", true);
   }
 }

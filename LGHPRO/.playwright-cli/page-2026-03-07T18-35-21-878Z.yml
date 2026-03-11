@@ -1,0 +1,74 @@
+- generic [ref=e4]:
+  - table [ref=e6]:
+    - rowgroup [ref=e7]:
+      - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка расписание мобильная версия" [ref=e8]:
+        - cell "сообщения Федор Левченко, РД 24-1с" [ref=e9]:
+          - generic "сообщения" [ref=e10] [cursor=pointer]
+          - generic [ref=e12]: Федор Левченко, РД 24-1с
+        - cell "выход из системы" [ref=e13]:
+          - button "выход из системы" [ref=e14] [cursor=pointer]:
+            - img [ref=e15]
+        - cell "техподдержка" [ref=e16]:
+          - button "техподдержка" [ref=e17] [cursor=pointer]:
+            - img [ref=e18]
+        - cell "расписание" [ref=e19]:
+          - button "расписание" [ref=e20] [cursor=pointer]:
+            - img [ref=e21]
+        - cell "мобильная версия" [ref=e22]:
+          - button "мобильная версия" [ref=e23] [cursor=pointer]:
+            - img [ref=e24]
+  - generic [ref=e26]:
+    - generic [ref=e27]: Тренировочный тест
+    - generic [ref=e28]: л.р.1 - Политропные процессы
+  - generic [ref=e30]:
+    - button "предметы" [ref=e32] [cursor=pointer]
+    - button "темы" [ref=e34] [cursor=pointer]
+    - button "задания" [ref=e36] [cursor=pointer]
+    - button "текущее задание" [ref=e38] [cursor=pointer]
+  - table [ref=e39]:
+    - rowgroup [ref=e40]:
+      - 'row "0 9 : 4 8 ★" [ref=e104]':
+        - 'cell "0 9 : 4 8" [ref=e105]':
+          - generic [ref=e43]:
+            - generic [ref=e44]: "0"
+            - generic [ref=e45]: "9"
+            - generic [ref=e46]: ":"
+            - generic [ref=e47]: "4"
+            - generic [ref=e48]: "8"
+        - cell [ref=e49]
+        - cell "★" [ref=e82]:
+          - generic [ref=e83]: ★
+  - generic [ref=e51]:
+    - generic [ref=e84]:
+      - paragraph [ref=e106]: "Выберите верное утверждение:"
+      - table [ref=e107]:
+        - rowgroup [ref=e108]:
+          - row "1. Теплоемкость рабочего тела зависит от вида процесса, количества вещества и температуры." [ref=e109]:
+            - cell "1." [ref=e110]:
+              - generic [ref=e111] [cursor=pointer]: "1."
+            - cell "Теплоемкость рабочего тела зависит от вида процесса, количества вещества и температуры." [ref=e112]
+          - row "2. Теплоемкость рабочего тела зависит только от вида процесса." [ref=e113]:
+            - cell "2." [ref=e114]:
+              - generic [ref=e115] [cursor=pointer]: "2."
+            - cell "Теплоемкость рабочего тела зависит только от вида процесса." [ref=e116]
+          - row "3. Теплоемкость газа не зависит от давления, вида процесса, количества вещества и температуры." [ref=e117]:
+            - cell "3." [ref=e118]:
+              - generic [ref=e119] [cursor=pointer]: "3."
+            - cell "Теплоемкость газа не зависит от давления, вида процесса, количества вещества и температуры." [ref=e120]
+          - row "4. Теплоемкость твердого тела не зависит от давления, вида процесса, количества вещества и температуры." [ref=e121]:
+            - cell "4." [ref=e122]:
+              - generic [ref=e123] [cursor=pointer]: "4."
+            - cell "Теплоемкость твердого тела не зависит от давления, вида процесса, количества вещества и температуры." [ref=e124]
+          - row "5. Правильного ответа нет!" [ref=e125]:
+            - cell "5." [ref=e126]:
+              - generic [ref=e127] [cursor=pointer]: "5."
+            - cell "Правильного ответа нет!" [ref=e128]
+    - table [ref=e86]:
+      - rowgroup [ref=e87]:
+        - row "ответить" [ref=e88]:
+          - cell [ref=e89]:
+            - textbox [ref=e90]
+          - cell "ответить" [ref=e91]:
+            - button "ответить" [ref=e92] [cursor=pointer]
+  - paragraph [ref=e73]: "round-trip time: 121 ms"
+  - paragraph [ref=e75]: © 2002-2026 WebMaster

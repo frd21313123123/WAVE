@@ -1,0 +1,235 @@
+- generic [ref=e4]:
+  - table [ref=e6]:
+    - rowgroup [ref=e7]:
+      - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка расписание мобильная версия" [ref=e8]:
+        - cell "сообщения Федор Левченко, РД 24-1с" [ref=e9]:
+          - generic "сообщения" [ref=e10] [cursor=pointer]
+          - generic [ref=e12]: Федор Левченко, РД 24-1с
+        - cell "выход из системы" [ref=e13]:
+          - button "выход из системы" [ref=e14] [cursor=pointer]:
+            - img [ref=e15]
+        - cell "техподдержка" [ref=e16]:
+          - button "техподдержка" [ref=e17] [cursor=pointer]:
+            - img [ref=e18]
+        - cell "расписание" [ref=e19]:
+          - button "расписание" [ref=e20] [cursor=pointer]:
+            - img [ref=e21]
+        - cell "мобильная версия" [ref=e22]:
+          - button "мобильная версия" [ref=e23] [cursor=pointer]:
+            - img [ref=e24]
+  - generic [ref=e26]: л.р.1 - Политропные процессы
+  - generic [ref=e28]:
+    - button "предметы" [ref=e30] [cursor=pointer]
+    - button "темы" [ref=e32] [cursor=pointer]
+    - button "задания" [ref=e34] [cursor=pointer]
+  - paragraph [ref=e35]: "Практический материал:"
+  - table [ref=e37]:
+    - rowgroup [ref=e38]:
+      - row "Расчетные задания" [ref=e39]:
+        - cell "Расчетные задания" [ref=e40]:
+          - generic [ref=e41]: Расчетные задания
+        - cell [ref=e42]
+      - row "Лабораторная работа №1 (Па)" [ref=e43]:
+        - cell "Лабораторная работа №1 (Па)" [ref=e44]:
+          - button "Лабораторная работа №1 (Па)" [ref=e46] [cursor=pointer]:
+            - table [ref=e47]:
+              - rowgroup [ref=e48]:
+                - row "Лабораторная работа №1 (Па)" [ref=e49]:
+                  - cell [ref=e50]:
+                    - img [ref=e51]
+                  - cell "Лабораторная работа №1 (Па)" [ref=e52]:
+                    - paragraph [ref=e53]: Лабораторная работа №1 (Па)
+        - cell [ref=e54]
+      - row "Задания для обучения" [ref=e55]:
+        - cell "Задания для обучения" [ref=e56]:
+          - generic [ref=e57]: Задания для обучения
+        - cell [ref=e58]
+      - row "Обозреватель вопросов" [ref=e59]:
+        - cell "Обозреватель вопросов" [ref=e60]:
+          - button "Обозреватель вопросов" [ref=e62] [cursor=pointer]:
+            - table [ref=e63]:
+              - rowgroup [ref=e64]:
+                - row "Обозреватель вопросов" [ref=e65]:
+                  - cell [ref=e66]:
+                    - img [ref=e67]
+                  - cell "Обозреватель вопросов" [ref=e68]:
+                    - paragraph [ref=e69]: Обозреватель вопросов
+      - row "Мои закладки" [ref=e70]:
+        - cell "Мои закладки" [ref=e71]:
+          - button "Мои закладки" [ref=e73] [cursor=pointer]:
+            - table [ref=e74]:
+              - rowgroup [ref=e75]:
+                - row "Мои закладки" [ref=e76]:
+                  - cell [ref=e77]:
+                    - img [ref=e78]
+                  - cell "Мои закладки" [ref=e79]:
+                    - paragraph [ref=e80]: Мои закладки
+      - row "Определения" [ref=e81]:
+        - cell "Определения" [ref=e82]:
+          - button "Определения" [ref=e84] [cursor=pointer]:
+            - table [ref=e85]:
+              - rowgroup [ref=e86]:
+                - row "Определения" [ref=e87]:
+                  - cell [ref=e88]:
+                    - img [ref=e89]
+                  - cell "Определения" [ref=e90]:
+                    - paragraph [ref=e91]: Определения
+        - cell [ref=e92]
+      - row "Утверждения" [ref=e93]:
+        - cell "Утверждения" [ref=e94]:
+          - button "Утверждения" [ref=e96] [cursor=pointer]:
+            - table [ref=e97]:
+              - rowgroup [ref=e98]:
+                - row "Утверждения" [ref=e99]:
+                  - cell [ref=e100]:
+                    - img [ref=e101]
+                  - cell "Утверждения" [ref=e102]:
+                    - paragraph [ref=e103]: Утверждения
+        - cell [ref=e104]
+      - row "Формулы" [ref=e105]:
+        - cell "Формулы" [ref=e106]:
+          - button "Формулы" [ref=e108] [cursor=pointer]:
+            - table [ref=e109]:
+              - rowgroup [ref=e110]:
+                - row "Формулы" [ref=e111]:
+                  - cell [ref=e112]:
+                    - img [ref=e113]
+                  - cell "Формулы" [ref=e114]:
+                    - paragraph [ref=e115]: Формулы
+        - cell [ref=e116]
+      - row "Задания для контроля" [ref=e117]:
+        - cell "Задания для контроля" [ref=e118]:
+          - generic [ref=e119]: Задания для контроля
+        - cell [ref=e120]
+      - 'row "Тренировочный тест Балл: 4,5; тестов: 128" [ref=e121]':
+        - cell "Тренировочный тест" [ref=e122]:
+          - button "Тренировочный тест" [ref=e124] [cursor=pointer]:
+            - table [ref=e125]:
+              - rowgroup [ref=e126]:
+                - row "Тренировочный тест" [ref=e127]:
+                  - cell [ref=e128]:
+                    - img [ref=e129]
+                  - cell "Тренировочный тест" [ref=e130]:
+                    - paragraph [ref=e131]: Тренировочный тест
+        - 'cell "Балл: 4,5; тестов: 128" [ref=e132]':
+          - generic "учитываются только те тесты, за которые получена оценка больше 0" [ref=e134]: "Балл: 4,5; тестов: 128"
+      - row "★★★ Контрольный тест" [ref=e135]:
+        - cell "★★★ Контрольный тест" [ref=e136]:
+          - button "★★★ Контрольный тест" [disabled] [ref=e138] [cursor=pointer]:
+            - table [ref=e139]:
+              - rowgroup [ref=e140]:
+                - row "★★★ Контрольный тест" [ref=e141]:
+                  - cell "★★★" [ref=e142]:
+                    - text: ★★★
+                    - img [ref=e143]
+                  - cell "Контрольный тест" [ref=e144]:
+                    - paragraph [ref=e145]: Контрольный тест
+        - cell [ref=e146]
+  - paragraph [ref=e147]: "Теоретический материал:"
+  - generic [ref=e148]:
+    - table [ref=e150]:
+      - rowgroup [ref=e151]:
+        - row "Лабораторная №1 Политропные процессы проверь себя!" [ref=e152]:
+          - cell "Лабораторная №1 Политропные процессы" [ref=e153]:
+            - generic [ref=e154]: Лабораторная №1 Политропные процессы
+          - cell "проверь себя!" [ref=e155]:
+            - button "проверь себя!" [ref=e156] [cursor=pointer]
+    - table [ref=e157]:
+      - rowgroup [ref=e158]:
+        - row "> Выполнение лаб. работы (pps, 3,21 Mb)" [ref=e159]:
+          - cell ">" [ref=e160]:
+            - button ">" [ref=e161] [cursor=pointer]
+          - cell "Выполнение лаб. работы (pps, 3,21 Mb)" [ref=e162]:
+            - link "Выполнение лаб. работы (pps, 3,21 Mb)" [ref=e164] [cursor=pointer]:
+              - /url: /docs/TT/metods/Lab/ru/Техническая термодинамика и теплообмен/л.р. 1 - Политропные процессы.pps
+        - row "> Методические указания к лаб. Работе (pdf, 0,66 Mb)" [ref=e165]:
+          - cell ">" [ref=e166]:
+            - button ">" [ref=e167] [cursor=pointer]
+          - cell "Методические указания к лаб. Работе (pdf, 0,66 Mb)" [ref=e168]:
+            - link "Методические указания к лаб. Работе (pdf, 0,66 Mb)" [ref=e170] [cursor=pointer]:
+              - /url: /docs/TT/metods/Lab/ru/Техническая термодинамика и теплообмен/л.р. 1 - Политропные процессы.pdf
+        - row "> Моделирование процессов (pptx, 12,32 Mb)" [ref=e171]:
+          - cell ">" [ref=e172]:
+            - button ">" [ref=e173] [cursor=pointer]
+          - cell "Моделирование процессов (pptx, 12,32 Mb)" [ref=e174]:
+            - link "Моделирование процессов (pptx, 12,32 Mb)" [ref=e176] [cursor=pointer]:
+              - /url: /docs/TT/help/ru/Thermodynamics/Моделирование эксперимента.pptx
+        - row "> Отчет по лабораторной работе (rtf, 0,11 Mb)" [ref=e177]:
+          - cell ">" [ref=e178]:
+            - button ">" [ref=e179] [cursor=pointer]
+          - cell "Отчет по лабораторной работе (rtf, 0,11 Mb)" [ref=e180]:
+            - link "Отчет по лабораторной работе (rtf, 0,11 Mb)" [ref=e182] [cursor=pointer]:
+              - /url: /docs/TT/metods/Lab/ru/Техническая термодинамика и теплообмен/л.р. 1 - Политропные процессы.rtf
+        - row "> Сводная таблица политропных процессов (pdf, 0,37 Mb)" [ref=e183]:
+          - cell ">" [ref=e184]:
+            - button ">" [ref=e185] [cursor=pointer]
+          - cell "Сводная таблица политропных процессов (pdf, 0,37 Mb)" [ref=e186]:
+            - link "Сводная таблица политропных процессов (pdf, 0,37 Mb)" [ref=e188] [cursor=pointer]:
+              - /url: /docs/TT/help/ru/Формулы к политропным процессам.pdf
+        - row "> Формулы к лабораторным (pdf, 0,44 Mb)" [ref=e189]:
+          - cell ">" [ref=e190]:
+            - button ">" [ref=e191] [cursor=pointer]
+          - cell "Формулы к лабораторным (pdf, 0,44 Mb)" [ref=e192]:
+            - link "Формулы к лабораторным (pdf, 0,44 Mb)" [ref=e194] [cursor=pointer]:
+              - /url: /docs/TT/help/ru/Формулы к лабораторным.pdf
+    - table [ref=e196]:
+      - rowgroup [ref=e197]:
+        - row "Тема 1.0. Параметры состояния рабочего тела проверь себя!" [ref=e198]:
+          - cell "Тема 1.0. Параметры состояния рабочего тела" [ref=e199]:
+            - generic [ref=e200]: Тема 1.0. Параметры состояния рабочего тела
+          - cell "проверь себя!" [ref=e201]:
+            - button "проверь себя!" [ref=e202] [cursor=pointer]
+    - table [ref=e203]:
+      - rowgroup [ref=e204]:
+        - row "> Термодинамическая система и параметры состояния (pdf, 0,63 Mb)" [ref=e205]:
+          - cell ">" [ref=e206]:
+            - button ">" [ref=e207] [cursor=pointer]
+          - cell "Термодинамическая система и параметры состояния (pdf, 0,63 Mb)" [ref=e208]:
+            - link "Термодинамическая система и параметры состояния (pdf, 0,63 Mb)" [ref=e210] [cursor=pointer]:
+              - /url: /docs/TT/lection/ru/Техническая термодинамика и теплообмен/1.1 Термодинамика. Основные понятия.pdf
+    - table [ref=e212]:
+      - rowgroup [ref=e213]:
+        - row "Тема 1.1. Теплоемкость проверь себя!" [ref=e214]:
+          - cell "Тема 1.1. Теплоемкость" [ref=e215]:
+            - generic [ref=e216]: Тема 1.1. Теплоемкость
+          - cell "проверь себя!" [ref=e217]:
+            - button "проверь себя!" [ref=e218] [cursor=pointer]
+    - table [ref=e219]:
+      - rowgroup [ref=e220]:
+        - row "> Теплоемкость и газовые смеси (pdf, 0,76 Mb)" [ref=e221]:
+          - cell ">" [ref=e222]:
+            - button ">" [ref=e223] [cursor=pointer]
+          - cell "Теплоемкость и газовые смеси (pdf, 0,76 Mb)" [ref=e224]:
+            - link "Теплоемкость и газовые смеси (pdf, 0,76 Mb)" [ref=e226] [cursor=pointer]:
+              - /url: /docs/TT/lection/ru/Техническая термодинамика и теплообмен/1.2 Термодинамика. Теплоемкость и смеси.pdf
+    - table [ref=e228]:
+      - rowgroup [ref=e229]:
+        - row "Тема 2.0. Первый закон термодинамики проверь себя!" [ref=e230]:
+          - cell "Тема 2.0. Первый закон термодинамики" [ref=e231]:
+            - generic [ref=e232]: Тема 2.0. Первый закон термодинамики
+          - cell "проверь себя!" [ref=e233]:
+            - button "проверь себя!" [ref=e234] [cursor=pointer]
+    - table [ref=e235]:
+      - rowgroup [ref=e236]:
+        - row "> Первый закон термодинамики (pdf, 0,6 Mb)" [ref=e237]:
+          - cell ">" [ref=e238]:
+            - button ">" [ref=e239] [cursor=pointer]
+          - cell "Первый закон термодинамики (pdf, 0,6 Mb)" [ref=e240]:
+            - link "Первый закон термодинамики (pdf, 0,6 Mb)" [ref=e242] [cursor=pointer]:
+              - /url: /docs/TT/lection/ru/Техническая термодинамика и теплообмен/1.3 Термодинамика. Первый закон.pdf
+    - table [ref=e244]:
+      - rowgroup [ref=e245]:
+        - row "Тема 2.2. Политропные процессы проверь себя!" [ref=e246]:
+          - cell "Тема 2.2. Политропные процессы" [ref=e247]:
+            - generic [ref=e248]: Тема 2.2. Политропные процессы
+          - cell "проверь себя!" [ref=e249]:
+            - button "проверь себя!" [ref=e250] [cursor=pointer]
+    - table [ref=e251]:
+      - rowgroup [ref=e252]:
+        - row "> Лекция по политропным процессам (pdf, 0,85 Mb)" [ref=e253]:
+          - cell ">" [ref=e254]:
+            - button ">" [ref=e255] [cursor=pointer]
+          - cell "Лекция по политропным процессам (pdf, 0,85 Mb)" [ref=e256]:
+            - link "Лекция по политропным процессам (pdf, 0,85 Mb)" [ref=e258] [cursor=pointer]:
+              - /url: /docs/TT/lection/ru/Техническая термодинамика и теплообмен/1.4 Термодинамика. Политропные процессы.pdf
+  - paragraph [ref=e260]: © 2002-2026 WebMaster

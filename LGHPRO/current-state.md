@@ -1,0 +1,62 @@
+- generic [ref=e4]:
+  - table [ref=e6]:
+    - rowgroup [ref=e7]:
+      - row "сообщения Федор Левченко, РД 24-1с выход из системы техподдержка расписание мобильная версия" [ref=e8]:
+        - cell "сообщения Федор Левченко, РД 24-1с" [ref=e9]:
+          - generic "сообщения" [ref=e10] [cursor=pointer]
+          - generic [ref=e12]: Федор Левченко, РД 24-1с
+        - cell "выход из системы" [ref=e13]:
+          - button "выход из системы" [ref=e14] [cursor=pointer]:
+            - img [ref=e15]
+        - cell "техподдержка" [ref=e16]:
+          - button "техподдержка" [ref=e17] [cursor=pointer]:
+            - img [ref=e18]
+        - cell "расписание" [ref=e19]:
+          - button "расписание" [ref=e20] [cursor=pointer]:
+            - img [ref=e21]
+        - cell "мобильная версия" [ref=e22]:
+          - button "мобильная версия" [ref=e23] [cursor=pointer]:
+            - img [ref=e24]
+  - generic [ref=e26]:
+    - generic [ref=e27]: Тренировочный тест
+    - generic [ref=e28]: л.р.1 - Политропные процессы
+  - generic [ref=e30]:
+    - button "предметы" [ref=e32] [cursor=pointer]
+    - button "темы" [ref=e34] [cursor=pointer]
+    - button "задания" [ref=e36] [cursor=pointer]
+    - button "текущее задание" [ref=e38] [cursor=pointer]
+  - table [ref=e39]:
+    - rowgroup [ref=e40]:
+      - 'row "0 0 : 0 0" [ref=e41]':
+        - 'cell "0 0 : 0 0" [ref=e42]':
+          - generic [ref=e43]:
+            - generic [ref=e44]: "0"
+            - generic [ref=e45]: "0"
+            - generic [ref=e46]: ":"
+            - generic [ref=e47]: "0"
+            - generic [ref=e48]: "0"
+        - cell [ref=e49]
+        - cell [ref=e50]
+  - generic [ref=e52]:
+    - generic [ref=e53]:
+      - button "на зачет" [ref=e54] [cursor=pointer]:
+        - img [ref=e55]
+        - generic [ref=e56]: на зачет
+      - generic [ref=e60]:
+        - text: ► 10 вопросов
+        - text: ► 600с в контрольном тесте
+        - text: ► Только первый уровень сложности
+        - text: "► Максимальная оценка: 3"
+    - generic [ref=e61]:
+      - button "на оценку" [ref=e62] [cursor=pointer]:
+        - img [ref=e63]
+        - generic [ref=e64]: на оценку
+      - generic [ref=e68]:
+        - text: ► Варьируемое число вопросов
+        - text: ► Вопросы всех уровней
+        - text: ► Все варианты оценок!
+  - generic [ref=e69]:
+    - paragraph [ref=e70]: Работа над ошибками
+    - button "загрузить список тестов" [ref=e72] [cursor=pointer]
+  - paragraph [ref=e73]: "round-trip time: 116 ms"
+  - paragraph [ref=e75]: © 2002-2026 WebMaster
