@@ -47,6 +47,37 @@ function Write-WarnMessage {
     Write-Host "[WARN] $Message" -ForegroundColor Yellow
 }
 
+function Invoke-CheckedProcess {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments = @(),
+        [string]$WorkingDirectory,
+        [string]$ErrorMessage
+    )
+
+    $previousLocation = $null
+    if ($WorkingDirectory) {
+        $previousLocation = Get-Location
+        Push-Location $WorkingDirectory
+    }
+
+    try {
+        & $FilePath @Arguments | Out-Host
+        $exitCode = $LASTEXITCODE
+    } finally {
+        if ($null -ne $previousLocation) {
+            Pop-Location
+        }
+    }
+
+    if ($exitCode -ne 0) {
+        if (-not $ErrorMessage) {
+            $ErrorMessage = "Command failed: $FilePath $($Arguments -join ' ')"
+        }
+        throw "$ErrorMessage (exit code: $exitCode)"
+    }
+}
+
 function Get-LocalProperty {
     param(
         [string]$Path,
@@ -244,20 +275,44 @@ function Ensure-Emulator {
 function Build-Apk {
     param(
         [string]$FlutterCmd,
+        [string]$FlutterPath,
         [string]$Gradlew,
-        [string]$AndroidPath
+        [string]$AndroidPath,
+        [string]$ApkPath
     )
 
+    $buildStartedAtUtc = (Get-Date).ToUniversalTime()
+
     Write-Step "Running flutter pub get"
-    & $FlutterCmd pub get | Out-Host
+    Invoke-CheckedProcess `
+        -FilePath $FlutterCmd `
+        -Arguments @("pub", "get") `
+        -WorkingDirectory $FlutterPath `
+        -ErrorMessage "flutter pub get failed"
 
     Write-Step "Building debug APK"
-    Push-Location $AndroidPath
-    try {
-        & $Gradlew app:assembleDebug --stacktrace | Out-Host
-    } finally {
-        Pop-Location
+    if (Test-Path -LiteralPath $ApkPath) {
+        Remove-Item -LiteralPath $ApkPath -Force
     }
+    Invoke-CheckedProcess `
+        -FilePath $Gradlew `
+        -Arguments @(
+            "--no-daemon",
+            "-Dkotlin.compiler.execution.strategy=in-process",
+            "-Dkotlin.incremental=false",
+            "app:assembleDebug",
+            "--stacktrace"
+        ) `
+        -WorkingDirectory $AndroidPath `
+        -ErrorMessage "Gradle debug build failed"
+
+    Assert-File -Path $ApkPath
+    $apkFile = Get-Item -LiteralPath $ApkPath
+    if ($apkFile.LastWriteTimeUtc -lt $buildStartedAtUtc) {
+        throw "APK was not refreshed during the current build: $ApkPath"
+    }
+
+    Write-Step "Fresh APK created at $($apkFile.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))"
 }
 
 function Install-And-LaunchApk {
@@ -269,10 +324,16 @@ function Install-And-LaunchApk {
     )
 
     Write-Step "Installing APK on $Serial"
-    & $Adb -s $Serial install -r $ApkPath | Out-Host
+    Invoke-CheckedProcess `
+        -FilePath $Adb `
+        -Arguments @("-s", $Serial, "install", "-r", $ApkPath) `
+        -ErrorMessage "APK installation failed"
 
     Write-Step "Launching $PackageName"
-    & $Adb -s $Serial shell monkey -p $PackageName -c android.intent.category.LAUNCHER 1 | Out-Host
+    Invoke-CheckedProcess `
+        -FilePath $Adb `
+        -Arguments @("-s", $Serial, "shell", "am", "start", "-S", "-W", "-n", "$PackageName/.MainActivity") `
+        -ErrorMessage "App launch failed"
 }
 
 function Export-Apk {
@@ -395,6 +456,7 @@ function Format-ChangedPaths {
 function Invoke-BuildAndDeploy {
     param(
         [string]$FlutterCmd,
+        [string]$FlutterPath,
         [string]$Gradlew,
         [string]$AndroidPath,
         [string]$Adb,
@@ -404,7 +466,12 @@ function Invoke-BuildAndDeploy {
         [string]$PackageName
     )
 
-    Build-Apk -FlutterCmd $FlutterCmd -Gradlew $Gradlew -AndroidPath $AndroidPath
+    Build-Apk `
+        -FlutterCmd $FlutterCmd `
+        -FlutterPath $FlutterPath `
+        -Gradlew $Gradlew `
+        -AndroidPath $AndroidPath `
+        -ApkPath $ApkPath
     Assert-File -Path $ApkPath
     $exportedApk = Export-Apk -SourcePath $ApkPath
     $serial = Ensure-Emulator -Adb $Adb -EmulatorPath $EmulatorPath -AvdName $AvdName
@@ -470,6 +537,7 @@ Ensure-SdkPackageByPath -SdkManager $SdkManager -CheckPath (Join-Path $SdkRoot "
 Ensure-Avd -AvdManager $AvdManager -AvdName $AvdName -SystemImage $SystemImage
 $buildResult = Invoke-BuildAndDeploy `
     -FlutterCmd $FlutterCmd `
+    -FlutterPath $FlutterRoot `
     -Gradlew $Gradlew `
     -AndroidPath $AndroidRoot `
     -Adb $Adb `
@@ -507,6 +575,7 @@ while ($true) {
     try {
         $buildResult = Invoke-BuildAndDeploy `
             -FlutterCmd $FlutterCmd `
+            -FlutterPath $FlutterRoot `
             -Gradlew $Gradlew `
             -AndroidPath $AndroidRoot `
             -Adb $Adb `
