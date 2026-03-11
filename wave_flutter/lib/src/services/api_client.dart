@@ -8,6 +8,9 @@ import 'package:path_provider/path_provider.dart';
 import '../config/app_config.dart';
 
 class ApiClient {
+  static const _authCookieName = 'messenger_token';
+  static const _authCookieLifetime = Duration(days: 7);
+
   ApiClient._({
     required this.appConfig,
     required Dio dio,
@@ -129,6 +132,34 @@ class ApiClient {
   Future<String> cookieHeader() async {
     final cookies = await _cookieJar.loadForRequest(appConfig.baseUri);
     return cookies.map((cookie) => '${cookie.name}=${cookie.value}').join('; ');
+  }
+
+  Future<String?> readAuthToken() async {
+    final cookies = await _cookieJar.loadForRequest(appConfig.baseUri);
+    for (final cookie in cookies) {
+      if (cookie.name == _authCookieName && cookie.value.trim().isNotEmpty) {
+        return cookie.value;
+      }
+    }
+    return null;
+  }
+
+  Future<void> restoreAuthToken(String token) async {
+    final value = token.trim();
+    if (value.isEmpty) {
+      return;
+    }
+
+    final uri = appConfig.baseUri;
+    final cookie = Cookie(_authCookieName, value)
+      ..domain = uri.host
+      ..path = '/'
+      ..httpOnly = true
+      ..maxAge = _authCookieLifetime.inSeconds
+      ..expires = DateTime.now().toUtc().add(_authCookieLifetime)
+      ..secure = uri.scheme == 'https';
+
+    await _cookieJar.saveFromResponse(uri, [cookie]);
   }
 
   Future<void> clearCookies() async {

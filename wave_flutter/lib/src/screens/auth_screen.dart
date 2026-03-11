@@ -60,25 +60,14 @@ class _AuthScreenState extends State<AuthScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: session.busy ? null : () => _openServerDialog(session),
-                        icon: const Icon(Icons.cloud_outlined),
-                        label: const Text('Сервер'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: Colors.white.withValues(alpha: 0.1),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 12),
                     Text(
                       'Wave Messenger',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                            color: Colors.white,
-                          ),
+                      style:
+                          Theme.of(context).textTheme.headlineLarge?.copyWith(
+                                color: Colors.white,
+                              ),
                     ),
                     const SizedBox(height: 10),
                     Text(
@@ -88,8 +77,6 @@ class _AuthScreenState extends State<AuthScreen> {
                             color: Colors.white.withValues(alpha: 0.78),
                           ),
                     ),
-                    const SizedBox(height: 18),
-                    _ServerPill(serverUrl: session.serverUrl),
                     const SizedBox(height: 18),
                     Card(
                       child: Padding(
@@ -299,76 +286,5 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _submitOtp(SessionController session) async {
     await session.submitTwoFactorCode(_otpController.text);
-  }
-
-  Future<void> _openServerDialog(SessionController session) async {
-    final controller = TextEditingController(text: session.serverUrl);
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Адрес сервера'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              labelText: 'Base URL',
-              hintText: 'http://10.0.2.2:3000',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final navigator = Navigator.of(context);
-                await session.updateServerUrl(controller.text);
-                if (!context.mounted) {
-                  return;
-                }
-                navigator.pop();
-              },
-              child: const Text('Сохранить'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _ServerPill extends StatelessWidget {
-  const _ServerPill({required this.serverUrl});
-
-  final String serverUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-            const Icon(Icons.link_rounded, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                serverUrl,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.88),
-                    ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

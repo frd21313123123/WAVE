@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../config/app_config.dart';
 import '../models/app_models.dart';
 import '../services/api_client.dart';
+import '../services/session_store.dart';
 import 'chat_controller.dart';
 
 enum SessionStatus {
@@ -17,11 +18,13 @@ class SessionController extends ChangeNotifier {
     required this.apiClient,
     required this.appConfig,
     required this.chatController,
+    required this.sessionStore,
   });
 
   final ApiClient apiClient;
   final AppConfig appConfig;
   final ChatController chatController;
+  final SessionStore sessionStore;
 
   SessionStatus _status = SessionStatus.loading;
   PublicUser? _currentUser;
@@ -33,7 +36,6 @@ class SessionController extends ChangeNotifier {
   PublicUser? get currentUser => _currentUser;
   String? get errorMessage => _errorMessage;
   bool get busy => _busy;
-  String get serverUrl => appConfig.baseUrl;
 
   Future<void> bootstrap() async {
     _setBusy(true);
@@ -41,28 +43,33 @@ class SessionController extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
+    final cachedSession = await sessionStore.load();
+    if (cachedSession != null) {
+      await apiClient.restoreAuthToken(cachedSession.authToken);
+    }
+
     try {
       final payload = await apiClient.get('/api/auth/me');
       final user = PublicUser.fromJson(
         Map<String, dynamic>.from(payload['user'] as Map),
       );
-      _currentUser = user;
-      _status = SessionStatus.authenticated;
-      await chatController.activate(user);
+      await _applyAuthenticatedUser(user);
     } on ApiException catch (error) {
-      await chatController.deactivate();
-      _currentUser = null;
-      _status = SessionStatus.unauthenticated;
-      if (error.statusCode < 500) {
-        _errorMessage = null;
+      if (cachedSession != null && error.statusCode >= 500) {
+        await _restoreCachedSession(cachedSession);
       } else {
-        _errorMessage = error.message;
+        await _clearSessionState(clearCookies: true, clearCache: true);
+        if (error.statusCode >= 500) {
+          _errorMessage = error.message;
+        }
       }
     } catch (_) {
-      await chatController.deactivate();
-      _currentUser = null;
-      _status = SessionStatus.unauthenticated;
-      _errorMessage = 'Не удалось подключиться к $serverUrl';
+      if (cachedSession != null) {
+        await _restoreCachedSession(cachedSession);
+      } else {
+        await _clearSessionState(clearCookies: false, clearCache: false);
+        _errorMessage = 'Не удалось подключиться к серверу';
+      }
     } finally {
       _setBusy(false);
       notifyListeners();
@@ -172,11 +179,8 @@ class SessionController extends ChangeNotifier {
       await apiClient.post('/api/auth/logout');
     } catch (_) {
     } finally {
-      await apiClient.clearCookies();
-      await chatController.deactivate();
-      _currentUser = null;
+      await _clearSessionState(clearCookies: true, clearCache: true);
       _challengeToken = null;
-      _status = SessionStatus.unauthenticated;
       _errorMessage = null;
       _setBusy(false);
       notifyListeners();
@@ -192,25 +196,7 @@ class SessionController extends ChangeNotifier {
     if (_currentUser != null) {
       _currentUser!.displayName = payload['displayName'] as String?;
       chatController.updateCurrentUser(_currentUser!);
-      notifyListeners();
-    }
-  }
-
-  Future<void> updateServerUrl(String serverUrl) async {
-    _setBusy(true);
-    notifyListeners();
-
-    try {
-      await chatController.deactivate();
-      await apiClient.clearCookies();
-      await appConfig.updateBaseUrl(serverUrl);
-      _challengeToken = null;
-      _currentUser = null;
-      _status = SessionStatus.unauthenticated;
-      _errorMessage = null;
-      await bootstrap();
-    } finally {
-      _setBusy(false);
+      await _persistSession(_currentUser!);
       notifyListeners();
     }
   }
@@ -226,9 +212,51 @@ class SessionController extends ChangeNotifier {
     final user = PublicUser.fromJson(
       Map<String, dynamic>.from(payload['user'] as Map),
     );
+    await _applyAuthenticatedUser(user);
+  }
+
+  Future<void> _applyAuthenticatedUser(PublicUser user) async {
     _currentUser = user;
     _status = SessionStatus.authenticated;
+    _errorMessage = null;
+    await _persistSession(user);
     await chatController.activate(user);
+  }
+
+  Future<void> _restoreCachedSession(CachedSession cachedSession) async {
+    _currentUser = cachedSession.user;
+    _status = SessionStatus.authenticated;
+    _errorMessage = null;
+    await chatController.activate(cachedSession.user);
+  }
+
+  Future<void> _persistSession(PublicUser user) async {
+    final authToken = await apiClient.readAuthToken();
+    if ((authToken ?? '').isEmpty) {
+      return;
+    }
+
+    await sessionStore.save(
+      CachedSession(
+        user: user,
+        authToken: authToken!,
+      ),
+    );
+  }
+
+  Future<void> _clearSessionState({
+    required bool clearCookies,
+    required bool clearCache,
+  }) async {
+    if (clearCookies) {
+      await apiClient.clearCookies();
+    }
+    if (clearCache) {
+      await sessionStore.clear();
+    }
+    await chatController.deactivate();
+    _currentUser = null;
+    _status = SessionStatus.unauthenticated;
   }
 
   void _setBusy(bool value) {

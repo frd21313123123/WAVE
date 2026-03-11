@@ -65,7 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
               child: SafeArea(child: conversationPane),
             ),
       appBar: AppBar(
-        title: Text(activeConversation?.titleFor(currentUser.id) ?? 'Wave Messenger'),
+        title: Text(
+            activeConversation?.titleFor(currentUser.id) ?? 'Wave Messenger'),
         actions: [
           IconButton(
             onPressed: _openNewChatSheet,
@@ -123,7 +124,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (_lastConversationId == conversationId && _lastMessageCount == messageCount) {
+    if (_lastConversationId == conversationId &&
+        _lastMessageCount == messageCount) {
       return;
     }
 
@@ -381,11 +383,14 @@ class _ConversationPane extends StatelessWidget {
                                   clipBehavior: Clip.none,
                                   children: [
                                     WaveAvatar(
-                                      label: conversation.avatarLabelFor(currentUser.id),
-                                      imageUrl: conversation.avatarSourceFor(currentUser.id),
+                                      label: conversation
+                                          .avatarLabelFor(currentUser.id),
+                                      imageUrl: conversation
+                                          .avatarSourceFor(currentUser.id),
                                       radius: 24,
                                     ),
-                                    if (!conversation.isGroup && partner?.online == true)
+                                    if (!conversation.isGroup &&
+                                        partner?.online == true)
                                       Positioned(
                                         right: -1,
                                         bottom: -1,
@@ -407,7 +412,8 @@ class _ConversationPane extends StatelessWidget {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         conversation.titleFor(currentUser.id),
@@ -416,14 +422,17 @@ class _ConversationPane extends StatelessWidget {
                                         style: Theme.of(context)
                                             .textTheme
                                             .titleMedium
-                                            ?.copyWith(fontWeight: FontWeight.w700),
+                                            ?.copyWith(
+                                                fontWeight: FontWeight.w700),
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         _conversationPreview(conversation),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context).textTheme.bodySmall,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall,
                                       ),
                                     ],
                                   ),
@@ -511,9 +520,10 @@ class _ChatPane extends StatelessWidget {
                         active.titleFor(currentUser.id),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -596,7 +606,8 @@ class _ChatPane extends StatelessWidget {
                       maxLines: 5,
                       textInputAction: TextInputAction.send,
                       decoration: InputDecoration(
-                        hintText: canSend ? 'Сообщение' : 'Сообщения недоступны',
+                        hintText:
+                            canSend ? 'Сообщение' : 'Сообщения недоступны',
                         prefixIcon: const Icon(Icons.waves_rounded),
                       ),
                       onChanged: onComposerChanged,
@@ -724,9 +735,10 @@ class _MessageBubble extends StatelessWidget {
                         padding: const EdgeInsets.only(right: 6),
                         child: Text(
                           'изм.',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: textColor.withValues(alpha: 0.75),
-                              ),
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: textColor.withValues(alpha: 0.75),
+                                  ),
                         ),
                       ),
                     Text(
@@ -1129,9 +1141,7 @@ class _ProfileSheet extends StatefulWidget {
 
 class _ProfileSheetState extends State<_ProfileSheet> {
   late final TextEditingController _displayNameController;
-  late final TextEditingController _serverController;
   bool _savingProfile = false;
-  bool _savingServer = false;
 
   @override
   void initState() {
@@ -1139,13 +1149,11 @@ class _ProfileSheetState extends State<_ProfileSheet> {
     _displayNameController = TextEditingController(
       text: widget.session.currentUser?.displayName ?? '',
     );
-    _serverController = TextEditingController(text: widget.session.serverUrl);
   }
 
   @override
   void dispose() {
     _displayNameController.dispose();
-    _serverController.dispose();
     super.dispose();
   }
 
@@ -1223,29 +1231,6 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                     },
               child: const Text('Сохранить имя'),
             ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _serverController,
-              decoration: const InputDecoration(
-                labelText: 'Адрес сервера',
-                prefixIcon: Icon(Icons.cloud_outlined),
-              ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton(
-              onPressed: _savingServer
-                  ? null
-                  : () async {
-                      setState(() {
-                        _savingServer = true;
-                      });
-                      await widget.session.updateServerUrl(_serverController.text);
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                      }
-                    },
-              child: const Text('Переключить сервер'),
-            ),
             const SizedBox(height: 24),
             FilledButton.tonalIcon(
               onPressed: () async {
@@ -1280,7 +1265,9 @@ String _conversationPreview(ConversationSummary conversation) {
 
 String _formatTime(DateTime value) {
   final now = DateTime.now();
-  if (now.year == value.year && now.month == value.month && now.day == value.day) {
+  if (now.year == value.year &&
+      now.month == value.month &&
+      now.day == value.day) {
     return DateFormat('HH:mm').format(value);
   }
   return DateFormat('dd.MM').format(value);

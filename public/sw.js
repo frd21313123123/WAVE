@@ -3,8 +3,13 @@
    Push notifications + offline cache
    ============================ */
 
-const CACHE_NAME = "wave-v1";
-const PRECACHE_URLS = ["/", "/index.html", "/styles.css", "/app.js"];
+const CACHE_NAME = "wave-v2";
+const PRECACHE_URLS = [
+    "/",
+    "/index.html",
+    "/styles.css?v=20260311-2",
+    "/app.js?v=20260311-2",
+];
 
 /* ---------- Install ---------- */
 self.addEventListener("install", (event) => {

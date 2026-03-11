@@ -25,6 +25,20 @@ class PublicUser {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'username': username,
+      'email': email,
+      'createdAt': createdAt.toIso8601String(),
+      'displayName': displayName,
+      'twoFactorEnabled': twoFactorEnabled,
+      'avatarUrl': avatarUrl,
+      'online': online,
+      'lastSeenAt': lastSeenAt?.toIso8601String(),
+    };
+  }
+
   String id;
   String username;
   String email;
@@ -106,10 +120,12 @@ class ChatMessage {
       voiceData: json['voiceData'] as String?,
       reactions: ((json['reactions'] as List?) ?? const [])
           .whereType<Map>()
-          .map((item) => MessageReaction.fromJson(Map<String, dynamic>.from(item)))
+          .map((item) =>
+              MessageReaction.fromJson(Map<String, dynamic>.from(item)))
           .toList(),
       sender: json['sender'] is Map<String, dynamic>
-          ? PublicUser.fromJson(Map<String, dynamic>.from(json['sender'] as Map))
+          ? PublicUser.fromJson(
+              Map<String, dynamic>.from(json['sender'] as Map))
           : null,
       editedAt: _parseNullableDate(json['editedAt']),
       readAt: _parseNullableDate(json['readAt']),
@@ -134,8 +150,10 @@ class ChatMessage {
   DateTime? readAt;
   bool isPending;
 
-  bool get isImage => messageType == 'image' && (imageData?.isNotEmpty ?? false);
-  bool get isVoice => messageType == 'voice' || (voiceData?.isNotEmpty ?? false);
+  bool get isImage =>
+      messageType == 'image' && (imageData?.isNotEmpty ?? false);
+  bool get isVoice =>
+      messageType == 'voice' || (voiceData?.isNotEmpty ?? false);
   bool get canEdit => messageType == 'text';
 
   static ChatMessage optimistic({
@@ -182,7 +200,8 @@ class ConversationSummary {
       updatedAt: _parseDate(json['updatedAt']),
       createdAt: _parseDate(json['createdAt']),
       participant: json['participant'] is Map<String, dynamic>
-          ? PublicUser.fromJson(Map<String, dynamic>.from(json['participant'] as Map))
+          ? PublicUser.fromJson(
+              Map<String, dynamic>.from(json['participant'] as Map))
           : null,
       participants: ((json['participants'] as List?) ?? const [])
           .whereType<Map>()
@@ -198,7 +217,8 @@ class ConversationSummary {
       blockedMe: json['blockedMe'] == true,
       chatProtected: json['chatProtected'] == true,
       lastMessage: json['lastMessage'] is Map<String, dynamic>
-          ? ChatMessage.fromJson(Map<String, dynamic>.from(json['lastMessage'] as Map))
+          ? ChatMessage.fromJson(
+              Map<String, dynamic>.from(json['lastMessage'] as Map))
           : null,
     );
   }

@@ -2548,7 +2548,12 @@ app.use(express.static(path.join(__dirname, "public"), {
   setHeaders(res, filePath) {
     const name = path.basename(filePath);
     if (name === "sw.js" || name === "index.html") {
-      res.setHeader("Cache-Control", "no-cache");
+      if (name === "sw.js") {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+        res.setHeader("Service-Worker-Allowed", "/");
+      } else {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      }
     } else {
       res.setHeader("Cache-Control", "public, max-age=3600");
     }
@@ -2724,4 +2729,3 @@ store
     console.error("Failed to initialize storage", error);
     process.exit(1);
   });
-

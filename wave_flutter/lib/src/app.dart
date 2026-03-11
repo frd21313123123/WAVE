@@ -8,6 +8,7 @@ import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/api_client.dart';
 import 'services/realtime_service.dart';
+import 'services/session_store.dart';
 import 'theme/app_theme.dart';
 
 class AppBootstrap {
@@ -28,6 +29,7 @@ class AppBootstrap {
   static Future<AppBootstrap> initialize() async {
     final appConfig = await AppConfig.load();
     final apiClient = await ApiClient.create(appConfig);
+    final sessionStore = await SessionStore.create();
     final realtimeService = RealtimeService(
       apiClient: apiClient,
       appConfig: appConfig,
@@ -40,6 +42,7 @@ class AppBootstrap {
       apiClient: apiClient,
       appConfig: appConfig,
       chatController: chatController,
+      sessionStore: sessionStore,
     );
 
     await sessionController.bootstrap();
@@ -64,7 +67,8 @@ class WaveApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<AppConfig>.value(value: bootstrap.appConfig),
-        ChangeNotifierProvider<ChatController>.value(value: bootstrap.chatController),
+        ChangeNotifierProvider<ChatController>.value(
+            value: bootstrap.chatController),
         ChangeNotifierProvider<SessionController>.value(
           value: bootstrap.sessionController,
         ),

@@ -5881,11 +5881,15 @@ gsDeleteGroupBtn.addEventListener("click", async () => {
 // PUSH NOTIFICATIONS (Service Worker + Web Push)
 // ========================
 let swRegistration = null;
+const SERVICE_WORKER_URL = "/sw.js?v=2";
 
 async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return null;
   try {
-    const reg = await navigator.serviceWorker.register("/sw.js");
+    const reg = await navigator.serviceWorker.register(SERVICE_WORKER_URL, {
+      updateViaCache: "none",
+    });
+    await reg.update().catch(() => {});
     swRegistration = reg;
     console.log("Service Worker registered");
     return reg;
