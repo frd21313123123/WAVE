@@ -343,6 +343,7 @@ const state = {
     micAudioCtx: null,
     micProcessedStream: null,
     videoSender: null,
+    videoTransceiver: null,
     remoteVideoTrack: null,
     remoteVideoMissingSince: 0,
     micVolume: 100,
@@ -1062,6 +1063,7 @@ function cleanupCallState(options = {}) {
   state.call.micProcessedStream = null;
   state.call.micSourceStream = null;
   state.call.videoSender = null;
+  state.call.videoTransceiver = null;
   state.call.remoteVideoTrack = null;
   state.call.remoteVideoMissingSince = 0;
 
@@ -6503,7 +6505,7 @@ gsDeleteGroupBtn.addEventListener("click", async () => {
 // PUSH NOTIFICATIONS (Service Worker + Web Push)
 // ========================
 let swRegistration = null;
-const SERVICE_WORKER_URL = "/sw.js?v=7";
+const SERVICE_WORKER_URL = "/sw.js?v=8";
 
 async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return null;
@@ -6757,7 +6759,49 @@ async function handleNegotiationNeeded(options = {}) {
   }
 }
 
-function stopVideoTrack() {
+function getCallVideoTransceiver() {
+  const peer = state.call.peer;
+  if (!peer || typeof peer.getTransceivers !== "function") {
+    return null;
+  }
+
+  const transceivers = peer.getTransceivers();
+  if (!Array.isArray(transceivers) || transceivers.length === 0) {
+    return null;
+  }
+
+  const rememberedTransceiver = state.call.videoTransceiver;
+  const rememberedSender = state.call.videoSender;
+  const resolvedTransceiver =
+    (rememberedTransceiver && transceivers.includes(rememberedTransceiver)
+      ? rememberedTransceiver
+      : null) ||
+    (rememberedSender
+      ? transceivers.find((item) => item.sender === rememberedSender) || null
+      : null) ||
+    transceivers.find((item) => item.sender?.track?.kind === "video") ||
+    transceivers.find((item) => item.receiver?.track?.kind === "video") ||
+    null;
+
+  state.call.videoTransceiver = resolvedTransceiver;
+  state.call.videoSender = resolvedTransceiver?.sender || null;
+  return resolvedTransceiver;
+}
+
+function setCallVideoTransceiverDirection(transceiver, nextDirection) {
+  if (!transceiver || !nextDirection) {
+    return;
+  }
+
+  try {
+    if (transceiver.direction !== nextDirection) {
+      transceiver.direction = nextDirection;
+    }
+  } catch {
+  }
+}
+
+async function stopVideoTrack() {
   const stream = state.call.localStream;
   const currentVideoTrack = stream?.getVideoTracks()[0] || null;
 
@@ -6767,17 +6811,22 @@ function stopVideoTrack() {
     currentVideoTrack.onunmute = null;
   }
 
-  // Remove video sender from peer FIRST (before stopping the track)
-  // so renegotiation properly signals track removal to remote
-  if (state.call.peer) {
-    const senders = state.call.peer.getSenders();
-    for (const sender of senders) {
-      if (sender.track && sender.track.kind === "video") {
-        state.call.videoSender = sender;
-        state.call.peer.removeTrack(sender);
+  const videoTransceiver = getCallVideoTransceiver();
+  const videoSender = videoTransceiver?.sender || state.call.videoSender || null;
+  if (videoSender) {
+    state.call.videoSender = videoSender;
+    try {
+      await videoSender.replaceTrack(null);
+    } catch {
+      if (state.call.peer) {
+        try {
+          state.call.peer.removeTrack(videoSender);
+        } catch {
+        }
       }
     }
   }
+  setCallVideoTransceiverDirection(videoTransceiver, "recvonly");
 
   // Now stop and remove local video tracks
   if (stream) {
@@ -6825,21 +6874,41 @@ async function addVideoTrack(newStream) {
 
   // Add to peer
   if (state.call.peer) {
-    const senders = state.call.peer.getSenders();
-    const rememberedSender = state.call.videoSender;
-    const videoSender =
-      (rememberedSender && senders.includes(rememberedSender) ? rememberedSender : null) ||
-      senders.find(s => s.track && s.track.kind === "video");
+    const videoTransceiver = getCallVideoTransceiver();
+    const videoSender = videoTransceiver?.sender || null;
 
     if (videoSender) {
       try {
         await videoSender.replaceTrack(newVideoTrack);
+        setCallVideoTransceiverDirection(videoTransceiver, "sendrecv");
         state.call.videoSender = videoSender;
+        state.call.videoTransceiver = videoTransceiver;
       } catch {
-        state.call.videoSender = state.call.peer.addTrack(newVideoTrack, state.call.localStream);
+        state.call.videoTransceiver = null;
+        if (typeof state.call.peer.addTransceiver === "function") {
+          const createdTransceiver = state.call.peer.addTransceiver(newVideoTrack, {
+            direction: "sendrecv",
+            streams: [state.call.localStream],
+          });
+          state.call.videoTransceiver = createdTransceiver;
+          state.call.videoSender = createdTransceiver.sender;
+        } else {
+          state.call.videoSender = state.call.peer.addTrack(newVideoTrack, state.call.localStream);
+          state.call.videoTransceiver = getCallVideoTransceiver();
+        }
       }
     } else {
-      state.call.videoSender = state.call.peer.addTrack(newVideoTrack, state.call.localStream);
+      if (typeof state.call.peer.addTransceiver === "function") {
+        const createdTransceiver = state.call.peer.addTransceiver(newVideoTrack, {
+          direction: "sendrecv",
+          streams: [state.call.localStream],
+        });
+        state.call.videoTransceiver = createdTransceiver;
+        state.call.videoSender = createdTransceiver.sender;
+      } else {
+        state.call.videoSender = state.call.peer.addTrack(newVideoTrack, state.call.localStream);
+        state.call.videoTransceiver = getCallVideoTransceiver();
+      }
     }
   }
 
@@ -6854,7 +6923,7 @@ async function addVideoTrack(newStream) {
 
   newVideoTrack.onended = () => {
     if (state.call.localStream?.getVideoTracks()[0] === newVideoTrack) {
-      stopVideoTrack();
+      stopVideoTrack().catch(() => { });
     }
   };
 
@@ -6864,7 +6933,7 @@ async function addVideoTrack(newStream) {
 
 async function toggleWebcam() {
   if (state.call.videoEnabled) {
-    stopVideoTrack();
+    await stopVideoTrack();
     return;
   }
 
@@ -6881,7 +6950,7 @@ async function toggleWebcam() {
 
 async function toggleScreenShare() {
   if (state.call.screenShareEnabled) {
-    stopVideoTrack();
+    await stopVideoTrack();
     return;
   }
 
@@ -6921,10 +6990,10 @@ if (activeCallVideoBtn) {
   activeCallVideoBtn.addEventListener("click", () => {
     // If video is on -> turn off
     if (state.call.videoEnabled || state.call.screenShareEnabled) {
-      stopVideoTrack();
+      stopVideoTrack().catch(() => { });
     } else {
       // If off -> default to webcam
-      toggleWebcam();
+      toggleWebcam().catch(() => { });
     }
   });
 }
@@ -6933,9 +7002,9 @@ if (popoverWebcamBtn) {
   popoverWebcamBtn.addEventListener("click", () => {
     closePopovers();
     if (!state.call.videoEnabled) {
-      toggleWebcam();
+      toggleWebcam().catch(() => { });
     } else {
-      stopVideoTrack();
+      stopVideoTrack().catch(() => { });
     }
   });
 }
@@ -6944,9 +7013,9 @@ if (popoverScreenShareBtn) {
   popoverScreenShareBtn.addEventListener("click", () => {
     closePopovers();
     if (!state.call.screenShareEnabled) {
-      toggleScreenShare();
+      toggleScreenShare().catch(() => { });
     } else {
-      stopVideoTrack();
+      stopVideoTrack().catch(() => { });
     }
   });
 }
