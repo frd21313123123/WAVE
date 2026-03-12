@@ -392,7 +392,8 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
       final opened = await _updateService.openUpdate(update);
       if (!opened && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open the update link.')),
+          const SnackBar(
+              content: Text('Не удалось открыть ссылку на обновление.')),
         );
       }
     } finally {

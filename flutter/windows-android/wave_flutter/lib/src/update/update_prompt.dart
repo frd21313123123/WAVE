@@ -13,7 +13,7 @@ Future<bool?> showAppUpdateDialog(
       final notes = _trimNotes(update.releaseNotes);
 
       return AlertDialog(
-        title: const Text('Update available'),
+        title: const Text('Доступно обновление'),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: Column(
@@ -27,7 +27,7 @@ Future<bool?> showAppUpdateDialog(
               if (update.assetName != null) ...[
                 const SizedBox(height: 12),
                 Text(
-                  'Asset: ${update.assetName}',
+                  'Файл: ${update.assetName}',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -46,7 +46,7 @@ Future<bool?> showAppUpdateDialog(
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Later'),
+            child: const Text('Позже'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),

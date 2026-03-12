@@ -970,14 +970,14 @@ class _WaveSettingsSheetState extends State<WaveSettingsSheet>
           const SizedBox(height: 16),
         ],
         SettingsSectionCard(
-          title: 'App updates',
-          subtitle: 'Checks the latest GitHub Release for this device.',
+          title: 'Обновления приложения',
+          subtitle: 'Проверяет последний GitHub Release для этого устройства.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (widget.appVersionText != null)
                 Text(
-                  'Installed version: ${widget.appVersionText}',
+                  'Установлена версия: ${widget.appVersionText}',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               if (widget.updateStatusText != null) ...[
@@ -995,7 +995,7 @@ class _WaveSettingsSheetState extends State<WaveSettingsSheet>
                     ? null
                     : _handleCheckForUpdates,
                 icon: const Icon(Icons.system_update_alt_rounded),
-                label: const Text('Check for updates'),
+                label: const Text('Проверить наличие обновлений'),
               ),
             ],
           ),

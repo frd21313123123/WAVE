@@ -178,10 +178,10 @@ class AppUpdateService {
   String _actionLabelForCurrentPlatform(bool hasDirectAsset) {
     return switch (defaultTargetPlatform) {
       TargetPlatform.android =>
-        hasDirectAsset ? 'Download APK' : 'Open release',
+        hasDirectAsset ? 'Скачать APK' : 'Открыть релиз',
       TargetPlatform.windows =>
-        hasDirectAsset ? 'Download Windows build' : 'Open release',
-      _ => 'Open release',
+        hasDirectAsset ? 'Скачать Windows-версию' : 'Открыть релиз',
+      _ => 'Открыть релиз',
     };
   }
 

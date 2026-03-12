@@ -515,7 +515,7 @@ class _HomeScreenState extends State<HomeScreen> {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            'You already have the latest version (${result.currentVersion ?? updateController.installedVersion ?? 'unknown'}).',
+            'У вас уже установлена актуальная версия (${result.currentVersion ?? updateController.installedVersion ?? 'unknown'}).',
           ),
         ),
       );
@@ -530,7 +530,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final opened = await updateController.openUpdate(update);
     if (!opened && mounted) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Could not open the update link.')),
+        const SnackBar(
+            content: Text('Не удалось открыть ссылку на обновление.')),
       );
     }
   }

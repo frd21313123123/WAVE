@@ -20,15 +20,15 @@ class UpdateController extends ChangeNotifier {
 
   String get updateStatusLabel {
     if (_isChecking) {
-      return 'Checking GitHub Releases...';
+      return 'Проверяем GitHub Releases...';
     }
     if (_availableUpdate != null) {
-      return 'Update available: ${_availableUpdate!.latestVersion}';
+      return 'Доступно обновление: ${_availableUpdate!.latestVersion}';
     }
     if ((_lastErrorMessage ?? '').isNotEmpty) {
       return _lastErrorMessage!;
     }
-    return 'Installed version: ${_installedVersion ?? 'unknown'}';
+    return 'Установлена версия: ${_installedVersion ?? 'unknown'}';
   }
 
   Future<void> loadInstalledVersion() async {

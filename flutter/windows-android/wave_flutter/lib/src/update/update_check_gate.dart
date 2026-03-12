@@ -49,7 +49,8 @@ class _UpdateCheckGateState extends State<UpdateCheckGate> {
     final opened = await controller.openUpdate(update);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the update link.')),
+        const SnackBar(
+            content: Text('Не удалось открыть ссылку на обновление.')),
       );
     }
   }
