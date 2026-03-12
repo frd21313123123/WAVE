@@ -102,23 +102,23 @@ jobs:
           done
 
           if (( ${#missing[@]} == 0 )); then
-            python3 - <<'PY'
-            import base64
-            import os
-            import pathlib
+          python3 - <<'PY'
+          import base64
+          import os
+          import pathlib
 
-            project_dir = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "flutter" / "windows-android" / "wave_flutter"
-            project_dir.joinpath("android", "upload-keystore.jks").write_bytes(
-                base64.b64decode(os.environ["ANDROID_KEYSTORE_BASE64"])
+          project_dir = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "flutter" / "windows-android" / "wave_flutter"
+          project_dir.joinpath("android", "upload-keystore.jks").write_bytes(
+              base64.b64decode(os.environ["ANDROID_KEYSTORE_BASE64"])
             )
-            PY
+          PY
 
-            cat > android/key.properties <<EOF
-            storePassword=${ANDROID_KEYSTORE_PASSWORD}
-            keyPassword=${ANDROID_KEY_PASSWORD}
-            keyAlias=${ANDROID_KEY_ALIAS}
-            storeFile=upload-keystore.jks
-            EOF
+          cat > android/key.properties <<EOF
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          storeFile=upload-keystore.jks
+          EOF
 
             echo "ready=true" >> "$GITHUB_OUTPUT"
             {
@@ -643,7 +643,7 @@ jobs:
                 </array>
               </dict>
               </plist>
-              EOF
+          EOF
 
               cp release-package/wave-ios-manifest.plist pages/ios/latest/manifest.plist
 
@@ -731,7 +731,7 @@ jobs:
                 </main>
               </body>
               </html>
-              EOF
+          EOF
             else
               cat > pages/ios/latest/index.html <<EOF
               <!doctype html>
@@ -745,7 +745,7 @@ jobs:
                 <p>The signed IPA exists, but OTA installation is disabled because the export method is <strong>${IOS_EXPORT_METHOD}</strong>. Use <strong>ad-hoc</strong> or <strong>enterprise</strong> for browser-based iPhone installation.</p>
               </body>
               </html>
-              EOF
+          EOF
             fi
           else
             cat > pages/ios/latest/index.html <<EOF
@@ -761,7 +761,7 @@ jobs:
               <p>Configure <code>APPLE_CERTIFICATE_BASE64</code>, <code>APPLE_CERTIFICATE_PASSWORD</code>, <code>APPLE_PROVISIONING_PROFILE_BASE64</code>, and <code>APPLE_TEAM_ID</code> to generate a device-installable IPA.</p>
             </body>
             </html>
-            EOF
+          EOF
           fi
 
           cat > release-notes.md <<EOF
