@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../controllers/session_controller.dart';
+import '../widgets/wave_brand_logo.dart';
 
 enum _AuthMode { login, register }
 
@@ -61,6 +62,11 @@ class _AuthScreenState extends State<AuthScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 12),
+                    const WaveBrandLogo(
+                      size: 132,
+                      semanticLabel: 'Wave logo',
+                    ),
+                    const SizedBox(height: 24),
                     Text(
                       'Wave Messenger',
                       textAlign: TextAlign.center,

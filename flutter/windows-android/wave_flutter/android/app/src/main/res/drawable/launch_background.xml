@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#071B35" />
-</shape>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#131722" />
+        </shape>
+    </item>
+    <item
+        android:gravity="center"
+        android:width="208dp"
+        android:height="208dp">
+        <bitmap
+            android:gravity="fill"
+            android:src="@drawable/launch_logo" />
+    </item>
+</layer-list>

@@ -1,0 +1,8 @@
+[dotenv@17.3.1] injecting env (10) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+Messenger started on http://localhost:3000
+LAN: http://172.18.0.1:3000
+LAN: http://26.186.25.72:3000
+LAN: http://192.168.1.160:3000
+LAN: http://192.168.56.1:3000
+[WS] connected: wave_a_154109015 (63b6ea0b-0a71-4930-8287-1d7cafbb75dd)
+[WS] disconnected: wave_a_154109015 (63b6ea0b-0a71-4930-8287-1d7cafbb75dd)

@@ -20,6 +20,7 @@ import '../settings/avatar_upload.dart';
 import '../settings/settings_controller.dart';
 import '../settings/wave_settings_sheet.dart';
 import '../widgets/wave_avatar.dart';
+import '../widgets/wave_brand_logo.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -34,8 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _imagePicker = ImagePicker();
   final _callTonePlayer = AudioPlayer(playerId: 'wave-call-tone');
   final _messageSoundPlayer = AudioPlayer(playerId: 'wave-message-sounds');
-  final Map<String, String> _conversationMessageSoundKeys =
-      <String, String>{};
+  final Map<String, String> _conversationMessageSoundKeys = <String, String>{};
   String? _lastConversationId;
   int _lastMessageCount = 0;
   ChatController? _chatController;
@@ -680,7 +680,10 @@ class _ConversationPane extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.waves_rounded),
+                    const WaveBrandLogo(
+                      size: 28,
+                      excludeFromSemantics: true,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -1027,11 +1030,15 @@ class _ChatPane extends StatelessWidget {
                       decoration: InputDecoration(
                         hintText:
                             canSend ? 'Сообщение' : 'Сообщения недоступны',
-                        prefixIcon: Icon(
-                          settingsController.settings.vigenereEnabled
-                              ? Icons.lock_outline_rounded
-                              : Icons.waves_rounded,
-                        ),
+                        prefixIcon: settingsController.settings.vigenereEnabled
+                            ? const Icon(Icons.lock_outline_rounded)
+                            : const Padding(
+                                padding: EdgeInsets.all(10),
+                                child: WaveBrandLogo(
+                                  size: 24,
+                                  excludeFromSemantics: true,
+                                ),
+                              ),
                       ),
                       onChanged: onComposerChanged,
                       onSubmitted: (_) => onSend(),
@@ -1226,7 +1233,6 @@ class _EmptyChatState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
@@ -1236,20 +1242,9 @@ class _EmptyChatState extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [
-                        scheme.primary.withValues(alpha: 0.15),
-                        scheme.tertiary.withValues(alpha: 0.25),
-                      ],
-                    ),
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.all(22),
-                    child: Icon(Icons.waves_rounded, size: 56),
-                  ),
+                const WaveBrandLogo(
+                  size: 118,
+                  semanticLabel: 'Wave logo',
                 ),
                 const SizedBox(height: 18),
                 Text(

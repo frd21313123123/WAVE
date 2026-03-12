@@ -646,6 +646,77 @@ function getProtectedConversationIds(user) {
   );
 }
 
+function buildConversationLastMessageIndex(conversations, messages) {
+  const pendingMessageIds = new Set(
+    conversations
+      .map((conversation) => normalize(conversation?.lastMessageId))
+      .filter(Boolean)
+  );
+  const messagesById = new Map();
+
+  if (pendingMessageIds.size === 0) {
+    return messagesById;
+  }
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!pendingMessageIds.has(message.id)) {
+      continue;
+    }
+
+    messagesById.set(message.id, message);
+    pendingMessageIds.delete(message.id);
+    if (pendingMessageIds.size === 0) {
+      break;
+    }
+  }
+
+  return messagesById;
+}
+
+function getRecentConversationMessages(messages, conversationId, limit) {
+  const recentMessages = [];
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.conversationId !== conversationId) {
+      continue;
+    }
+
+    recentMessages.push(message);
+    if (recentMessages.length >= limit) {
+      break;
+    }
+  }
+
+  return recentMessages
+    .reverse()
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+}
+
+function buildConversationMessagePayload(message, usersById) {
+  return {
+    id: message.id,
+    conversationId: message.conversationId,
+    senderId: message.senderId,
+    text: message.text,
+    messageType: message.messageType || "text",
+    encryption: message.encryption || null,
+    replyToId: message.replyToId || null,
+    forwardFromId: message.forwardFromId || null,
+    clientMessageId: message.clientMessageId || null,
+    imageData: message.imageData || null,
+    voiceData: message.voiceData || null,
+    reactions: message.reactions || [],
+    editedAt: message.editedAt || null,
+    readAt: message.readAt || null,
+    createdAt: message.createdAt,
+    sender: usersById.get(message.senderId)
+      ? toPublicUser(usersById.get(message.senderId))
+      : null,
+  };
+}
+
 function buildConversationPayload(
   conversation,
   viewerId,
@@ -1419,13 +1490,15 @@ app.post("/api/users/:id/unblock", requireAuth, async (req, res) => {
 app.get("/api/conversations", requireAuth, async (req, res) => {
   const state = await store.read();
   const usersById = new Map(state.users.map((user) => [user.id, user]));
-  const messagesById = new Map(
-    state.messages.map((message) => [message.id, message])
+  const userConversations = state.conversations
+    .filter((conversation) => conversation.participantIds.includes(req.user.id))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const messagesById = buildConversationLastMessageIndex(
+    userConversations,
+    state.messages
   );
 
-  const conversations = state.conversations
-    .filter((conversation) => conversation.participantIds.includes(req.user.id))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const conversations = userConversations
     .map((conversation) =>
       buildConversationPayload(conversation, req.user.id, usersById, messagesById)
     );
@@ -1584,30 +1657,11 @@ app.get("/api/conversations/:id/messages", requireAuth, async (req, res) => {
   }
 
   const usersById = new Map(state.users.map((user) => [user.id, user]));
-  const messages = state.messages
-    .filter((message) => message.conversationId === conversationId)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    .slice(-limit)
-    .map((message) => ({
-      id: message.id,
-      conversationId: message.conversationId,
-      senderId: message.senderId,
-      text: message.text,
-      messageType: message.messageType || "text",
-      encryption: message.encryption || null,
-      replyToId: message.replyToId || null,
-      forwardFromId: message.forwardFromId || null,
-      clientMessageId: message.clientMessageId || null,
-      imageData: message.imageData || null,
-      voiceData: message.voiceData || null,
-      reactions: message.reactions || [],
-      editedAt: message.editedAt || null,
-      readAt: message.readAt || null,
-      createdAt: message.createdAt,
-      sender: usersById.get(message.senderId)
-        ? toPublicUser(usersById.get(message.senderId))
-        : null,
-    }));
+  const messages = getRecentConversationMessages(
+    state.messages,
+    conversationId,
+    limit
+  ).map((message) => buildConversationMessagePayload(message, usersById));
 
   return res.json({ messages });
 });

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:webview_windows/webview_windows.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/wave_brand_logo.dart';
 import 'desktop_shell_settings_store.dart';
 
 Future<void> runWaveWindowsShellApp() async {
@@ -419,7 +420,10 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.waves_rounded, size: 72),
+            WaveBrandLogo(
+              size: 108,
+              semanticLabel: 'Wave logo',
+            ),
             SizedBox(height: 18),
             CircularProgressIndicator(),
           ],
@@ -515,10 +519,9 @@ class _WindowsShellErrorView extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.desktop_windows_rounded,
-                  size: 44,
-                  color: scheme.primary,
+                const WaveBrandLogo(
+                  size: 54,
+                  semanticLabel: 'Wave logo',
                 ),
                 const SizedBox(height: 18),
                 Text(

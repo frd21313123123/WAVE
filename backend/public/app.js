@@ -12,6 +12,8 @@ const searchResults = document.getElementById("searchResults");
 const conversationList = document.getElementById("conversationList");
 const chatTitle = document.getElementById("chatTitle");
 const chatPresence = document.getElementById("chatPresence");
+const chatAvatar = document.getElementById("chatAvatar");
+const chatAvatarImg = document.getElementById("chatAvatarImg");
 const callStatus = document.getElementById("callStatus");
 const incomingCallPanel = document.getElementById("incomingCallPanel");
 const incomingCallText = document.getElementById("incomingCallText");
@@ -40,6 +42,7 @@ const popoverScreenShareBtn = document.getElementById("popoverScreenShareBtn");
 const remoteVideo = document.getElementById("remoteVideo");
 const localVideo = document.getElementById("localVideo");
 const noConversationState = document.getElementById("noConversationState");
+const chatLoadingState = document.getElementById("chatLoadingState");
 const messagesEl = document.getElementById("messages");
 const messageForm = document.getElementById("messageForm");
 const messageInput = document.getElementById("messageInput");
@@ -170,6 +173,10 @@ const gsAddMemberResults = document.getElementById("gsAddMemberResults");
 const gsLeaveBtn = document.getElementById("gsLeaveBtn");
 const gsDeleteGroupBtn = document.getElementById("gsDeleteGroupBtn");
 const gsStatus = document.getElementById("gsStatus");
+const desktopHomeBtn = document.getElementById("desktopHomeBtn");
+const desktopNewGroupBtn = document.getElementById("desktopNewGroupBtn");
+const desktopSettingsBtn = document.getElementById("desktopSettingsBtn");
+const desktopLogoutBtn = document.getElementById("desktopLogoutBtn");
 
 const UI_SETTINGS_KEY = "messenger_ui_settings_v1";
 const DEFAULT_VIGENERE_KEY = "WAVE";
@@ -180,6 +187,8 @@ const SIDEBAR_MIN_WIDTH = 260;
 const SIDEBAR_MAIN_MIN_WIDTH = 420;
 const SIDEBAR_HANDLE_WIDTH = 10;
 const SIDEBAR_MAX_WIDTH = 560;
+const MOBILE_LAYOUT_MEDIA = "(max-width: 950px)";
+const DESKTOP_PREFETCH_CONVERSATION_COUNT = 2;
 const CALL_RINGTONE_SRC = "/sound-call.mp3";
 const CALL_REJECTED_SOUND_SRC = "/call-rejected.mp3";
 const CALL_ENDED_SOUND_SRC = "/call-ended.mp3";
@@ -239,6 +248,36 @@ function setActionButtonLabel(button, label) {
   button.textContent = label;
 }
 
+function isMobileLayout() {
+  return window.matchMedia(MOBILE_LAYOUT_MEDIA).matches;
+}
+
+function isDesktopLayout() {
+  return !isMobileLayout();
+}
+
+function isDesktopShellMode() {
+  return document.documentElement.classList.contains("desktop-shell-mode");
+}
+
+function setChatHeaderAvatar(title, avatarUrl) {
+  if (!chatAvatar) {
+    return;
+  }
+
+  chatAvatar.dataset.initial = getInitial(title || "W");
+  const hasImage = setAvatarImageSource(chatAvatarImg, avatarUrl);
+  chatAvatar.classList.toggle("has-image", hasImage);
+}
+
+function shouldShowChatLoadingState() {
+  const conversationId = state.activeConversationId;
+  if (!conversationId || state.loadingConversationId !== conversationId) {
+    return false;
+  }
+  return !state.messagesByConversation.has(conversationId);
+}
+
 let encShowKey = false;
 let encGlobalScramble = false;
 let encGlobalScrambleInterval = null;
@@ -256,7 +295,10 @@ const state = {
   activeConversationId: null,
   messagesByConversation: new Map(),
   loadedMessagesConversationIds: new Set(),
+  messageRequestsInFlight: new Map(),
   pendingOutgoingByClientId: new Map(),
+  loadingConversationId: null,
+  chatLoadErrors: new Map(),
   socket: null,
   pageUnloading: false,
   searchDebounce: null,
@@ -1929,6 +1971,7 @@ async function markConversationAsRead(conversationId) {
 }
 
 function setNoConversationHeader() {
+  setChatHeaderAvatar("Wave", null);
   chatTitle.textContent = "Выберите диалог слева";
   chatPresence.textContent = "";
   chatPresence.classList.remove("online", "offline");
@@ -1949,13 +1992,17 @@ function renderActiveConversationHeader() {
   }
 
   if (conversation.type === "group") {
-    chatTitle.textContent = conversation.name || "Группа";
+    const title = conversation.name || "Группа";
+    chatTitle.textContent = title;
+    setChatHeaderAvatar(title, conversation.avatarUrl || null);
     const onlineCount = (conversation.participants || []).filter((p) => p.online).length;
     chatPresence.textContent = `${conversation.participants?.length || 0} участников, ${onlineCount} онлайн`;
     chatPresence.classList.remove("online", "offline");
     groupSettingsHeaderBtn.classList.remove("hidden");
   } else {
-    chatTitle.textContent = getDisplayName(conversation.participant) || "Диалог";
+    const title = getDisplayName(conversation.participant) || "Диалог";
+    chatTitle.textContent = title;
+    setChatHeaderAvatar(title, conversation.participant?.avatarUrl || null);
     const isOnline = Boolean(conversation.participant?.online);
     if (isOnline) {
       chatPresence.textContent = "онлайн";
@@ -2117,7 +2164,10 @@ function showAuth() {
   state.activeConversationId = null;
   state.messagesByConversation = new Map();
   state.loadedMessagesConversationIds = new Set();
+  state.messageRequestsInFlight = new Map();
   state.pendingOutgoingByClientId = new Map();
+  state.loadingConversationId = null;
+  state.chatLoadErrors = new Map();
   state.translationCache = new Map();
   state.translationRequests = new Map();
   state.deletingMessageIdsByConversation = new Map();
@@ -2367,6 +2417,9 @@ function loadUiSettings() {
   try {
     const raw = localStorage.getItem(UI_SETTINGS_KEY);
     if (!raw) {
+      if (isDesktopLayout()) {
+        state.ui.theme = "dark";
+      }
       return;
     }
 
@@ -3248,6 +3301,9 @@ async function deleteConversationById(conversationId) {
 function renderConversationList() {
   conversationList.innerHTML = "";
   sortConversations();
+  if (desktopHomeBtn) {
+    desktopHomeBtn.classList.toggle("active", !state.activeConversationId);
+  }
 
   if (state.conversations.length === 0) {
     conversationList.appendChild(
@@ -3262,6 +3318,13 @@ function renderConversationList() {
     button.className = "list-item";
     if (state.activeConversationId === conversation.id) {
       button.classList.add("active");
+    }
+    if (
+      state.loadingConversationId === conversation.id &&
+      !state.messagesByConversation.has(conversation.id)
+    ) {
+      button.classList.add("loading");
+      button.setAttribute("aria-busy", "true");
     }
 
     const isGroup = conversation.type === "group";
@@ -3325,6 +3388,16 @@ function renderConversationList() {
       titleWrap.appendChild(badge);
     }
 
+    if (
+      state.loadingConversationId === conversation.id &&
+      !state.messagesByConversation.has(conversation.id)
+    ) {
+      const loadingBadge = document.createElement("span");
+      loadingBadge.className = "item-loading-badge";
+      loadingBadge.textContent = "Ð—Ð°Ð³Ñ€ÑƒÐ·ÐºÐ°";
+      titleWrap.appendChild(loadingBadge);
+    }
+
     const timeEl = document.createElement("p");
     timeEl.className = "item-time";
     timeEl.textContent = formatTime(conversation.updatedAt);
@@ -3340,7 +3413,7 @@ function renderConversationList() {
     button.appendChild(previewEl);
 
     button.addEventListener("click", () => {
-      selectConversation(conversation.id);
+      selectConversation(conversation.id).catch(() => {});
     });
     button.addEventListener("contextmenu", (event) => {
       if (state.deleteMode) {
@@ -3779,6 +3852,7 @@ function renderMessages() {
   messagesEl.innerHTML = "";
 
   const hasActiveConversation = Boolean(state.activeConversationId);
+  const showChatLoadingState = hasActiveConversation && shouldShowChatLoadingState();
   if (chatMain) {
     chatMain.classList.toggle("no-active-conversation", !hasActiveConversation);
   }
@@ -3786,16 +3860,28 @@ function renderMessages() {
     noConversationState.classList.toggle("hidden", hasActiveConversation);
     noConversationState.setAttribute("aria-hidden", hasActiveConversation ? "true" : "false");
   }
-  messagesEl.classList.toggle("hidden", !hasActiveConversation);
-  messageForm.classList.toggle("hidden", !hasActiveConversation);
+  if (chatLoadingState) {
+    chatLoadingState.classList.toggle("hidden", !showChatLoadingState);
+    chatLoadingState.setAttribute("aria-hidden", showChatLoadingState ? "false" : "true");
+  }
+  messagesEl.classList.toggle("hidden", !hasActiveConversation || showChatLoadingState);
+  messageForm.classList.toggle("hidden", !hasActiveConversation || showChatLoadingState);
 
   if (!hasActiveConversation) {
+    return;
+  }
+  if (showChatLoadingState) {
     return;
   }
 
   const messages = state.messagesByConversation.get(state.activeConversationId) || [];
   const deletingIds =
     state.deletingMessageIdsByConversation.get(state.activeConversationId) || new Set();
+  const loadError = state.chatLoadErrors.get(state.activeConversationId);
+  if (loadError && messages.length === 0) {
+    messagesEl.appendChild(createEmptyListNote(loadError));
+    return;
+  }
   if (messages.length === 0) {
     messagesEl.appendChild(createEmptyListNote("Напишите первое сообщение в этом диалоге."));
     return;
@@ -3866,34 +3952,122 @@ function renderSearchResults(users) {
     searchResults.appendChild(wrapper);
   }
 }
-async function loadMessages(conversationId) {
-  if (state.loadedMessagesConversationIds.has(conversationId)) {
+function prefetchDesktopConversationMessages(activeConversationId = null) {
+  if (!isDesktopLayout() && !isDesktopShellMode()) {
     return;
   }
 
-  const payload = await api(`/api/conversations/${conversationId}/messages?limit=200`);
-  state.messagesByConversation.set(conversationId, payload.messages || []);
-  state.loadedMessagesConversationIds.add(conversationId);
+  const prefetchedIds = [];
+  for (const conversation of state.conversations) {
+    if (conversation.id === activeConversationId) {
+      continue;
+    }
+    if (
+      state.loadedMessagesConversationIds.has(conversation.id) ||
+      state.messageRequestsInFlight.has(conversation.id)
+    ) {
+      continue;
+    }
+
+    prefetchedIds.push(conversation.id);
+    if (prefetchedIds.length >= DESKTOP_PREFETCH_CONVERSATION_COUNT) {
+      break;
+    }
+  }
+
+  for (const conversationId of prefetchedIds) {
+    loadMessages(conversationId, { showLoading: false }).catch(() => {});
+  }
+}
+
+async function loadMessages(conversationId, options = {}) {
+  const { showLoading = false } = options;
+  if (!conversationId) {
+    return [];
+  }
+  if (state.loadedMessagesConversationIds.has(conversationId)) {
+    return state.messagesByConversation.get(conversationId) || [];
+  }
+
+  if (showLoading) {
+    state.loadingConversationId = conversationId;
+  }
+
+  const pendingRequest = state.messageRequestsInFlight.get(conversationId);
+  if (pendingRequest) {
+    return pendingRequest;
+  }
+
+  state.chatLoadErrors.delete(conversationId);
+
+  const request = api(`/api/conversations/${conversationId}/messages?limit=200`)
+    .then((payload) => {
+      const messages = payload.messages || [];
+      state.messagesByConversation.set(conversationId, messages);
+      state.loadedMessagesConversationIds.add(conversationId);
+      return messages;
+    })
+    .catch((error) => {
+      state.chatLoadErrors.set(
+        conversationId,
+        error?.message || "Не удалось загрузить чат."
+      );
+      throw error;
+    })
+    .finally(() => {
+      state.messageRequestsInFlight.delete(conversationId);
+      if (state.loadingConversationId === conversationId) {
+        state.loadingConversationId = null;
+      }
+      if (state.activeConversationId === conversationId) {
+        renderConversationList();
+        renderMessages();
+      }
+    });
+
+  state.messageRequestsInFlight.set(conversationId, request);
+  return request;
 }
 
 async function selectConversation(conversationId) {
+  if (!conversationId) {
+    return;
+  }
+
   state.activeConversationId = conversationId;
   const activeConversation = getConversationById(conversationId);
   state.chatLocked = Boolean(activeConversation?.chatProtected && state.twoFa.enabled);
+  state.chatLoadErrors.delete(conversationId);
   state.deleteMode = false;
   state.selectedMessageIds.clear();
   updateDeleteUi();
   updateChatLockUi();
+  const hasCachedMessages =
+    state.messagesByConversation.has(conversationId) ||
+    state.loadedMessagesConversationIds.has(conversationId);
+  const loadTask = loadMessages(conversationId, {
+    showLoading: !hasCachedMessages,
+  });
   renderConversationList();
   renderActiveConversationHeader();
-
-  await loadMessages(conversationId);
   renderMessages();
-  markConversationAsRead(conversationId);
 
-  if (window.matchMedia("(max-width: 950px)").matches) {
+  if (isMobileLayout()) {
     openMobileChatState();
   }
+
+  prefetchDesktopConversationMessages(conversationId);
+  try {
+    await loadTask;
+  } catch {
+  }
+  if (state.activeConversationId !== conversationId) {
+    return;
+  }
+  markConversationAsRead(conversationId);
+  renderConversationList();
+  renderActiveConversationHeader();
+  renderMessages();
 }
 
 async function loadConversations() {
@@ -3904,10 +4078,14 @@ async function loadConversations() {
     saveUiSettings();
   }
   state.activeConversationId = null;
+  state.messagesByConversation = new Map();
   state.deletingMessageIdsByConversation = new Map();
   state.readRequestsInFlight = new Set();
   state.loadedMessagesConversationIds = new Set();
   state.pendingOutgoingByClientId = new Map();
+  state.messageRequestsInFlight = new Map();
+  state.loadingConversationId = null;
+  state.chatLoadErrors = new Map();
   state.deleteMode = false;
   state.selectedMessageIds.clear();
   updateDeleteUi();
@@ -3920,6 +4098,7 @@ async function loadConversations() {
   renderMessages();
   resetMobileChatState();
   updateChatLockUi();
+  prefetchDesktopConversationMessages();
 }
 
 function closeSocket() {
@@ -5446,6 +5625,44 @@ createGroupBtn.addEventListener("click", () => {
   createGroupModal.classList.remove("hidden");
   setTimeout(() => groupNameInput.focus(), 10);
 });
+
+if (desktopHomeBtn) {
+  desktopHomeBtn.addEventListener("click", () => {
+    setSettingsPanelOpen(false);
+    setChatLocked(false);
+    state.activeConversationId = null;
+    state.loadingConversationId = null;
+    state.chatLocked = false;
+    state.deleteMode = false;
+    state.selectedMessageIds.clear();
+    updateDeleteUi();
+    renderConversationList();
+    setNoConversationHeader();
+    renderMessages();
+    updateChatLockUi();
+    conversationList.scrollTo({ top: 0, behavior: "smooth" });
+    userSearch.focus();
+    userSearch.select?.();
+  });
+}
+
+if (desktopNewGroupBtn) {
+  desktopNewGroupBtn.addEventListener("click", () => {
+    createGroupBtn.click();
+  });
+}
+
+if (desktopSettingsBtn) {
+  desktopSettingsBtn.addEventListener("click", () => {
+    settingsBtn.click();
+  });
+}
+
+if (desktopLogoutBtn) {
+  desktopLogoutBtn.addEventListener("click", () => {
+    logoutBtn.click();
+  });
+}
 
 closeGroupModalBtn.addEventListener("click", () => createGroupModal.classList.add("hidden"));
 createGroupModal.addEventListener("click", (e) => {

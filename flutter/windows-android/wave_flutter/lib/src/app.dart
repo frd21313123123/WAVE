@@ -17,6 +17,7 @@ import 'services/settings_store.dart';
 import 'settings/app_settings.dart';
 import 'settings/settings_controller.dart';
 import 'theme/app_theme.dart';
+import 'widgets/wave_brand_logo.dart';
 
 class AppBootstrap {
   AppBootstrap({
@@ -240,7 +241,10 @@ class _SplashScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.waves_rounded, size: 68),
+              WaveBrandLogo(
+                size: 92,
+                semanticLabel: 'Wave logo',
+              ),
               SizedBox(height: 18),
               CircularProgressIndicator(),
             ],
