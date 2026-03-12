@@ -1,58 +1,56 @@
 # Wave Messenger Flutter
 
-Android-клиент для текущего `Wave Messenger` backend из этого репозитория.
+Flutter-клиент для `Wave Messenger` теперь состоит из двух веток:
 
-## Что уже реализовано
+- Android: нативный mobile UI на Flutter.
+- Windows: desktop shell на Flutter, который открывает ту же веб-версию, что и браузер.
 
-- вход, регистрация и восстановление cookie-сессии;
-- поддержка 2FA-экрана входа;
-- список личных и групповых диалогов;
-- поиск пользователей и создание личного чата;
-- создание группового чата;
-- экран сообщений с отправкой текста;
-- realtime-обновления через WebSocket;
-- индикатор набора, статус online/last seen, read receipts;
-- редактирование своих текстовых сообщений;
-- смена display name;
-- смена адреса сервера прямо из приложения.
+## Что это значит для Windows
 
-## Важное про адрес сервера
+Windows-приложение не дублирует веб-функционал отдельным Flutter UI. Вместо этого оно использует `Microsoft Edge WebView2` и загружает тот же web client, что и обычный браузер. За счет этого desktop-версия повторяет браузерную по функционалу.
 
-Приложение по умолчанию использует:
+По умолчанию shell открывает URL, заданный через `WAVE_BASE_URL`. Если `dart-define` не передан, используется текущее значение по умолчанию из Flutter-конфига проекта.
 
-```text
-http://10.0.2.2:3000
-```
+Внутри Windows-приложения можно:
 
-Это правильный адрес для Android Emulator, если backend запущен локально на хост-машине.
-
-Для реального устройства укажите в приложении адрес вида:
-
-```text
-http://192.168.x.x:3000
-```
-
-или ваш HTTPS-домен/VPS.
+- открыть тот же URL, что и в браузере;
+- сменить URL через настройки shell;
+- сохранить этот URL локально;
+- очистить cookies и cache встроенного WebView;
+- использовать `back`, `forward` и `reload`.
 
 ## Запуск
-
-1. Установите Flutter SDK.
-2. В каталоге `wave_flutter` выполните:
 
 ```bash
 flutter pub get
 flutter run
 ```
 
-Если Flutter попросит пересоздать нативные файлы, выполните:
+Для Windows:
 
 ```bash
-flutter create --platforms=android .
+flutter run -d windows
 ```
 
-затем верните содержимое папки `lib/` как есть и снова запустите `flutter run`.
+Чтобы запустить shell сразу против нужной веб-версии:
 
-## Замечания
+```bash
+flutter run -d windows --dart-define=WAVE_BASE_URL=http://127.0.0.1:3000
+```
 
-- В Android manifest уже включён `usesCleartextTraffic="true"`, поэтому локальный `http://...` работает на эмуляторе и в LAN.
-- Текущий мобильный клиент ориентирован на основные сценарии чата. Голосовые сообщения и WebRTC-звонки сервер поддерживает, но они ещё не вынесены в мобильный UI.
+или:
+
+```bash
+flutter run -d windows --dart-define=WAVE_BASE_URL=https://your-domain.example
+```
+
+## Если платформенные файлы нужно пересоздать
+
+```bash
+flutter create --platforms=android,windows .
+```
+
+## Важно
+
+- Для Windows нужен установленный `Microsoft Edge WebView2 Runtime`.
+- Если `flutter build windows` или `flutter run -d windows` ругается на plugin symlink, включите Windows Developer Mode.

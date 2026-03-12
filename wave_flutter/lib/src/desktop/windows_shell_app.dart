@@ -1,0 +1,745 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:webview_windows/webview_windows.dart';
+
+import '../theme/app_theme.dart';
+import 'desktop_shell_settings_store.dart';
+
+Future<void> runWaveWindowsShellApp() async {
+  final settingsStore = DesktopShellSettingsStore();
+  final initialSettings = await settingsStore.read();
+  final webViewVersion = await WebviewController.getWebViewVersion();
+
+  if (webViewVersion != null) {
+    final userDataPath = await settingsStore.ensureWebViewDataPath();
+    await WebviewController.initializeEnvironment(userDataPath: userDataPath);
+  }
+
+  runApp(
+    WaveWindowsShellApp(
+      settingsStore: settingsStore,
+      initialSettings: initialSettings,
+      webViewVersion: webViewVersion,
+    ),
+  );
+}
+
+class WaveWindowsShellApp extends StatelessWidget {
+  const WaveWindowsShellApp({
+    super.key,
+    required this.settingsStore,
+    required this.initialSettings,
+    required this.webViewVersion,
+  });
+
+  final DesktopShellSettingsStore settingsStore;
+  final DesktopShellSettings initialSettings;
+  final String? webViewVersion;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Wave Messenger',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.system,
+      home: WaveWindowsShellScreen(
+        settingsStore: settingsStore,
+        initialSettings: initialSettings,
+        webViewVersion: webViewVersion,
+      ),
+    );
+  }
+}
+
+class WaveWindowsShellScreen extends StatefulWidget {
+  const WaveWindowsShellScreen({
+    super.key,
+    required this.settingsStore,
+    required this.initialSettings,
+    required this.webViewVersion,
+  });
+
+  final DesktopShellSettingsStore settingsStore;
+  final DesktopShellSettings initialSettings;
+  final String? webViewVersion;
+
+  @override
+  State<WaveWindowsShellScreen> createState() => _WaveWindowsShellScreenState();
+}
+
+class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
+  late final WebviewController _controller;
+  late final TextEditingController _urlController;
+
+  StreamSubscription<LoadingState>? _loadingSubscription;
+  StreamSubscription<HistoryChanged>? _historySubscription;
+  StreamSubscription<String>? _titleSubscription;
+  StreamSubscription<String>? _urlSubscription;
+  StreamSubscription<bool>? _fullscreenSubscription;
+  StreamSubscription<WebErrorStatus>? _loadErrorSubscription;
+
+  late DesktopShellSettings _settings;
+
+  bool _controllerReady = false;
+  bool _controllerInitializeCalled = false;
+  bool _initializing = true;
+  bool _loading = true;
+  bool _showsFullscreenContent = false;
+  bool _canGoBack = false;
+  bool _canGoForward = false;
+  String _pageTitle = 'Wave Messenger';
+  String _currentUrl = '';
+  String? _fatalError;
+  WebErrorStatus? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebviewController();
+    _settings = widget.initialSettings;
+    _currentUrl = widget.initialSettings.baseUrl;
+    _urlController =
+        TextEditingController(text: widget.initialSettings.baseUrl);
+    unawaited(_initializeShell());
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    unawaited(_loadingSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_historySubscription?.cancel() ?? Future<void>.value());
+    unawaited(_titleSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_urlSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_fullscreenSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_loadErrorSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_disposeController());
+    super.dispose();
+  }
+
+  Future<void> _initializeShell() async {
+    setState(() {
+      _fatalError = null;
+      _loadError = null;
+      _controllerReady = false;
+      _initializing = true;
+      _loading = true;
+      _showsFullscreenContent = false;
+      _canGoBack = false;
+      _canGoForward = false;
+      _pageTitle = 'Wave Messenger';
+      _currentUrl = _settings.baseUrl;
+    });
+
+    try {
+      if (widget.webViewVersion == null) {
+        throw const _WindowsShellException(
+          'Microsoft Edge WebView2 Runtime was not found. '
+          'Install it and restart the app.',
+        );
+      }
+
+      _controllerInitializeCalled = true;
+      await _controller.initialize();
+      _bindControllerStreams();
+      await _controller.setBackgroundColor(const Color(0xFF0E1621));
+      await _controller.setPopupWindowPolicy(
+        WebviewPopupWindowPolicy.sameWindow,
+      );
+      await _controller.loadUrl(_settings.baseUrl);
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _controllerReady = true;
+        _initializing = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _fatalError = _formatError(error);
+        _initializing = false;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _disposeController() async {
+    if (!_controllerInitializeCalled) {
+      return;
+    }
+    try {
+      await _controller.dispose();
+    } catch (_) {
+      // Ignore teardown failures during widget disposal.
+    }
+  }
+
+  void _bindControllerStreams() {
+    _loadingSubscription?.cancel();
+    _historySubscription?.cancel();
+    _titleSubscription?.cancel();
+    _urlSubscription?.cancel();
+    _fullscreenSubscription?.cancel();
+    _loadErrorSubscription?.cancel();
+
+    _loadingSubscription = _controller.loadingState.listen((state) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loading = state == LoadingState.loading;
+        if (state == LoadingState.loading) {
+          _loadError = null;
+        }
+      });
+    });
+
+    _historySubscription = _controller.historyChanged.listen((history) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _canGoBack = history.canGoBack;
+        _canGoForward = history.canGoForward;
+      });
+    });
+
+    _titleSubscription = _controller.title.listen((title) {
+      if (!mounted || title.trim().isEmpty) {
+        return;
+      }
+      setState(() {
+        _pageTitle = title.trim();
+      });
+    });
+
+    _urlSubscription = _controller.url.listen((url) {
+      if (!mounted || url.trim().isEmpty) {
+        return;
+      }
+      setState(() {
+        _currentUrl = url.trim();
+        _fatalError = null;
+      });
+    });
+
+    _loadErrorSubscription = _controller.onLoadError.listen((status) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loadError = status;
+      });
+    });
+
+    _fullscreenSubscription = _controller.containsFullScreenElementChanged
+        .listen((containsFullScreenElement) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _showsFullscreenContent = containsFullScreenElement;
+      });
+    });
+  }
+
+  Future<void> _goBack() async {
+    if (!_controllerReady || !_canGoBack) {
+      return;
+    }
+    await _controller.goBack();
+  }
+
+  Future<void> _goForward() async {
+    if (!_controllerReady || !_canGoForward) {
+      return;
+    }
+    await _controller.goForward();
+  }
+
+  Future<void> _reload() async {
+    if (_fatalError != null && !_controllerReady) {
+      await _initializeShell();
+      return;
+    }
+    if (!_controllerReady) {
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _fatalError = null;
+      _loadError = null;
+    });
+    await _controller.reload();
+  }
+
+  Future<void> _openSettingsDialog() async {
+    final action = await showDialog<_WindowsShellDialogAction>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Wave Windows'),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _urlController,
+                  decoration: const InputDecoration(
+                    labelText: 'URL веб-версии',
+                    hintText: 'http://127.0.0.1:3000',
+                    prefixIcon: Icon(Icons.link_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ActionChip(
+                      label: const Text('Localhost'),
+                      onPressed: () {
+                        _urlController.text = defaultDesktopBaseUrl;
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('VPS'),
+                      onPressed: () {
+                        _urlController.text = desktopVpsBaseUrl;
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Windows-версия открывает ту же веб-версию, что и браузер. '
+                  'Укажи тот же URL, чтобы функционал совпадал один в один.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(
+                _WindowsShellDialogAction.clearSession,
+              ),
+              child: const Text('Очистить session'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(
+                _WindowsShellDialogAction.saveAndOpen,
+              ),
+              child: const Text('Сохранить и открыть'),
+            ),
+          ],
+        );
+      },
+    );
+
+    switch (action) {
+      case _WindowsShellDialogAction.clearSession:
+        await _clearSession();
+      case _WindowsShellDialogAction.saveAndOpen:
+        await _saveAndOpenRequestedUrl();
+      case null:
+        break;
+    }
+  }
+
+  Future<void> _saveAndOpenRequestedUrl() async {
+    final nextBaseUrl = sanitizeDesktopBaseUrl(
+      _urlController.text,
+      fallback: _settings.baseUrl,
+    );
+    final nextSettings = _settings.copyWith(baseUrl: nextBaseUrl);
+
+    await widget.settingsStore.write(nextSettings);
+
+    setState(() {
+      _settings = nextSettings;
+      _currentUrl = nextBaseUrl;
+      _fatalError = null;
+      _loadError = null;
+    });
+
+    if (_controllerReady) {
+      await _controller.loadUrl(nextBaseUrl);
+      return;
+    }
+
+    await _initializeShell();
+  }
+
+  Future<void> _clearSession() async {
+    if (!_controllerReady) {
+      return;
+    }
+    await _controller.clearCookies();
+    await _controller.clearCache();
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cookies и cache очищены.')),
+    );
+  }
+
+  Future<WebviewPermissionDecision> _handlePermissionRequest(
+    String url,
+    WebviewPermissionKind permissionKind,
+    bool isUserInitiated,
+  ) async {
+    final requestedUri = Uri.tryParse(url);
+    final allowedHost = Uri.tryParse(_settings.baseUrl)?.host;
+    if (requestedUri == null || requestedUri.host != allowedHost) {
+      return WebviewPermissionDecision.deny;
+    }
+
+    if (permissionKind == WebviewPermissionKind.unknown) {
+      return WebviewPermissionDecision.none;
+    }
+
+    final permissionLabel = switch (permissionKind) {
+      WebviewPermissionKind.microphone => 'микрофон',
+      WebviewPermissionKind.camera => 'камеру',
+      WebviewPermissionKind.notifications => 'уведомления',
+      WebviewPermissionKind.geoLocation => 'геолокацию',
+      WebviewPermissionKind.clipboardRead => 'буфер обмена',
+      WebviewPermissionKind.otherSensors => 'датчики',
+      WebviewPermissionKind.unknown => 'системный доступ',
+    };
+
+    final decision = await showDialog<WebviewPermissionDecision>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Разрешение для веб-клиента'),
+          content: Text(
+            'Веб-версия Wave запрашивает доступ к "$permissionLabel".\n\n'
+            'Запрос инициирован пользователем: ${isUserInitiated ? 'да' : 'нет'}.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(
+                WebviewPermissionDecision.deny,
+              ),
+              child: const Text('Запретить'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(
+                WebviewPermissionDecision.allow,
+              ),
+              child: const Text('Разрешить'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return decision ?? WebviewPermissionDecision.deny;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: _showsFullscreenContent
+          ? null
+          : AppBar(
+              titleSpacing: 14,
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _pageTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _currentUrl,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+              actions: [
+                IconButton(
+                  onPressed: _canGoBack ? _goBack : null,
+                  tooltip: 'Back',
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
+                IconButton(
+                  onPressed: _canGoForward ? _goForward : null,
+                  tooltip: 'Forward',
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                ),
+                IconButton(
+                  onPressed: _reload,
+                  tooltip: 'Reload',
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+                IconButton(
+                  onPressed: _controllerReady
+                      ? () => _controller.loadUrl(_settings.baseUrl)
+                      : null,
+                  tooltip: 'Open configured URL',
+                  icon: const Icon(Icons.home_rounded),
+                ),
+                IconButton(
+                  onPressed: _openSettingsDialog,
+                  tooltip: 'Settings',
+                  icon: const Icon(Icons.tune_rounded),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
+      body: Column(
+        children: [
+          if (_loading) const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    scheme.primary.withValues(alpha: 0.14),
+                    scheme.tertiary.withValues(alpha: 0.12),
+                    scheme.surface,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: _buildBody(context),
+            ),
+          ),
+          if (!_showsFullscreenContent)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: scheme.outlineVariant),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.desktop_windows_rounded, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Windows shell renders the same Wave web client as the browser.',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  if ((widget.webViewVersion ?? '').isNotEmpty)
+                    Text(
+                      widget.webViewVersion!,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    if (_fatalError != null) {
+      return _WindowsShellErrorView(
+        message: _fatalError!,
+        baseUrl: _settings.baseUrl,
+        onRetry: _initializeShell,
+      );
+    }
+
+    if (_initializing || !_controllerReady) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.waves_rounded, size: 72),
+            SizedBox(height: 18),
+            CircularProgressIndicator(),
+          ],
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Webview(
+            _controller,
+            permissionRequested: _handlePermissionRequest,
+          ),
+        ),
+        if (_loadError != null)
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 20,
+            child: Material(
+              color: Theme.of(context).colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(20),
+              elevation: 10,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.wifi_off_rounded,
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Не удалось загрузить веб-клиент: $_loadError',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onErrorContainer,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    TextButton(
+                      onPressed: _openSettingsDialog,
+                      child: const Text('URL'),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: _reload,
+                      child: const Text('Повторить'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _formatError(Object error) {
+    if (error is _WindowsShellException) {
+      return error.message;
+    }
+    return 'Failed to open the Wave web app inside the Windows shell.\n$error';
+  }
+}
+
+class _WindowsShellErrorView extends StatelessWidget {
+  const _WindowsShellErrorView({
+    required this.message,
+    required this.baseUrl,
+    required this.onRetry,
+  });
+
+  final String message;
+  final String baseUrl;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Card(
+          margin: const EdgeInsets.all(24),
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.desktop_windows_rounded,
+                  size: 44,
+                  color: scheme.primary,
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Windows shell unavailable',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                const SizedBox(height: 18),
+                SelectableText(
+                  baseUrl,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: baseUrl));
+                        if (!context.mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Server URL copied to clipboard.'),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.copy_all_rounded),
+                      label: const Text('Copy URL'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WindowsShellException implements Exception {
+  const _WindowsShellException(this.message);
+
+  final String message;
+}
+
+enum _WindowsShellDialogAction {
+  saveAndOpen,
+  clearSession,
+}

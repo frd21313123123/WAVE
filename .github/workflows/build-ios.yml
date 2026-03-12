@@ -1,0 +1,336 @@
+name: Build iOS App
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      export_method:
+        description: Export method for signed IPA
+        required: false
+        default: development
+        type: choice
+        options:
+          - development
+          - ad-hoc
+          - app-store
+          - enterprise
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.41.4
+  IOS_PROJECT_DIR: wave_flutter_ios
+  IOS_BUNDLE_ID: com.wave.messengerios
+
+jobs:
+  build-simulator:
+    name: Build iOS Simulator App
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Enable iOS support
+        run: flutter config --enable-ios
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+
+      - name: Analyze project
+        run: flutter analyze
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+
+      - name: Install CocoaPods dependencies
+        run: pod install --repo-update
+        working-directory: ${{ env.IOS_PROJECT_DIR }}/ios
+
+      - name: Build simulator app
+        run: flutter build ios --debug --simulator
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+
+      - name: Package simulator app
+        shell: bash
+        run: |
+          artifact="$RUNNER_TEMP/wave-ios-simulator-app-${GITHUB_RUN_NUMBER}.zip"
+          cd build/ios/iphonesimulator
+          ditto -c -k --sequesterRsrc --keepParent Runner.app "$artifact"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+        id: package_simulator
+
+      - name: Upload simulator artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-ios-simulator-app
+          path: ${{ steps.package_simulator.outputs.artifact }}
+          if-no-files-found: error
+          retention-days: 14
+
+  build-signed-ipa:
+    name: Build Signed iOS IPA
+    runs-on: macos-latest
+    timeout-minutes: 60
+    needs: build-simulator
+    env:
+      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+      APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      IOS_EXPORT_METHOD: ${{ github.event.inputs.export_method || secrets.IOS_EXPORT_METHOD || 'development' }}
+
+    steps:
+      - name: Check signing configuration
+        id: signing
+        shell: bash
+        run: |
+          required=(
+            APPLE_CERTIFICATE_BASE64
+            APPLE_CERTIFICATE_PASSWORD
+            APPLE_PROVISIONING_PROFILE_BASE64
+            APPLE_TEAM_ID
+          )
+          missing=()
+          for key in "${required[@]}"; do
+            if [[ -z "${!key}" ]]; then
+              missing+=("$key")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Signed IPA skipped"
+              echo
+              echo "Configure these repository secrets to enable signed device builds:"
+              for key in "${missing[@]}"; do
+                echo "- \`$key\`"
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          keychain_password="${APPLE_KEYCHAIN_PASSWORD:-$(uuidgen)}"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "keychain_password=$keychain_password" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        if: steps.signing.outputs.ready == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        if: steps.signing.outputs.ready == 'true'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Enable iOS support
+        if: steps.signing.outputs.ready == 'true'
+        run: flutter config --enable-ios
+
+      - name: Install dependencies
+        if: steps.signing.outputs.ready == 'true'
+        run: flutter pub get
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+
+      - name: Install CocoaPods dependencies
+        if: steps.signing.outputs.ready == 'true'
+        run: pod install --repo-update
+        working-directory: ${{ env.IOS_PROJECT_DIR }}/ios
+
+      - name: Install signing assets
+        if: steps.signing.outputs.ready == 'true'
+        id: signing_assets
+        shell: bash
+        env:
+          KEYCHAIN_PASSWORD: ${{ steps.signing.outputs.keychain_password }}
+        run: |
+          export CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+          export PROFILE_PATH="$RUNNER_TEMP/build_profile.mobileprovision"
+          export KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          python3 - <<'PY'
+          import base64
+          import os
+          import pathlib
+
+          out = pathlib.Path(os.environ["RUNNER_TEMP"])
+          out.joinpath("build_certificate.p12").write_bytes(
+              base64.b64decode(os.environ["APPLE_CERTIFICATE_BASE64"])
+          )
+          out.joinpath("build_profile.mobileprovision").write_bytes(
+              base64.b64decode(os.environ["APPLE_PROVISIONING_PROFILE_BASE64"])
+          )
+          PY
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "$PROFILE_PATH" > "$RUNNER_TEMP/profile.plist"
+
+          profile_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")
+          profile_name=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
+
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+
+          echo "keychain_path=$KEYCHAIN_PATH" >> "$GITHUB_OUTPUT"
+          echo "profile_uuid=$profile_uuid" >> "$GITHUB_OUTPUT"
+          echo "profile_name=$profile_name" >> "$GITHUB_OUTPUT"
+
+      - name: Generate export options
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        env:
+          PROFILE_NAME: ${{ steps.signing_assets.outputs.profile_name }}
+        run: |
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${IOS_EXPORT_METHOD}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>thinning</key>
+            <string>&lt;none&gt;</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${IOS_BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+
+      - name: Build archive and export IPA
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        env:
+          PROFILE_NAME: ${{ steps.signing_assets.outputs.profile_name }}
+        run: |
+          flutter build ios --release --no-codesign
+
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination generic/platform=iOS \
+            -archivePath build/ios/archive/WaveMessenger.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="${APPLE_TEAM_ID}" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+            PRODUCT_BUNDLE_IDENTIFIER="${IOS_BUNDLE_ID}" \
+            archive
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/ios/archive/WaveMessenger.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist ios/ExportOptions.plist
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+
+      - name: Package archive
+        if: steps.signing.outputs.ready == 'true'
+        id: package_archive
+        shell: bash
+        run: |
+          archive="$RUNNER_TEMP/wave-ios-archive-${GITHUB_RUN_NUMBER}.zip"
+          ditto -c -k --sequesterRsrc --keepParent build/ios/archive/WaveMessenger.xcarchive "$archive"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+
+      - name: Upload signed IPA artifact
+        if: steps.signing.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-ios-signed-ipa
+          path: |
+            ${{ env.IOS_PROJECT_DIR }}/build/ios/ipa/*.ipa
+            ${{ steps.package_archive.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Clean up signing assets
+        if: always() && steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${{ steps.signing_assets.outputs.profile_uuid }}.mobileprovision" || true
+          security delete-keychain "${{ steps.signing_assets.outputs.keychain_path }}" || true
+
+  publish-release:
+    name: Publish iOS Release
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs:
+      - build-simulator
+      - build-signed-ipa
+
+    steps:
+      - name: Download simulator artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: wave-ios-simulator-app
+          path: release-assets/simulator
+
+      - name: Download signed artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: wave-ios-signed-ipa
+          path: release-assets/signed
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-build-${{ github.run_number }}-${{ github.sha }}
+          name: Wave iOS Build #${{ github.run_number }} (${{ github.ref_name }})
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          generate_release_notes: true
+          overwrite_files: true
+          fail_on_unmatched_files: false
+          files: |
+            release-assets/**/*.zip
+            release-assets/**/*.ipa

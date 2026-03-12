@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -37,14 +38,14 @@ class AppBootstrap {
   final SettingsController settingsController;
   final CallController callController;
 
-  static Future<AppBootstrap> initialize({AppConfig? appConfig}) async {
-    final resolvedAppConfig = appConfig ?? await AppConfig.load();
-    final apiClient = await ApiClient.create(resolvedAppConfig);
+  static Future<AppBootstrap> initialize() async {
+    final appConfig = await AppConfig.load();
+    final apiClient = await ApiClient.create(appConfig);
     final sessionStore = await SessionStore.create();
     final settingsStore = await SettingsStore.create();
     final realtimeService = RealtimeService(
       apiClient: apiClient,
-      appConfig: resolvedAppConfig,
+      appConfig: appConfig,
     );
     final chatController = ChatController(
       apiClient: apiClient,
@@ -52,7 +53,7 @@ class AppBootstrap {
     );
     final sessionController = SessionController(
       apiClient: apiClient,
-      appConfig: resolvedAppConfig,
+      appConfig: appConfig,
       chatController: chatController,
       sessionStore: sessionStore,
     );
@@ -79,7 +80,7 @@ class AppBootstrap {
     );
 
     return AppBootstrap(
-      appConfig: resolvedAppConfig,
+      appConfig: appConfig,
       apiClient: apiClient,
       realtimeService: realtimeService,
       chatController: chatController,
@@ -197,17 +198,22 @@ class _SystemUiModeSyncState extends State<_SystemUiModeSync> {
     final overlayStyle = widget.brightness == Brightness.dark
         ? SystemUiOverlayStyle.light
         : SystemUiOverlayStyle.dark;
+    final isIos = Platform.isIOS;
 
     await SystemChrome.setEnabledSystemUIMode(
-      widget.fullscreen
+      widget.fullscreen && !isIos
           ? SystemUiMode.immersiveSticky
           : SystemUiMode.edgeToEdge,
     );
     SystemChrome.setSystemUIOverlayStyle(
-      overlayStyle.copyWith(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor: Colors.transparent,
-      ),
+      isIos
+          ? overlayStyle.copyWith(
+              statusBarColor: Colors.transparent,
+            )
+          : overlayStyle.copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: Colors.transparent,
+            ),
     );
   }
 

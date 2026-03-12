@@ -1,5 +1,5 @@
-name: wave_flutter
-description: Wave Messenger Flutter client with Android UI and Windows desktop shell.
+name: wave_flutter_ios
+description: Wave Messenger mobile client for iOS built with Flutter.
 publish_to: "none"
 version: 1.0.0+1
 

@@ -5,16 +5,12 @@ class AppConfig extends ChangeNotifier {
     required String baseUrl,
   }) : _baseUrl = _sanitizeBaseUrl(baseUrl);
 
-  static const _defaultBaseUrl = 'http://45.12.70.75:3000';
-  static const _baseUrlOverride = String.fromEnvironment(
-    'WAVE_BASE_URL',
-    defaultValue: _defaultBaseUrl,
-  );
+  static const _fixedBaseUrl = 'http://45.12.70.75:3000';
 
   final String _baseUrl;
 
   static Future<AppConfig> load() async {
-    return AppConfig._(baseUrl: _baseUrlOverride);
+    return AppConfig._(baseUrl: _fixedBaseUrl);
   }
 
   String get baseUrl => _baseUrl;
@@ -35,12 +31,12 @@ class AppConfig extends ChangeNotifier {
         : trimmed;
 
     if (normalized.isEmpty) {
-      return _defaultBaseUrl;
+      return _fixedBaseUrl;
     }
 
     final uri = Uri.tryParse(normalized);
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
-      return _defaultBaseUrl;
+      return _fixedBaseUrl;
     }
 
     return normalized;
