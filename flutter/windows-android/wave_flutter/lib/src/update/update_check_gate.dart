@@ -37,7 +37,7 @@ class _UpdateCheckGateState extends State<UpdateCheckGate> {
     final controller = context.read<UpdateController>();
     final result = await controller.checkForUpdates();
     final update = result.update;
-    if (!mounted || update == null) {
+    if (!mounted || update == null || !update.canDetermineIfNewer) {
       return;
     }
 

@@ -129,7 +129,7 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
       _installedVersion = installedVersion;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_checkForUpdates(showPrompt: true));
+      unawaited(_checkForUpdates(showPrompt: false));
     });
   }
 

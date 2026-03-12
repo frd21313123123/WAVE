@@ -48,18 +48,8 @@ class AppUpdateService {
         );
       }
 
-      final latestVersion = _extractVersion(
-        payload['tag_name']?.toString() ?? payload['name']?.toString() ?? '',
-      );
-
-      if (latestVersion == null) {
-        return AppUpdateCheckResult(
-          currentVersion: currentVersion,
-          errorMessage:
-              'Latest GitHub release does not contain a valid version tag.',
-        );
-      }
-
+      final tagName = payload['tag_name']?.toString() ?? '';
+      final releaseName = payload['name']?.toString() ?? '';
       final releasePageUrl =
           Uri.tryParse(payload['html_url']?.toString() ?? '');
       if (releasePageUrl == null) {
@@ -72,7 +62,9 @@ class AppUpdateService {
       final update = _buildUpdateInfo(
         payload: payload,
         currentVersion: currentVersion,
-        latestVersion: latestVersion,
+        releaseTag: tagName,
+        releaseName: releaseName,
+        latestVersion: _extractVersion('$tagName $releaseName'),
         releasePageUrl: releasePageUrl,
       );
 
@@ -119,13 +111,11 @@ class AppUpdateService {
   AppUpdateInfo? _buildUpdateInfo({
     required Map<String, dynamic> payload,
     required String currentVersion,
-    required String latestVersion,
+    required String releaseTag,
+    required String releaseName,
+    required String? latestVersion,
     required Uri releasePageUrl,
   }) {
-    if (_compareVersions(latestVersion, currentVersion) <= 0) {
-      return null;
-    }
-
     final assets = (payload['assets'] as List<dynamic>? ?? const <dynamic>[])
         .whereType<Map<dynamic, dynamic>>()
         .map((raw) => Map<String, dynamic>.from(raw))
@@ -133,19 +123,46 @@ class AppUpdateService {
     final selectedAsset = _selectAssetForCurrentPlatform(assets);
     final publishedAt =
         DateTime.tryParse(payload['published_at']?.toString() ?? '');
+    final resolvedReleaseName =
+        releaseName.trim().isNotEmpty ? releaseName.trim() : 'GitHub Release';
+
+    if (latestVersion != null) {
+      if (_compareVersions(latestVersion, currentVersion) <= 0) {
+        return null;
+      }
+
+      return AppUpdateInfo(
+        currentVersion: currentVersion,
+        latestVersion: latestVersion,
+        releaseName: resolvedReleaseName,
+        releaseNotes: payload['body']?.toString() ?? '',
+        releasePageUrl: releasePageUrl,
+        publishedAt: publishedAt,
+        downloadUrl: Uri.tryParse(selectedAsset?.downloadUrl ?? ''),
+        assetName: selectedAsset?.name,
+        actionLabel: _actionLabelForCurrentPlatform(selectedAsset != null),
+        canDetermineIfNewer: true,
+      );
+    }
+
+    if (selectedAsset == null) {
+      return null;
+    }
 
     return AppUpdateInfo(
       currentVersion: currentVersion,
-      latestVersion: latestVersion,
-      releaseName: payload['name']?.toString().trim().isNotEmpty == true
-          ? payload['name']!.toString().trim()
-          : 'Release $latestVersion',
+      latestVersion: _fallbackReleaseLabel(
+        tagName: releaseTag,
+        publishedAt: publishedAt,
+      ),
+      releaseName: resolvedReleaseName,
       releaseNotes: payload['body']?.toString() ?? '',
       releasePageUrl: releasePageUrl,
       publishedAt: publishedAt,
-      downloadUrl: Uri.tryParse(selectedAsset?.downloadUrl ?? ''),
-      assetName: selectedAsset?.name,
-      actionLabel: _actionLabelForCurrentPlatform(selectedAsset != null),
+      downloadUrl: Uri.tryParse(selectedAsset.downloadUrl),
+      assetName: selectedAsset.name,
+      actionLabel: _actionLabelForCurrentPlatform(true),
+      canDetermineIfNewer: false,
     );
   }
 
@@ -185,11 +202,28 @@ class AppUpdateService {
     };
   }
 
+  String _fallbackReleaseLabel({
+    required String tagName,
+    required DateTime? publishedAt,
+  }) {
+    if (publishedAt != null) {
+      final local = publishedAt.toLocal();
+      final year = local.year.toString().padLeft(4, '0');
+      final month = local.month.toString().padLeft(2, '0');
+      final day = local.day.toString().padLeft(2, '0');
+      final hour = local.hour.toString().padLeft(2, '0');
+      final minute = local.minute.toString().padLeft(2, '0');
+      return '$year-$month-$day $hour:$minute';
+    }
+
+    final normalizedTag = tagName.trim();
+    return normalizedTag.isNotEmpty ? normalizedTag : 'latest';
+  }
+
   String? _extractVersion(String source) {
-    final match =
-        RegExp(r'(\d+)\.(\d+)\.(\d+(?:[-+][0-9A-Za-z.-]+)?)').firstMatch(
-      source,
-    );
+    final match = RegExp(
+      r'(\d+)\.(\d+)\.(\d+(?:[-+][0-9A-Za-z.-]+)?)',
+    ).firstMatch(source);
     if (match == null) {
       return null;
     }
@@ -270,6 +304,7 @@ class AppUpdateInfo {
     required this.releaseNotes,
     required this.releasePageUrl,
     required this.actionLabel,
+    required this.canDetermineIfNewer,
     this.publishedAt,
     this.downloadUrl,
     this.assetName,
@@ -284,6 +319,7 @@ class AppUpdateInfo {
   final DateTime? publishedAt;
   final String? assetName;
   final String actionLabel;
+  final bool canDetermineIfNewer;
 
   Uri get actionUri => downloadUrl ?? releasePageUrl;
 }

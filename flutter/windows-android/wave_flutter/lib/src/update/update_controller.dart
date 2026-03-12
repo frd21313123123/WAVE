@@ -23,7 +23,9 @@ class UpdateController extends ChangeNotifier {
       return 'Проверяем GitHub Releases...';
     }
     if (_availableUpdate != null) {
-      return 'Доступно обновление: ${_availableUpdate!.latestVersion}';
+      return _availableUpdate!.canDetermineIfNewer
+          ? 'Доступно обновление: ${_availableUpdate!.latestVersion}'
+          : 'Доступна последняя сборка для загрузки';
     }
     if ((_lastErrorMessage ?? '').isNotEmpty) {
       return _lastErrorMessage!;

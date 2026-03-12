@@ -21,9 +21,25 @@ Future<bool?> showAppUpdateDialog(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${update.releaseName}\n${update.currentVersion} -> ${update.latestVersion}',
+                update.releaseName,
                 style: theme.textTheme.titleMedium,
               ),
+              const SizedBox(height: 8),
+              Text(
+                update.canDetermineIfNewer
+                    ? '${update.currentVersion} -> ${update.latestVersion}'
+                    : 'Доступна последняя сборка из GitHub Releases.',
+                style: theme.textTheme.bodyMedium,
+              ),
+              if (update.publishedAt != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Опубликовано: ${_formatPublishedAt(update.publishedAt!)}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
               if (update.assetName != null) ...[
                 const SizedBox(height: 12),
                 Text(
@@ -81,4 +97,14 @@ String? _trimNotes(String notes) {
           ? '\n...'
           : '';
   return '${lines.join('\n')}$suffix';
+}
+
+String _formatPublishedAt(DateTime value) {
+  final local = value.toLocal();
+  final year = local.year.toString().padLeft(4, '0');
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '$day.$month.$year $hour:$minute';
 }
