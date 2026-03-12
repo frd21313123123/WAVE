@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'app_update_install_flow.dart';
 import 'update_controller.dart';
 import 'update_prompt.dart';
 
@@ -46,13 +47,11 @@ class _UpdateCheckGateState extends State<UpdateCheckGate> {
       return;
     }
 
-    final opened = await controller.openUpdate(update);
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Не удалось открыть ссылку на обновление.')),
-      );
-    }
+    await runManagedAppUpdateInstallFlow(
+      context,
+      controller: controller,
+      update: update,
+    );
   }
 
   @override

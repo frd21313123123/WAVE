@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'app_update_installer.dart';
 import 'app_update_service.dart';
 
 class UpdateController extends ChangeNotifier {
@@ -62,8 +63,14 @@ class UpdateController extends ChangeNotifier {
     }
   }
 
-  Future<bool> openUpdate(AppUpdateInfo update) {
-    return _service.openUpdate(update);
+  Future<AppUpdateInstallResult> downloadAndInstallUpdate(
+    AppUpdateInfo update, {
+    void Function(AppUpdateDownloadProgress progress)? onProgress,
+  }) {
+    return _service.downloadAndInstallUpdate(
+      update,
+      onProgress: onProgress,
+    );
   }
 
   @override

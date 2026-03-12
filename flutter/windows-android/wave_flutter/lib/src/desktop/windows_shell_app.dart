@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:webview_windows/webview_windows.dart';
 
 import '../theme/app_theme.dart';
+import '../update/app_update_install_flow.dart';
 import '../update/app_update_service.dart';
 import '../update/update_prompt.dart';
 import '../widgets/wave_brand_logo.dart';
@@ -389,13 +390,11 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
         return;
       }
 
-      final opened = await _updateService.openUpdate(update);
-      if (!opened && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Не удалось открыть ссылку на обновление.')),
-        );
-      }
+      await runAppUpdateInstallFlow(
+        context,
+        update: update,
+        onInstall: _updateService.downloadAndInstallUpdate,
+      );
     } finally {
       if (mounted) {
         setState(() {

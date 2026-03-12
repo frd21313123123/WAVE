@@ -19,6 +19,7 @@ import '../services/api_client.dart';
 import '../settings/avatar_upload.dart';
 import '../settings/settings_controller.dart';
 import '../settings/wave_settings_sheet.dart';
+import '../update/app_update_install_flow.dart';
 import '../update/update_controller.dart';
 import '../update/update_prompt.dart';
 import '../widgets/wave_avatar.dart';
@@ -527,13 +528,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final opened = await updateController.openUpdate(update);
-    if (!opened && mounted) {
-      messenger.showSnackBar(
-        const SnackBar(
-            content: Text('Не удалось открыть ссылку на обновление.')),
-      );
-    }
+    await runManagedAppUpdateInstallFlow(
+      context,
+      controller: updateController,
+      update: update,
+    );
   }
 
   Future<void> _playIncomingMessageCue() async {

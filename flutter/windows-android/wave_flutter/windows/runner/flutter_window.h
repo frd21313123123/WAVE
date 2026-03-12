@@ -2,9 +2,13 @@
 #define RUNNER_FLUTTER_WINDOW_H_
 
 #include <flutter/dart_project.h>
+#include <flutter/method_channel.h>
+#include <flutter/encodable_value.h>
 #include <flutter/flutter_view_controller.h>
 
 #include <memory>
+#include <optional>
+#include <string>
 
 #include "win32_window.h"
 
@@ -23,11 +27,20 @@ class FlutterWindow : public Win32Window {
                          LPARAM const lparam) noexcept override;
 
  private:
+  void RegisterUpdaterChannel();
+  bool LaunchUpdateFile(const std::wstring& file_path,
+                        std::wstring* error_message);
+  static std::optional<std::wstring> ExtractUpdatePath(
+      const flutter::EncodableValue* arguments);
+  static bool RequiresAppShutdownForUpdate(const std::wstring& file_path);
+
   // The project to run.
   flutter::DartProject project_;
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      updater_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

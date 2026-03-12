@@ -3,14 +3,17 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
+
+import 'app_update_installer.dart';
 
 class AppUpdateService {
   AppUpdateService({
     required this.githubOwner,
     required this.githubRepository,
     Dio? dio,
-  }) : _dio = dio ??
+    AppUpdateInstaller? installer,
+  })  : _dio = dio ??
             Dio(
               BaseOptions(
                 headers: const <String, String>{
@@ -18,11 +21,13 @@ class AppUpdateService {
                   HttpHeaders.userAgentHeader: 'wave-flutter-app',
                 },
               ),
-            );
+            ),
+        _installer = installer ?? AppUpdateInstaller();
 
   final String githubOwner;
   final String githubRepository;
   final Dio _dio;
+  final AppUpdateInstaller _installer;
 
   Uri get _latestReleaseUri => Uri.https(
         'api.github.com',
@@ -44,7 +49,7 @@ class AppUpdateService {
       if (payload == null) {
         return AppUpdateCheckResult(
           currentVersion: currentVersion,
-          errorMessage: 'GitHub release response was empty.',
+          errorMessage: 'GitHub Releases вернул пустой ответ.',
         );
       }
 
@@ -55,7 +60,7 @@ class AppUpdateService {
       if (releasePageUrl == null) {
         return AppUpdateCheckResult(
           currentVersion: currentVersion,
-          errorMessage: 'Latest GitHub release does not contain a valid URL.',
+          errorMessage: 'В релизе GitHub нет корректной ссылки.',
         );
       }
 
@@ -75,8 +80,8 @@ class AppUpdateService {
     } on DioException catch (error) {
       final statusCode = error.response?.statusCode;
       final message = statusCode == null
-          ? 'Failed to reach GitHub Releases.'
-          : 'GitHub Releases returned HTTP $statusCode.';
+          ? 'Не удалось подключиться к GitHub Releases.'
+          : 'GitHub Releases вернул HTTP $statusCode.';
       return AppUpdateCheckResult(
         currentVersion: await _safeInstalledVersion(),
         errorMessage: message,
@@ -89,11 +94,66 @@ class AppUpdateService {
     }
   }
 
-  Future<bool> openUpdate(AppUpdateInfo update) {
-    return launchUrl(
-      update.actionUri,
-      mode: LaunchMode.externalApplication,
+  Future<AppUpdateInstallResult> downloadAndInstallUpdate(
+    AppUpdateInfo update, {
+    void Function(AppUpdateDownloadProgress progress)? onProgress,
+  }) async {
+    final downloadUrl = update.downloadUrl;
+    if (downloadUrl == null) {
+      return const AppUpdateInstallResult(
+        status: AppUpdateInstallStatus.failed,
+        message: 'Для этой платформы в релизе нет установочного файла.',
+      );
+    }
+
+    final targetFile = await _resolveDownloadTarget(update);
+    await targetFile.parent.create(recursive: true);
+    if (await targetFile.exists()) {
+      await targetFile.delete();
+    }
+
+    onProgress?.call(
+      const AppUpdateDownloadProgress(
+        message: 'Подготавливаем загрузку обновления...',
+      ),
     );
+
+    try {
+      await _dio.downloadUri(
+        downloadUrl,
+        targetFile.path,
+        deleteOnError: true,
+        onReceiveProgress: (received, total) {
+          final fraction = total > 0 ? received / total : null;
+          onProgress?.call(
+            AppUpdateDownloadProgress(
+              message: total > 0
+                  ? 'Скачиваем обновление... ${(fraction! * 100).toStringAsFixed(0)}%'
+                  : 'Скачиваем обновление...',
+              fraction: fraction,
+            ),
+          );
+        },
+      );
+    } on DioException catch (error) {
+      return AppUpdateInstallResult(
+        status: AppUpdateInstallStatus.failed,
+        message: error.message ?? 'Не удалось скачать обновление.',
+      );
+    } catch (error) {
+      return AppUpdateInstallResult(
+        status: AppUpdateInstallStatus.failed,
+        message: error.toString(),
+      );
+    }
+
+    onProgress?.call(
+      const AppUpdateDownloadProgress(
+        message: 'Запускаем установщик...',
+      ),
+    );
+
+    return _installer.installDownloadedFile(targetFile.path);
   }
 
   void dispose() {
@@ -106,6 +166,16 @@ class AppUpdateService {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<File> _resolveDownloadTarget(AppUpdateInfo update) async {
+    final tempDirectory = await getTemporaryDirectory();
+    final safeName = _sanitizeFileName(
+      update.assetName ??
+          update.downloadUrl?.pathSegments.lastOrNull ??
+          'wave-update.bin',
+    );
+    return File('${tempDirectory.path}/$safeName');
   }
 
   AppUpdateInfo? _buildUpdateInfo({
@@ -195,9 +265,9 @@ class AppUpdateService {
   String _actionLabelForCurrentPlatform(bool hasDirectAsset) {
     return switch (defaultTargetPlatform) {
       TargetPlatform.android =>
-        hasDirectAsset ? 'Скачать APK' : 'Открыть релиз',
+        hasDirectAsset ? 'Скачать и установить APK' : 'Открыть релиз',
       TargetPlatform.windows =>
-        hasDirectAsset ? 'Скачать Windows-версию' : 'Открыть релиз',
+        hasDirectAsset ? 'Скачать и установить' : 'Открыть релиз',
       _ => 'Открыть релиз',
     };
   }
@@ -236,6 +306,15 @@ class AppUpdateService {
     }
 
     return '$major.$minor.$patch';
+  }
+
+  String _sanitizeFileName(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return 'wave-update.bin';
+    }
+
+    return trimmed.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
   }
 
   int _compareVersions(String left, String right) {
@@ -320,8 +399,6 @@ class AppUpdateInfo {
   final String? assetName;
   final String actionLabel;
   final bool canDetermineIfNewer;
-
-  Uri get actionUri => downloadUrl ?? releasePageUrl;
 }
 
 class _GithubReleaseAsset {
