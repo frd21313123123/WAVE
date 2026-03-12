@@ -237,7 +237,7 @@ function Ensure-Emulator {
 
         Write-Step "Starting Android emulator '$AvdName'"
         Start-Process -FilePath $EmulatorPath `
-            -ArgumentList "-avd $AvdName -no-snapshot -no-boot-anim -gpu swiftshader_indirect -no-audio" `
+            -ArgumentList "-avd $AvdName -no-snapshot -no-boot-anim -gpu swiftshader_indirect" `
             -RedirectStandardOutput $EmulatorLog `
             -RedirectStandardError $EmulatorErrLog | Out-Null
     } else {

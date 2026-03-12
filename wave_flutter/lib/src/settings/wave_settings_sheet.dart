@@ -1,9 +1,9 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../models/app_models.dart';
+import '../widgets/wave_avatar.dart';
 import 'app_settings.dart';
 import 'avatar_upload.dart';
 import 'settings_controller.dart';
@@ -1138,59 +1138,11 @@ class _AvatarPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final avatarSource = (user.avatarUrl ?? '').trim();
-    final bytes = _decodeDataUrlBytes(avatarSource);
-    final ImageProvider<Object>? imageProvider = bytes != null
-        ? MemoryImage(bytes)
-        : (avatarSource.isNotEmpty ? NetworkImage(avatarSource) : null);
-
-    if (imageProvider != null) {
-      return CircleAvatar(
-        radius: radius,
-        backgroundImage: imageProvider,
-      );
-    }
-
-    final initials = _buildInitials(user.displayNameOrUsername);
-    return CircleAvatar(
+    return WaveAvatar(
+      label: user.displayNameOrUsername,
+      imageUrl: user.avatarUrl,
       radius: radius,
-      child: Text(
-        initials,
-        style: Theme.of(context)
-            .textTheme
-            .titleLarge
-            ?.copyWith(fontWeight: FontWeight.w800),
-      ),
     );
-  }
-
-  static Uint8List? _decodeDataUrlBytes(String? value) {
-    final raw = (value ?? '').trim();
-    if (!raw.startsWith('data:')) {
-      return null;
-    }
-    try {
-      return UriData.parse(raw).contentAsBytes();
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static String _buildInitials(String value) {
-    final parts = value
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((item) => item.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) {
-      return '?';
-    }
-    if (parts.length == 1) {
-      final chars = parts.first.characters.take(2).toList();
-      return chars.join().toUpperCase();
-    }
-    return '${parts.first.characters.first}${parts.last.characters.first}'
-        .toUpperCase();
   }
 }
 

@@ -556,12 +556,8 @@ class FlutterWebRtcCallEngine extends CallMediaEngine {
     return value != null && value.isNotEmpty;
   }
 
-  Map<String, dynamic> _audioConstraints() {
-    return <String, dynamic>{
-      'echoCancellation': true,
-      'noiseSuppression': true,
-      'autoGainControl': true,
-    };
+  bool _audioConstraints() {
+    return true;
   }
 
   Map<String, dynamic> _videoConstraints() {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../../models/call_models.dart';
+import '../../widgets/wave_avatar.dart';
 import '../call_media_engine.dart';
 
 class IncomingCallSheet extends StatelessWidget {
@@ -509,11 +510,11 @@ class _PeerAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final initials = _initialsFor(label);
-    final imageUrl = avatarUrl?.trim();
-    final child = imageUrl != null && imageUrl.isNotEmpty
+    final imageProvider = WaveAvatar.providerFromValue(avatarUrl);
+    final child = imageProvider != null
         ? ClipOval(
-            child: Image.network(
-              imageUrl,
+            child: Image(
+              image: imageProvider,
               width: radius * 2,
               height: radius * 2,
               fit: BoxFit.cover,

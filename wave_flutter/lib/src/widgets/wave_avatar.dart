@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -15,9 +16,13 @@ class WaveAvatar extends StatelessWidget {
   final String? imageUrl;
   final double radius;
 
+  static final LinkedHashMap<String, ImageProvider<Object>> _providerCache =
+      LinkedHashMap<String, ImageProvider<Object>>();
+  static const int _providerCacheLimit = 96;
+
   @override
   Widget build(BuildContext context) {
-    final provider = _providerFromValue(imageUrl);
+    final provider = providerFromValue(imageUrl);
     final scheme = Theme.of(context).colorScheme;
     final initials = _initials(label);
 
@@ -37,21 +42,37 @@ class WaveAvatar extends StatelessWidget {
     );
   }
 
-  static ImageProvider<Object>? _providerFromValue(String? imageUrl) {
+  static ImageProvider<Object>? providerFromValue(String? imageUrl) {
     final value = imageUrl?.trim();
     if (value == null || value.isEmpty) {
       return null;
     }
 
+    final cached = _providerCache.remove(value);
+    if (cached != null) {
+      _providerCache[value] = cached;
+      return cached;
+    }
+
+    ImageProvider<Object>? provider;
     if (value.startsWith('data:image')) {
       final bytes = _decodeDataUri(value);
       if (bytes != null) {
-        return MemoryImage(bytes);
+        provider = MemoryImage(bytes);
       }
+    } else {
+      provider = NetworkImage(value);
+    }
+
+    if (provider == null) {
       return null;
     }
 
-    return NetworkImage(value);
+    if (_providerCache.length >= _providerCacheLimit) {
+      _providerCache.remove(_providerCache.keys.first);
+    }
+    _providerCache[value] = provider;
+    return provider;
   }
 
   static Uint8List? _decodeDataUri(String value) {

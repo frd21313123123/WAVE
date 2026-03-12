@@ -33,8 +33,12 @@ class _HomeScreenState extends State<HomeScreen> {
   final _scrollController = ScrollController();
   final _imagePicker = ImagePicker();
   final _callTonePlayer = AudioPlayer(playerId: 'wave-call-tone');
+  final _messageSoundPlayer = AudioPlayer(playerId: 'wave-message-sounds');
+  final Map<String, String> _conversationMessageSoundKeys =
+      <String, String>{};
   String? _lastConversationId;
   int _lastMessageCount = 0;
+  ChatController? _chatController;
   CallController? _callController;
   SettingsController? _settingsController;
   CallUiState _lastCallState = const CallUiState.idle();
@@ -42,6 +46,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
+    final chatController = context.read<ChatController>();
+    if (!identical(_chatController, chatController)) {
+      _chatController?.removeListener(_handleChatStateChanged);
+      _chatController = chatController;
+      _conversationMessageSoundKeys
+        ..clear()
+        ..addAll(_captureConversationMessageSoundKeys(chatController));
+      chatController.addListener(_handleChatStateChanged);
+    }
 
     final callController = context.read<CallController>();
     if (!identical(_callController, callController)) {
@@ -60,12 +74,53 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _chatController?.removeListener(_handleChatStateChanged);
     _callController?.removeListener(_handleCallStateChanged);
     unawaited(_callController?.deactivate() ?? Future<void>.value());
     unawaited(_callTonePlayer.dispose());
+    unawaited(_messageSoundPlayer.dispose());
     _composerController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleChatStateChanged() {
+    final chatController = _chatController;
+    final currentUserId = chatController?.currentUser?.id;
+    if (chatController == null || currentUserId == null) {
+      return;
+    }
+
+    final nextSnapshot = _captureConversationMessageSoundKeys(chatController);
+    ChatMessage? newestIncomingMessage;
+
+    for (final conversation in chatController.conversations) {
+      final lastMessage = conversation.lastMessage;
+      if (lastMessage == null) {
+        continue;
+      }
+
+      final previousKey = _conversationMessageSoundKeys[conversation.id];
+      final nextKey = nextSnapshot[conversation.id];
+      if (previousKey == nextKey || lastMessage.senderId == currentUserId) {
+        continue;
+      }
+
+      if (newestIncomingMessage == null ||
+          lastMessage.createdAt.isAfter(newestIncomingMessage.createdAt)) {
+        newestIncomingMessage = lastMessage;
+      }
+    }
+
+    _conversationMessageSoundKeys
+      ..clear()
+      ..addAll(nextSnapshot);
+
+    final notificationsEnabled =
+        _settingsController?.settings.notificationsEnabled ?? true;
+    if (notificationsEnabled && newestIncomingMessage != null) {
+      unawaited(_playIncomingMessageCue());
+    }
   }
 
   void _handleCallStateChanged() {
@@ -75,20 +130,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final soundsEnabled =
         _settingsController?.settings.callSoundsEnabled ?? true;
-    final hadIncoming = previousState.pendingIncoming != null;
-    final hasIncoming = nextState.pendingIncoming != null;
+    final hadLoopTone =
+        previousState.pendingIncoming != null || previousState.isOutgoing;
+    final hasLoopTone =
+        nextState.pendingIncoming != null || nextState.isOutgoing;
 
-    if (!hadIncoming && hasIncoming && soundsEnabled) {
+    if (!hadLoopTone && hasLoopTone && soundsEnabled) {
       unawaited(_startIncomingTone());
-    } else if (hadIncoming && !hasIncoming) {
+    } else if (hadLoopTone && !hasLoopTone) {
       unawaited(_stopIncomingTone());
     }
 
     if (previousState.hasLiveCall && nextState.isIdle && soundsEnabled) {
       unawaited(_playDisconnectCue(nextState.disconnectReason));
-    }
-    if (nextState.hasLiveCall) {
-      unawaited(_stopIncomingTone());
     }
 
     if (mounted) {
@@ -257,6 +311,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     final settings = context.read<SettingsController>();
+    final notificationsEnabled = settings.settings.notificationsEnabled;
     final payload = settings.buildOutgoingTextPayload(normalized);
     _composerController.clear();
 
@@ -267,6 +322,9 @@ class _HomeScreenState extends State<HomeScreen> {
         optimisticText: normalized,
         optimisticEncryption: null,
       );
+      if (notificationsEnabled) {
+        unawaited(_playOutgoingMessageCue());
+      }
     } on ApiException catch (error) {
       _composerController.text = text;
       _composerController.selection = TextSelection.collapsed(
@@ -431,12 +489,30 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _playIncomingMessageCue() async {
+    await _playForegroundSound('sound-message.mp3');
+  }
+
+  Future<void> _playOutgoingMessageCue() async {
+    await _playForegroundSound('zvukovoe-uvedomlenie-kontakta.mp3');
+  }
+
   Future<void> _startIncomingTone() async {
     final appConfig = context.read<AppConfig>();
     await _callTonePlayer.stop();
     await _callTonePlayer.setReleaseMode(ReleaseMode.loop);
     await _callTonePlayer.play(
       UrlSource('${appConfig.baseUrl}/sound-call.mp3'),
+      volume: _callToneVolume,
+    );
+  }
+
+  Future<void> _playForegroundSound(String fileName) async {
+    final appConfig = context.read<AppConfig>();
+    await _messageSoundPlayer.stop();
+    await _messageSoundPlayer.setReleaseMode(ReleaseMode.stop);
+    await _messageSoundPlayer.play(
+      UrlSource('${appConfig.baseUrl}/$fileName'),
       volume: _callToneVolume,
     );
   }
@@ -450,6 +526,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final appConfig = context.read<AppConfig>();
     final soundName = switch (reason) {
       CallDisconnectReason.rejected => 'call-rejected.mp3',
+      CallDisconnectReason.busy => null,
       CallDisconnectReason.none => null,
       _ => 'call-ended.mp3',
     };
@@ -467,11 +544,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _runMicrophoneTest() async {
     final stream = await navigator.mediaDevices.getUserMedia(
       <String, dynamic>{
-        'audio': <String, dynamic>{
-          'echoCancellation': true,
-          'noiseSuppression': true,
-          'autoGainControl': true,
-        },
+        'audio': true,
         'video': false,
       },
     );
@@ -537,6 +610,28 @@ class _HomeScreenState extends State<HomeScreen> {
   double get _callToneVolume {
     final rawVolume = _settingsController?.settings.speakerVolume ?? 100;
     return rawVolume.clamp(0, 100) / 100;
+  }
+
+  Map<String, String> _captureConversationMessageSoundKeys(
+    ChatController chatController,
+  ) {
+    final snapshot = <String, String>{};
+    for (final conversation in chatController.conversations) {
+      final lastMessage = conversation.lastMessage;
+      if (lastMessage == null) {
+        continue;
+      }
+      snapshot[conversation.id] = _messageSoundKey(lastMessage);
+    }
+    return snapshot;
+  }
+
+  String _messageSoundKey(ChatMessage message) {
+    final clientMessageId = message.clientMessageId?.trim();
+    if (clientMessageId != null && clientMessageId.isNotEmpty) {
+      return 'client:$clientMessageId';
+    }
+    return 'id:${message.id}';
   }
 }
 
