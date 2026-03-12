@@ -176,7 +176,7 @@ class FlutterWebRtcCallEngine extends CallMediaEngine {
 
   @override
   Future<void> setSpeakerEnabled(bool value) async {
-    await Helper.setSpeakerphoneOn(value);
+    await _applySpeakerPreference(value);
     _speakerEnabled = value;
     _notifyStateChanged();
   }
@@ -319,7 +319,7 @@ class FlutterWebRtcCallEngine extends CallMediaEngine {
       await peerConnection.addTrack(track, localStream);
     }
 
-    await Helper.setSpeakerphoneOn(_speakerEnabled);
+    await _applySpeakerPreference(_speakerEnabled);
     _setConnectionState(CallMediaConnectionState.connecting);
     _notifyStateChanged();
   }
@@ -558,6 +558,14 @@ class FlutterWebRtcCallEngine extends CallMediaEngine {
 
   bool _audioConstraints() {
     return true;
+  }
+
+  Future<void> _applySpeakerPreference(bool value) async {
+    try {
+      await Helper.setSpeakerphoneOn(value);
+    } catch (_) {
+      // Desktop platforms may not expose a speakerphone toggle.
+    }
   }
 
   Map<String, dynamic> _videoConstraints() {

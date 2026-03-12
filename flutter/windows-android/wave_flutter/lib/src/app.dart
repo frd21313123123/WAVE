@@ -11,6 +11,7 @@ import 'controllers/session_controller.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/api_client.dart';
+import 'services/notification_service.dart';
 import 'services/realtime_service.dart';
 import 'services/session_store.dart';
 import 'services/settings_store.dart';
@@ -30,6 +31,7 @@ class AppBootstrap {
     required this.chatController,
     required this.sessionController,
     required this.settingsController,
+    required this.notificationService,
     required this.callController,
     required this.updateController,
   });
@@ -40,6 +42,7 @@ class AppBootstrap {
   final ChatController chatController;
   final SessionController sessionController;
   final SettingsController settingsController;
+  final NotificationService notificationService;
   final CallController callController;
   final UpdateController updateController;
 
@@ -52,6 +55,12 @@ class AppBootstrap {
       apiClient: apiClient,
       appConfig: resolvedAppConfig,
     );
+    final notificationService = NotificationService(
+      apiClient: apiClient,
+      realtimeService: realtimeService,
+      appConfig: resolvedAppConfig,
+    );
+    await notificationService.initialize();
     final chatController = ChatController(
       apiClient: apiClient,
       realtimeService: realtimeService,
@@ -61,6 +70,7 @@ class AppBootstrap {
       appConfig: resolvedAppConfig,
       chatController: chatController,
       sessionStore: sessionStore,
+      beforeLogout: notificationService.prepareForLogout,
     );
 
     await sessionController.bootstrap();
@@ -77,6 +87,11 @@ class AppBootstrap {
       onAccountDeleted: sessionController.handleAccountDeleted,
     );
     await settingsController.bootstrap();
+    notificationService.bindControllers(
+      sessionController: sessionController,
+      chatController: chatController,
+      settingsController: settingsController,
+    );
 
     final callController = CallController(
       chatController: chatController,
@@ -98,6 +113,7 @@ class AppBootstrap {
       chatController: chatController,
       sessionController: sessionController,
       settingsController: settingsController,
+      notificationService: notificationService,
       callController: callController,
       updateController: updateController,
     );

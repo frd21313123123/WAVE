@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const fs = require("node:fs");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
@@ -9,6 +10,7 @@ const bcrypt = require("bcryptjs");
 const compression = require("compression");
 const cookieParser = require("cookie-parser");
 const express = require("express");
+const { GoogleAuth } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const webPush = require("web-push");
 const { WebSocketServer } = require("ws");
@@ -25,6 +27,17 @@ function readRequiredEnv(name, { minLength = 1, forbiddenValues = [] } = {}) {
   }
   if (forbiddenValues.includes(value)) {
     throw new Error(`Environment variable ${name} must be rotated and cannot use the default value`);
+  }
+  return value;
+}
+
+function readOptionalEnv(name, { minLength = 0 } = {}) {
+  const value = String(process.env[name] || "").trim();
+  if (!value) {
+    return "";
+  }
+  if (value.length < minLength) {
+    throw new Error(`Environment variable ${name} must be at least ${minLength} characters`);
   }
   return value;
 }
@@ -107,6 +120,10 @@ const VAPID_PRIVATE_KEY = readRequiredEnv("VAPID_PRIVATE_KEY", {
   ],
 });
 const VAPID_EMAIL = readRequiredEnv("VAPID_EMAIL", { minLength: 10 });
+const FIREBASE_PROJECT_ID = readOptionalEnv("FIREBASE_PROJECT_ID") ||
+  readOptionalEnv("FCM_PROJECT_ID");
+const FIREBASE_SERVICE_ACCOUNT_JSON = readOptionalEnv("FIREBASE_SERVICE_ACCOUNT_JSON");
+const FIREBASE_SERVICE_ACCOUNT_PATH = readOptionalEnv("FIREBASE_SERVICE_ACCOUNT_PATH");
 
 try {
   webPush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -114,7 +131,32 @@ try {
   throw new Error(`Failed to configure Web Push VAPID keys: ${error.message}`);
 }
 
+let firebaseServiceAccount = null;
+if (FIREBASE_SERVICE_ACCOUNT_JSON || FIREBASE_SERVICE_ACCOUNT_PATH) {
+  try {
+    const serviceAccountSource = FIREBASE_SERVICE_ACCOUNT_JSON ||
+      fs.readFileSync(path.resolve(FIREBASE_SERVICE_ACCOUNT_PATH), "utf8");
+    firebaseServiceAccount = JSON.parse(serviceAccountSource);
+  } catch (error) {
+    console.warn(`Firebase service account configuration is invalid: ${error.message}`);
+  }
+}
+
+const resolvedFirebaseProjectId =
+  FIREBASE_PROJECT_ID || normalize(firebaseServiceAccount?.project_id);
+const firebaseMessagingAuth =
+  firebaseServiceAccount && resolvedFirebaseProjectId
+    ? new GoogleAuth({
+      credentials: firebaseServiceAccount,
+      scopes: ["https://www.googleapis.com/auth/firebase.messaging"],
+    })
+    : null;
+const firebaseMessagingEndpoint = resolvedFirebaseProjectId
+  ? `https://fcm.googleapis.com/v1/projects/${resolvedFirebaseProjectId}/messages:send`
+  : "";
+
 const pushSubscriptionsByUser = new Map();
+const nativePushDevicesByUser = new Map();
 const authRateLimitBuckets = new Map();
 
 const store = new JsonStore(path.join(__dirname, "data", "db.json"), {
@@ -122,6 +164,7 @@ const store = new JsonStore(path.join(__dirname, "data", "db.json"), {
   conversations: [],
   messages: [],
   pushSubscriptions: [],
+  nativePushDevices: [],
 });
 
 const app = express();
@@ -1795,6 +1838,7 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
 
       if (participantId !== req.user.id) {
         sendPushNotificationToUser(participantId, {
+          type: "message",
           title: sender ? getPublicName(sender) : "Новое сообщение",
           body: messagePayload.messageType === "voice"
             ? "🎤 Голосовое сообщение"
@@ -1803,6 +1847,9 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
               : (messagePayload.text || "").slice(0, 100),
           tag: `wave-msg-${conversationId}`,
           conversationId,
+          messageId: messagePayload.id,
+          messageType: messagePayload.messageType,
+          senderName: sender ? getPublicName(sender) : "",
           url: "/",
         });
       }
@@ -2596,7 +2643,96 @@ app.post("/api/push/unsubscribe", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/api/push/native/register", requireAuth, async (req, res) => {
+  const provider = normalizeLower(req.body.provider || "fcm");
+  const platform = normalizeLower(req.body.platform || "");
+  const token = normalize(req.body.token || "");
+
+  if (provider !== "fcm") {
+    return res.status(400).json({ error: "Unsupported native push provider" });
+  }
+  if (!platform) {
+    return res.status(400).json({ error: "Missing device platform" });
+  }
+  if (!token) {
+    return res.status(400).json({ error: "Missing push token" });
+  }
+
+  const now = new Date().toISOString();
+  const registration = {
+    userId: req.user.id,
+    provider,
+    platform,
+    token,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  try {
+    await store.withWriteLock((data) => {
+      if (!Array.isArray(data.nativePushDevices)) {
+        data.nativePushDevices = [];
+      }
+
+      data.nativePushDevices = data.nativePushDevices.filter(
+        (entry) => entry.token !== token
+      );
+      data.nativePushDevices.push(registration);
+    });
+
+    const devices = nativePushDevicesByUser.get(req.user.id) || [];
+    const nextDevices = devices.filter((entry) => entry.token !== token);
+    nextDevices.push(registration);
+    nativePushDevicesByUser.set(req.user.id, nextDevices);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Failed to register native push token", error);
+    return res.status(500).json({ error: "Failed to save native push token" });
+  }
+});
+
+app.post("/api/push/native/unregister", requireAuth, async (req, res) => {
+  const token = normalize(req.body.token || "");
+  if (!token) {
+    return res.status(400).json({ error: "Missing push token" });
+  }
+
+  try {
+    await store.withWriteLock((data) => {
+      if (!Array.isArray(data.nativePushDevices)) {
+        return;
+      }
+      data.nativePushDevices = data.nativePushDevices.filter(
+        (entry) => !(entry.userId === req.user.id && entry.token === token)
+      );
+    });
+
+    const devices = nativePushDevicesByUser.get(req.user.id);
+    if (devices) {
+      const nextDevices = devices.filter((entry) => entry.token !== token);
+      if (nextDevices.length > 0) {
+        nativePushDevicesByUser.set(req.user.id, nextDevices);
+      } else {
+        nativePushDevicesByUser.delete(req.user.id);
+      }
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Failed to unregister native push token", error);
+    return res.status(500).json({ error: "Failed to remove native push token" });
+  }
+});
+
 async function sendPushNotificationToUser(userId, payload) {
+  await Promise.allSettled([
+    sendWebPushNotificationToUser(userId, payload),
+    sendNativePushNotificationToUser(userId, payload),
+  ]);
+}
+
+async function sendWebPushNotificationToUser(userId, payload) {
   const subs = pushSubscriptionsByUser.get(userId) || [];
   if (subs.length === 0) {
     try {
@@ -2645,6 +2781,146 @@ async function sendPushNotificationToUser(userId, payload) {
       });
     } catch { }
   }
+}
+
+async function sendNativePushNotificationToUser(userId, payload) {
+  if (!firebaseMessagingAuth || !firebaseMessagingEndpoint) {
+    return;
+  }
+
+  const registrations = await getNativePushRegistrationsForUser(userId);
+  if (registrations.length === 0) {
+    return;
+  }
+
+  let accessToken = "";
+  try {
+    accessToken = await getFirebaseMessagingAccessToken();
+  } catch (error) {
+    console.warn(`Failed to obtain Firebase Messaging access token: ${error.message}`);
+    return;
+  }
+
+  if (!accessToken) {
+    return;
+  }
+
+  const expiredTokens = [];
+  for (const registration of registrations) {
+    if (registration.provider !== "fcm" || !registration.token) {
+      continue;
+    }
+
+    try {
+      const response = await fetch(firebaseMessagingEndpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: buildFirebaseMessage(registration.token, payload),
+        }),
+      });
+
+      if (!response.ok) {
+        const responseText = await response.text();
+        if (/UNREGISTERED|registration-token-not-registered|INVALID_ARGUMENT/i.test(responseText)) {
+          expiredTokens.push(registration.token);
+        } else {
+          console.warn(`FCM push request failed (${response.status}): ${responseText}`);
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to send native push notification: ${error.message}`);
+    }
+  }
+
+  if (expiredTokens.length === 0) {
+    return;
+  }
+
+  const remaining = registrations.filter(
+    (entry) => !expiredTokens.includes(entry.token)
+  );
+  if (remaining.length > 0) {
+    nativePushDevicesByUser.set(userId, remaining);
+  } else {
+    nativePushDevicesByUser.delete(userId);
+  }
+
+  try {
+    await store.withWriteLock((data) => {
+      if (!Array.isArray(data.nativePushDevices)) {
+        return;
+      }
+      data.nativePushDevices = data.nativePushDevices.filter(
+        (entry) => !expiredTokens.includes(entry.token)
+      );
+    });
+  } catch { }
+}
+
+async function getNativePushRegistrationsForUser(userId) {
+  const cached = nativePushDevicesByUser.get(userId);
+  if (cached && cached.length > 0) {
+    return cached;
+  }
+
+  try {
+    const state = await store.read();
+    const registrations = Array.isArray(state.nativePushDevices)
+      ? state.nativePushDevices.filter((entry) => entry.userId === userId)
+      : [];
+    if (registrations.length > 0) {
+      nativePushDevicesByUser.set(userId, registrations);
+    }
+    return registrations;
+  } catch {
+    return [];
+  }
+}
+
+async function getFirebaseMessagingAccessToken() {
+  const authClient = await firebaseMessagingAuth.getClient();
+  const accessToken = await authClient.getAccessToken();
+  if (typeof accessToken === "string") {
+    return accessToken;
+  }
+  return normalize(accessToken?.token);
+}
+
+function buildFirebaseMessage(token, payload) {
+  return {
+    token,
+    notification: {
+      title: normalize(payload.title) || "Wave Messenger",
+      body: normalize(payload.body) || "New message",
+    },
+    data: buildFirebaseDataPayload(payload),
+    android: {
+      priority: "high",
+      notification: {
+        channelId: "wave_messages",
+        tag: normalize(payload.tag) || "wave-msg",
+        clickAction: "FLUTTER_NOTIFICATION_CLICK",
+      },
+    },
+  };
+}
+
+function buildFirebaseDataPayload(payload) {
+  return {
+    type: normalize(payload.type) || "message",
+    title: normalize(payload.title) || "Wave Messenger",
+    body: normalize(payload.body) || "New message",
+    conversationId: normalize(payload.conversationId),
+    messageId: normalize(payload.messageId),
+    messageType: normalize(payload.messageType) || "text",
+    senderName: normalize(payload.senderName),
+    tag: normalize(payload.tag) || "wave-msg",
+    url: normalize(payload.url) || "/",
+  };
 }
 
 app.use(express.static(path.join(__dirname, "public"), {

@@ -21,12 +21,14 @@ class SessionController extends ChangeNotifier {
     required this.appConfig,
     required this.chatController,
     required this.sessionStore,
+    this.beforeLogout,
   });
 
   final ApiClient apiClient;
   final AppConfig appConfig;
   final ChatController chatController;
   final SessionStore sessionStore;
+  final Future<void> Function()? beforeLogout;
 
   SessionStatus _status = SessionStatus.loading;
   PublicUser? _currentUser;
@@ -178,6 +180,9 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (beforeLogout != null) {
+        await beforeLogout!.call();
+      }
       await apiClient.post('/api/auth/logout');
     } catch (_) {
     } finally {

@@ -322,6 +322,7 @@ const state = {
     conversationId: "",
     peer: null,
     localStream: null,
+    micSourceStream: null,
     pendingIncoming: null,
     pendingRemoteIceCandidates: [],
     disconnectTimer: null,
@@ -337,6 +338,9 @@ const state = {
     micGainNode: null,
     micAudioCtx: null,
     micProcessedStream: null,
+    videoSender: null,
+    remoteVideoTrack: null,
+    remoteVideoMissingSince: 0,
     micVolume: 100,
     speakerVolume: 100,
   },
@@ -1014,6 +1018,12 @@ function cleanupCallState(options = {}) {
     }
   }
 
+  if (state.call.micSourceStream) {
+    for (const track of state.call.micSourceStream.getTracks()) {
+      track.stop();
+    }
+  }
+
   if (state.call.micProcessedStream) {
     for (const track of state.call.micProcessedStream.getTracks()) {
       track.stop();
@@ -1041,6 +1051,10 @@ function cleanupCallState(options = {}) {
   state.call.micGainNode = null;
   state.call.micAudioCtx = null;
   state.call.micProcessedStream = null;
+  state.call.micSourceStream = null;
+  state.call.videoSender = null;
+  state.call.remoteVideoTrack = null;
+  state.call.remoteVideoMissingSince = 0;
 
   remoteAudio.muted = false;
   remoteAudio.srcObject = null;
@@ -1142,7 +1156,7 @@ async function acceptPendingIncomingCall() {
     }
 
     const rawStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
-    const localStream = createGainProcessedStream(rawStream);
+    const localStream = await createGainProcessedStream(rawStream);
     const peer = await createCallPeer(
       pendingCall.fromUserId,
       callerConversation?.id || pendingCall.conversationId,
@@ -1210,7 +1224,7 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
     if (!track) return;
 
     if (track.kind === "audio") {
-      const audioStream = new MediaStream([track]);
+      const audioStream = resolveRemoteTrackStream(event, track);
       remoteAudio.srcObject = audioStream;
       remoteAudio.muted = false;
       remoteAudio.volume = state.call.speakerVolume / 100;
@@ -1232,32 +1246,19 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
     }
 
     if (track.kind === "video") {
-      if (remoteVideo) {
-        const videoStream = new MediaStream([track]);
-        remoteVideo.srcObject = videoStream;
-        remoteVideo.muted = true;
-        remoteVideo.classList.remove("hidden");
-        remoteVideo.play().catch(() => { });
-        if (activeCallPeerAvatar) activeCallPeerAvatar.classList.add("hidden");
-
-        const hideRemoteVideo = () => {
-          remoteVideo.srcObject = null;
-          remoteVideo.classList.add("hidden");
-          if (activeCallPeerAvatar) activeCallPeerAvatar.classList.remove("hidden");
-        };
-
-        track.onended = hideRemoteVideo;
-        track.onmute = hideRemoteVideo;
-        track.onunmute = () => {
-          if (remoteVideo && track.readyState === "live") {
-            const vs = new MediaStream([track]);
-            remoteVideo.srcObject = vs;
-            remoteVideo.classList.remove("hidden");
-            remoteVideo.play().catch(() => { });
-            if (activeCallPeerAvatar) activeCallPeerAvatar.classList.add("hidden");
-          }
-        };
-      }
+      const videoStream = resolveRemoteTrackStream(event, track);
+      showRemoteVideoTrack(track, videoStream);
+      const syncTrackState = () => {
+        if (state.call.peer !== peer) {
+          return;
+        }
+        syncRemoteVideoTrack(peer);
+      };
+      track.onended = syncTrackState;
+      track.onmute = () => {
+        setTimeout(syncTrackState, 150);
+      };
+      track.onunmute = syncTrackState;
     }
   };
 
@@ -1270,10 +1271,21 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
     }
     const videoReceivers = peer.getReceivers().filter(r => r.track && r.track.kind === "video");
     const hasLiveVideo = videoReceivers.some(r => r.track.readyState === "live" && !r.track.muted);
-    if (!hasLiveVideo && remoteVideo && !remoteVideo.classList.contains("hidden")) {
-      remoteVideo.srcObject = null;
-      remoteVideo.classList.add("hidden");
-      if (activeCallPeerAvatar) activeCallPeerAvatar.classList.remove("hidden");
+    if (hasLiveVideo) {
+      state.call.remoteVideoMissingSince = 0;
+      syncRemoteVideoTrack(peer);
+      return;
+    }
+    if (!remoteVideo || remoteVideo.classList.contains("hidden")) {
+      state.call.remoteVideoMissingSince = 0;
+      return;
+    }
+    if (!state.call.remoteVideoMissingSince) {
+      state.call.remoteVideoMissingSince = Date.now();
+      return;
+    }
+    if (Date.now() - state.call.remoteVideoMissingSince >= 3000) {
+      hideRemoteVideoTrack();
     }
   }, 1000);
 
@@ -1362,7 +1374,7 @@ async function startOutgoingCall() {
 
   try {
     const rawStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
-    const localStream = createGainProcessedStream(rawStream);
+    const localStream = await createGainProcessedStream(rawStream);
     const peer = await createCallPeer(
       targetUserId,
       state.activeConversationId,
@@ -1431,7 +1443,7 @@ async function restoreCallAfterReloadIfNeeded() {
     }
 
     const rawStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
-    const localStream = createGainProcessedStream(rawStream);
+    const localStream = await createGainProcessedStream(rawStream);
     const peer = await createCallPeer(
       recovery.targetUserId,
       conversation.id,
@@ -2417,9 +2429,6 @@ function loadUiSettings() {
   try {
     const raw = localStorage.getItem(UI_SETTINGS_KEY);
     if (!raw) {
-      if (isDesktopLayout()) {
-        state.ui.theme = "dark";
-      }
       return;
     }
 
@@ -2512,18 +2521,117 @@ function getAudioConstraints() {
   return id ? { audio: { deviceId: { exact: id } } } : { audio: true };
 }
 
-function createGainProcessedStream(rawStream) {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const source = ctx.createMediaStreamSource(rawStream);
-  const gain = ctx.createGain();
-  gain.gain.value = state.call.micVolume / 100;
-  source.connect(gain);
-  const dest = ctx.createMediaStreamDestination();
-  gain.connect(dest);
-  state.call.micAudioCtx = ctx;
-  state.call.micGainNode = gain;
-  state.call.micProcessedStream = dest.stream;
-  return dest.stream;
+async function createGainProcessedStream(rawStream) {
+  state.call.micSourceStream = rawStream || null;
+  state.call.micAudioCtx = null;
+  state.call.micGainNode = null;
+  state.call.micProcessedStream = null;
+
+  if (!rawStream) {
+    return null;
+  }
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) {
+    return rawStream;
+  }
+
+  try {
+    const ctx = new AudioContextCtor();
+    const source = ctx.createMediaStreamSource(rawStream);
+    const gain = ctx.createGain();
+    gain.gain.value = state.call.micVolume / 100;
+    source.connect(gain);
+    const dest = ctx.createMediaStreamDestination();
+    gain.connect(dest);
+
+    if (ctx.state !== "running") {
+      try {
+        await ctx.resume();
+      } catch {}
+    }
+
+    const processedTrack = dest.stream.getAudioTracks()[0];
+    if (!processedTrack || ctx.state !== "running") {
+      try { ctx.close(); } catch {}
+      return rawStream;
+    }
+
+    state.call.micAudioCtx = ctx;
+    state.call.micGainNode = gain;
+    state.call.micProcessedStream = dest.stream;
+    return dest.stream;
+  } catch {
+    return rawStream;
+  }
+}
+
+function resolveRemoteTrackStream(event, track) {
+  const streams = Array.isArray(event?.streams) ? event.streams : [];
+  const matchedStream = streams.find((stream) =>
+    stream?.getTracks?.().some((streamTrack) => streamTrack.id === track.id)
+  );
+  return matchedStream || streams[0] || new MediaStream([track]);
+}
+
+function showRemoteVideoTrack(track, mediaStream = null) {
+  if (
+    !remoteVideo ||
+    !track ||
+    track.kind !== "video" ||
+    track.readyState === "ended" ||
+    track.muted
+  ) {
+    return;
+  }
+
+  state.call.remoteVideoTrack = track;
+  state.call.remoteVideoMissingSince = 0;
+  remoteVideo.srcObject = mediaStream || new MediaStream([track]);
+  remoteVideo.muted = true;
+  remoteVideo.classList.remove("hidden");
+  remoteVideo.play().catch(() => { });
+  if (activeCallPeerAvatar) activeCallPeerAvatar.classList.add("hidden");
+}
+
+function hideRemoteVideoTrack(track) {
+  if (!remoteVideo) {
+    return;
+  }
+
+  const currentTrack = state.call.remoteVideoTrack;
+  if (track && currentTrack && currentTrack !== track) {
+    return;
+  }
+
+  state.call.remoteVideoTrack = null;
+  state.call.remoteVideoMissingSince = 0;
+  remoteVideo.srcObject = null;
+  remoteVideo.classList.add("hidden");
+  if (activeCallPeerAvatar) activeCallPeerAvatar.classList.remove("hidden");
+}
+
+function getLiveRemoteVideoTrack(peer) {
+  if (!peer) {
+    return null;
+  }
+  const receiver = peer.getReceivers().find(
+    (item) =>
+      item.track &&
+      item.track.kind === "video" &&
+      item.track.readyState === "live" &&
+      !item.track.muted
+  );
+  return receiver?.track || null;
+}
+
+function syncRemoteVideoTrack(peer) {
+  const liveTrack = getLiveRemoteVideoTrack(peer);
+  if (liveTrack) {
+    showRemoteVideoTrack(liveTrack);
+    return;
+  }
+  hideRemoteVideoTrack();
 }
 
 // ========================
@@ -6101,7 +6209,7 @@ gsDeleteGroupBtn.addEventListener("click", async () => {
 // PUSH NOTIFICATIONS (Service Worker + Web Push)
 // ========================
 let swRegistration = null;
-const SERVICE_WORKER_URL = "/sw.js?v=2";
+const SERVICE_WORKER_URL = "/sw.js?v=4";
 
 async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return null;
@@ -6348,6 +6456,13 @@ async function handleNegotiationNeeded() {
 
 function stopVideoTrack() {
   const stream = state.call.localStream;
+  const currentVideoTrack = stream?.getVideoTracks()[0] || null;
+
+  if (currentVideoTrack) {
+    currentVideoTrack.onended = null;
+    currentVideoTrack.onmute = null;
+    currentVideoTrack.onunmute = null;
+  }
 
   // Remove video sender from peer FIRST (before stopping the track)
   // so renegotiation properly signals track removal to remote
@@ -6355,6 +6470,7 @@ function stopVideoTrack() {
     const senders = state.call.peer.getSenders();
     for (const sender of senders) {
       if (sender.track && sender.track.kind === "video") {
+        state.call.videoSender = sender;
         state.call.peer.removeTrack(sender);
       }
     }
@@ -6395,6 +6511,9 @@ async function addVideoTrack(newStream) {
   // Remove old video track if any
   const oldVideoTrack = state.call.localStream.getVideoTracks()[0];
   if (oldVideoTrack) {
+    oldVideoTrack.onended = null;
+    oldVideoTrack.onmute = null;
+    oldVideoTrack.onunmute = null;
     oldVideoTrack.stop();
     state.call.localStream.removeTrack(oldVideoTrack);
   }
@@ -6403,14 +6522,21 @@ async function addVideoTrack(newStream) {
 
   // Add to peer
   if (state.call.peer) {
-    // Check if we already have a video sender
     const senders = state.call.peer.getSenders();
-    const videoSender = senders.find(s => s.track && s.track.kind === "video");
+    const rememberedSender = state.call.videoSender;
+    const videoSender =
+      (rememberedSender && senders.includes(rememberedSender) ? rememberedSender : null) ||
+      senders.find(s => s.track && s.track.kind === "video");
 
     if (videoSender) {
-      videoSender.replaceTrack(newVideoTrack);
+      try {
+        await videoSender.replaceTrack(newVideoTrack);
+        state.call.videoSender = videoSender;
+      } catch {
+        state.call.videoSender = state.call.peer.addTrack(newVideoTrack, state.call.localStream);
+      }
     } else {
-      state.call.peer.addTrack(newVideoTrack, state.call.localStream);
+      state.call.videoSender = state.call.peer.addTrack(newVideoTrack, state.call.localStream);
     }
   }
 
@@ -6424,7 +6550,9 @@ async function addVideoTrack(newStream) {
   }
 
   newVideoTrack.onended = () => {
-    stopVideoTrack();
+    if (state.call.localStream?.getVideoTracks()[0] === newVideoTrack) {
+      stopVideoTrack();
+    }
   };
 
   handleNegotiationNeeded();
