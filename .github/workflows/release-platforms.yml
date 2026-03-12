@@ -549,6 +549,8 @@ jobs:
     name: Publish unified release
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      pages_enabled: ${{ steps.pages_check.outputs.enabled }}
     needs:
       - build_android
       - build_windows
@@ -571,13 +573,39 @@ jobs:
           path: release-assets/windows
 
       - name: Download signed iOS artifact
-        continue-on-error: true
+        if: needs.build_ios.outputs.signing_ready == 'true'
         uses: actions/download-artifact@v5
         with:
           name: wave-release-ios-signed
           path: release-assets/ios/signed
 
+      - name: Check GitHub Pages availability
+        id: pages_check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if gh api "repos/${GH_REPO}/pages" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### GitHub Pages"
+              echo
+              echo "GitHub Pages is enabled for this repository."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### GitHub Pages"
+              echo
+              echo "GitHub Pages is not enabled for this repository. The release will still be published, but the iPhone install page will be skipped."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Configure GitHub Pages
+        if: steps.pages_check.outputs.enabled == 'true'
         uses: actions/configure-pages@v5
 
       - name: Prepare release assets and install page
@@ -586,11 +614,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
           IOS_SIGNED: ${{ needs.build_ios.outputs.signing_ready }}
           ANDROID_SIGNED: ${{ needs.build_android.outputs.signing_ready }}
+          PAGES_ENABLED: ${{ steps.pages_check.outputs.enabled }}
         run: |
           set -euo pipefail
 
           owner="${GH_REPO%/*}"
           repo="${GH_REPO#*/}"
+          pages_enabled="${PAGES_ENABLED:-false}"
           pages_url="https://${owner}.github.io/${repo}/ios/latest/"
           release_base_url="https://github.com/${GH_REPO}/releases/download/${RELEASE_TAG}"
           ios_manifest_url="${pages_url}manifest.plist"
@@ -599,8 +629,11 @@ jobs:
           app_marketing_version="${app_version%%+*}"
           ota_enabled="false"
 
-          mkdir -p release-package pages/ios/latest
-          touch pages/.nojekyll
+          mkdir -p release-package
+          if [[ "${pages_enabled}" == "true" ]]; then
+            mkdir -p pages/ios/latest
+            touch pages/.nojekyll
+          fi
 
           cp release-assets/android/wave-android-release.apk release-package/
           cp release-assets/windows/wave-windows-portable-x64.zip release-package/
@@ -609,7 +642,7 @@ jobs:
           if [[ -f release-assets/ios/signed/wave-ios.ipa ]]; then
             cp release-assets/ios/signed/wave-ios.ipa release-package/
 
-            if [[ "${IOS_EXPORT_METHOD}" == "ad-hoc" || "${IOS_EXPORT_METHOD}" == "enterprise" ]]; then
+            if [[ "${pages_enabled}" == "true" && ( "${IOS_EXPORT_METHOD}" == "ad-hoc" || "${IOS_EXPORT_METHOD}" == "enterprise" ) ]]; then
               ota_enabled="true"
               cat > release-package/wave-ios-manifest.plist <<EOF
               <?xml version="1.0" encoding="UTF-8"?>
@@ -732,7 +765,7 @@ jobs:
               </body>
               </html>
           EOF
-            else
+            elif [[ "${pages_enabled}" == "true" ]]; then
               cat > pages/ios/latest/index.html <<EOF
               <!doctype html>
               <html lang="en">
@@ -747,7 +780,7 @@ jobs:
               </html>
           EOF
             fi
-          else
+          elif [[ "${pages_enabled}" == "true" ]]; then
             cat > pages/ios/latest/index.html <<EOF
             <!doctype html>
             <html lang="en">
@@ -778,6 +811,10 @@ jobs:
             if [[ "${ota_enabled}" == "true" ]]; then
               cat >> release-notes.md <<EOF
           - [Install on iPhone](${pages_url})
+          EOF
+            elif [[ "${pages_enabled}" != "true" ]]; then
+              cat >> release-notes.md <<'EOF'
+          - GitHub Pages is disabled for this repository, so the browser-based iPhone install page was not published.
           EOF
             else
               cat >> release-notes.md <<EOF
@@ -841,13 +878,14 @@ jobs:
             --latest
 
       - name: Upload Pages artifact
+        if: steps.pages_check.outputs.enabled == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: pages
 
   deploy_ios_install_page:
     name: Deploy iOS install page
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.publish_release.outputs.pages_enabled == 'true'
     runs-on: ubuntu-latest
     needs: publish_release
     environment:
