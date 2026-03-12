@@ -3779,6 +3779,9 @@ function renderMessages() {
   messagesEl.innerHTML = "";
 
   const hasActiveConversation = Boolean(state.activeConversationId);
+  if (chatMain) {
+    chatMain.classList.toggle("no-active-conversation", !hasActiveConversation);
+  }
   if (noConversationState) {
     noConversationState.classList.toggle("hidden", hasActiveConversation);
     noConversationState.setAttribute("aria-hidden", hasActiveConversation ? "true" : "false");

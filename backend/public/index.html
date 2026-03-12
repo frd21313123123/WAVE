@@ -18,6 +18,14 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <script>
+    (() => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("desktopShell") === "1") {
+        document.documentElement.classList.add("desktop-shell-mode");
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="./styles.css?v=20260311-2" />
 </head>
 
@@ -286,7 +294,7 @@
       <div id="sidebarResizeHandle" class="sidebar-resize-handle" role="separator" aria-orientation="vertical"
         aria-label="Изменить ширину списка чатов" tabindex="0"></div>
 
-      <main class="chat-main">
+      <main class="chat-main no-active-conversation">
         <header class="chat-header">
           <button id="mobileBack" class="mobile-back">Назад</button>
           <div class="chat-header-main">

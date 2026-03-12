@@ -398,8 +398,27 @@ jobs:
 
       - name: Build iOS simulator app for PR validation
         if: steps.signing.outputs.ready != 'true' && github.event_name == 'pull_request'
-        run: flutter build ios --debug --simulator
         working-directory: ${{ env.IOS_PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(build ios --debug --simulator)
+          if [[ -n "${WAVE_BASE_URL:-}" ]]; then
+            args+=(--dart-define=WAVE_BASE_URL="${WAVE_BASE_URL}")
+          fi
+          flutter "${args[@]}"
+
+      - name: Build iOS device app bundle
+        if: steps.signing.outputs.ready == 'true' || github.event_name != 'pull_request'
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(build ios --release --no-codesign)
+          if [[ -n "${WAVE_BASE_URL:-}" ]]; then
+            args+=(--dart-define=WAVE_BASE_URL="${WAVE_BASE_URL}")
+          fi
+          flutter "${args[@]}"
 
       - name: Install signing assets
         if: steps.signing.outputs.ready == 'true'
@@ -499,8 +518,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          flutter build ios --release --no-codesign
-
           xcodebuild \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -526,14 +543,40 @@ jobs:
         working-directory: ${{ env.IOS_PROJECT_DIR }}
         run: |
           set -euo pipefail
+          rm -rf "$RUNNER_TEMP/release-ios"
           mkdir -p "$RUNNER_TEMP/release-ios"
           cp build/ios/ipa/*.ipa "$RUNNER_TEMP/release-ios/wave-ios.ipa"
 
-      - name: Upload signed iOS artifact
-        if: steps.signing.outputs.ready == 'true'
+      - name: Prepare unsigned iOS asset
+        if: steps.signing.outputs.ready != 'true' && github.event_name != 'pull_request'
+        shell: bash
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+
+          app_path="build/ios/iphoneos/Runner.app"
+          payload_root="$RUNNER_TEMP/ios-payload"
+          release_dir="$RUNNER_TEMP/release-ios"
+
+          if [[ ! -d "$app_path" ]]; then
+            echo "Unsigned Runner.app was not produced." >&2
+            exit 1
+          fi
+
+          rm -rf "$payload_root" "$release_dir"
+          mkdir -p "$payload_root/Payload" "$release_dir"
+          cp -R "$app_path" "$payload_root/Payload/"
+
+          (
+            cd "$payload_root"
+            ditto -c -k --sequesterRsrc --keepParent Payload "$release_dir/wave-ios.ipa"
+          )
+
+      - name: Upload iOS artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: wave-release-ios-signed
+          name: wave-release-ios
           path: ${{ runner.temp }}/release-ios/wave-ios.ipa
           if-no-files-found: error
           retention-days: 14
@@ -572,12 +615,11 @@ jobs:
           name: wave-release-windows
           path: release-assets/windows
 
-      - name: Download signed iOS artifact
-        if: needs.build_ios.outputs.signing_ready == 'true'
+      - name: Download iOS artifact
         uses: actions/download-artifact@v5
         with:
-          name: wave-release-ios-signed
-          path: release-assets/ios/signed
+          name: wave-release-ios
+          path: release-assets/ios
 
       - name: Check GitHub Pages availability
         id: pages_check
@@ -639,10 +681,10 @@ jobs:
           cp release-assets/windows/wave-windows-portable-x64.zip release-package/
           cp release-assets/windows/wave-windows-x64-setup.exe release-package/
 
-          if [[ -f release-assets/ios/signed/wave-ios.ipa ]]; then
-            cp release-assets/ios/signed/wave-ios.ipa release-package/
+          if [[ -f release-assets/ios/wave-ios.ipa ]]; then
+            cp release-assets/ios/wave-ios.ipa release-package/
 
-            if [[ "${pages_enabled}" == "true" && ( "${IOS_EXPORT_METHOD}" == "ad-hoc" || "${IOS_EXPORT_METHOD}" == "enterprise" ) ]]; then
+            if [[ "${pages_enabled}" == "true" && "${IOS_SIGNED}" == "true" && ( "${IOS_EXPORT_METHOD}" == "ad-hoc" || "${IOS_EXPORT_METHOD}" == "enterprise" ) ]]; then
               ota_enabled="true"
               cat > release-package/wave-ios-manifest.plist <<EOF
               <?xml version="1.0" encoding="UTF-8"?>
@@ -765,7 +807,7 @@ jobs:
               </body>
               </html>
           EOF
-            elif [[ "${pages_enabled}" == "true" ]]; then
+            elif [[ "${pages_enabled}" == "true" && "${IOS_SIGNED}" == "true" ]]; then
               cat > pages/ios/latest/index.html <<EOF
               <!doctype html>
               <html lang="en">
@@ -776,6 +818,21 @@ jobs:
               </head>
               <body>
                 <p>The signed IPA exists, but OTA installation is disabled because the export method is <strong>${IOS_EXPORT_METHOD}</strong>. Use <strong>ad-hoc</strong> or <strong>enterprise</strong> for browser-based iPhone installation.</p>
+              </body>
+              </html>
+          EOF
+            elif [[ "${pages_enabled}" == "true" ]]; then
+              cat > pages/ios/latest/index.html <<EOF
+              <!doctype html>
+              <html lang="en">
+              <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>Wave iPhone Install</title>
+              </head>
+              <body>
+                <p>This release includes an unsigned IPA for AltStore, Sideloadly, or another sideload tool.</p>
+                <p><a href="${release_base_url}/wave-ios.ipa">Download the IPA</a> and install it with a sideload tool on your iPhone. Browser-based OTA installation requires Apple distribution signing and is not available for this build.</p>
               </body>
               </html>
           EOF
@@ -790,8 +847,8 @@ jobs:
               <title>Wave iPhone Install</title>
             </head>
             <body>
-              <p>No signed iOS build was published in this run.</p>
-              <p>Configure <code>APPLE_CERTIFICATE_BASE64</code>, <code>APPLE_CERTIFICATE_PASSWORD</code>, <code>APPLE_PROVISIONING_PROFILE_BASE64</code>, and <code>APPLE_TEAM_ID</code> to generate a device-installable IPA.</p>
+              <p>No iOS build was published in this run.</p>
+              <p>The workflow now falls back to an unsigned IPA when Apple signing secrets are absent, so this usually means the iOS build itself failed and needs investigation.</p>
             </body>
             </html>
           EOF
@@ -812,6 +869,15 @@ jobs:
               cat >> release-notes.md <<EOF
           - [Install on iPhone](${pages_url})
           EOF
+            elif [[ "${IOS_SIGNED}" != "true" ]]; then
+              cat >> release-notes.md <<'EOF'
+          - This IPA is unsigned and intended for AltStore, Sideloadly, or another sideload tool. Browser-based OTA install is unavailable without Apple distribution signing.
+          EOF
+              if [[ "${pages_enabled}" == "true" ]]; then
+                cat >> release-notes.md <<EOF
+          - iPhone sideload instructions: ${pages_url}
+          EOF
+              fi
             elif [[ "${pages_enabled}" != "true" ]]; then
               cat >> release-notes.md <<'EOF'
           - GitHub Pages is disabled for this repository, so the browser-based iPhone install page was not published.
@@ -833,6 +899,7 @@ jobs:
           - This workflow keeps a single moving release at tag \`${RELEASE_TAG}\`. Older tags and releases are removed before every publish.
           - Android signing status: $( [[ "${ANDROID_SIGNED}" == "true" ]] && echo "custom release keystore" || echo "debug keystore fallback" ).
           - A Flutter Windows app needs its companion files next to the executable, so the release publishes both a portable bundle and a one-click Windows installer \`.exe\`.
+          - When Apple signing secrets are unavailable, the workflow still publishes an unsigned \`.ipa\` for AltStore or Sideloadly instead of dropping the iPhone artifact from the release.
           - Per Apple distribution rules, direct browser install on iPhone requires an \`ad-hoc\` or \`enterprise\` signed IPA. For \`ad-hoc\`, the target device must be registered in the provisioning profile.
           EOF
 

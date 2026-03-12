@@ -1039,6 +1039,10 @@ textarea:focus {
   background: var(--surface);
 }
 
+.desktop-shell-mode .chat-main.no-active-conversation .chat-header {
+  display: none;
+}
+
 .chat-header h3 {
   margin: 3px 0 0;
   font-size: 0.98rem;

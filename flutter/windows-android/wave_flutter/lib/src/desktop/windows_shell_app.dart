@@ -76,10 +76,6 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
   late final TextEditingController _urlController;
 
   StreamSubscription<LoadingState>? _loadingSubscription;
-  StreamSubscription<HistoryChanged>? _historySubscription;
-  StreamSubscription<String>? _titleSubscription;
-  StreamSubscription<String>? _urlSubscription;
-  StreamSubscription<bool>? _fullscreenSubscription;
   StreamSubscription<WebErrorStatus>? _loadErrorSubscription;
 
   late DesktopShellSettings _settings;
@@ -88,11 +84,6 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
   bool _controllerInitializeCalled = false;
   bool _initializing = true;
   bool _loading = true;
-  bool _showsFullscreenContent = false;
-  bool _canGoBack = false;
-  bool _canGoForward = false;
-  String _pageTitle = 'Wave Messenger';
-  String _currentUrl = '';
   String? _fatalError;
   WebErrorStatus? _loadError;
 
@@ -101,7 +92,6 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
     super.initState();
     _controller = WebviewController();
     _settings = widget.initialSettings;
-    _currentUrl = widget.initialSettings.baseUrl;
     _urlController =
         TextEditingController(text: widget.initialSettings.baseUrl);
     unawaited(_initializeShell());
@@ -111,10 +101,6 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
   void dispose() {
     _urlController.dispose();
     unawaited(_loadingSubscription?.cancel() ?? Future<void>.value());
-    unawaited(_historySubscription?.cancel() ?? Future<void>.value());
-    unawaited(_titleSubscription?.cancel() ?? Future<void>.value());
-    unawaited(_urlSubscription?.cancel() ?? Future<void>.value());
-    unawaited(_fullscreenSubscription?.cancel() ?? Future<void>.value());
     unawaited(_loadErrorSubscription?.cancel() ?? Future<void>.value());
     unawaited(_disposeController());
     super.dispose();
@@ -127,11 +113,6 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
       _controllerReady = false;
       _initializing = true;
       _loading = true;
-      _showsFullscreenContent = false;
-      _canGoBack = false;
-      _canGoForward = false;
-      _pageTitle = 'Wave Messenger';
-      _currentUrl = _settings.baseUrl;
     });
 
     try {
@@ -149,7 +130,7 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
       await _controller.setPopupWindowPolicy(
         WebviewPopupWindowPolicy.sameWindow,
       );
-      await _controller.loadUrl(_settings.baseUrl);
+      await _controller.loadUrl(buildDesktopShellUrl(_settings.baseUrl));
 
       if (!mounted) {
         return;
@@ -183,10 +164,6 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
 
   void _bindControllerStreams() {
     _loadingSubscription?.cancel();
-    _historySubscription?.cancel();
-    _titleSubscription?.cancel();
-    _urlSubscription?.cancel();
-    _fullscreenSubscription?.cancel();
     _loadErrorSubscription?.cancel();
 
     _loadingSubscription = _controller.loadingState.listen((state) {
@@ -201,35 +178,6 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
       });
     });
 
-    _historySubscription = _controller.historyChanged.listen((history) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _canGoBack = history.canGoBack;
-        _canGoForward = history.canGoForward;
-      });
-    });
-
-    _titleSubscription = _controller.title.listen((title) {
-      if (!mounted || title.trim().isEmpty) {
-        return;
-      }
-      setState(() {
-        _pageTitle = title.trim();
-      });
-    });
-
-    _urlSubscription = _controller.url.listen((url) {
-      if (!mounted || url.trim().isEmpty) {
-        return;
-      }
-      setState(() {
-        _currentUrl = url.trim();
-        _fatalError = null;
-      });
-    });
-
     _loadErrorSubscription = _controller.onLoadError.listen((status) {
       if (!mounted) {
         return;
@@ -238,30 +186,6 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
         _loadError = status;
       });
     });
-
-    _fullscreenSubscription = _controller.containsFullScreenElementChanged
-        .listen((containsFullScreenElement) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _showsFullscreenContent = containsFullScreenElement;
-      });
-    });
-  }
-
-  Future<void> _goBack() async {
-    if (!_controllerReady || !_canGoBack) {
-      return;
-    }
-    await _controller.goBack();
-  }
-
-  Future<void> _goForward() async {
-    if (!_controllerReady || !_canGoForward) {
-      return;
-    }
-    await _controller.goForward();
   }
 
   Future<void> _reload() async {
@@ -371,13 +295,12 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
 
     setState(() {
       _settings = nextSettings;
-      _currentUrl = nextBaseUrl;
       _fatalError = null;
       _loadError = null;
     });
 
     if (_controllerReady) {
-      await _controller.loadUrl(nextBaseUrl);
+      await _controller.loadUrl(buildDesktopShellUrl(nextBaseUrl));
       return;
     }
 
@@ -458,60 +381,6 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: _showsFullscreenContent
-          ? null
-          : AppBar(
-              titleSpacing: 14,
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _pageTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _currentUrl,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ),
-              actions: [
-                IconButton(
-                  onPressed: _canGoBack ? _goBack : null,
-                  tooltip: 'Back',
-                  icon: const Icon(Icons.arrow_back_rounded),
-                ),
-                IconButton(
-                  onPressed: _canGoForward ? _goForward : null,
-                  tooltip: 'Forward',
-                  icon: const Icon(Icons.arrow_forward_rounded),
-                ),
-                IconButton(
-                  onPressed: _reload,
-                  tooltip: 'Reload',
-                  icon: const Icon(Icons.refresh_rounded),
-                ),
-                IconButton(
-                  onPressed: _controllerReady
-                      ? () => _controller.loadUrl(_settings.baseUrl)
-                      : null,
-                  tooltip: 'Open configured URL',
-                  icon: const Icon(Icons.home_rounded),
-                ),
-                IconButton(
-                  onPressed: _openSettingsDialog,
-                  tooltip: 'Settings',
-                  icon: const Icon(Icons.tune_rounded),
-                ),
-                const SizedBox(width: 8),
-              ],
-            ),
       body: Column(
         children: [
           if (_loading) const LinearProgressIndicator(minHeight: 2),
@@ -531,35 +400,6 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
               child: _buildBody(context),
             ),
           ),
-          if (!_showsFullscreenContent)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: scheme.outlineVariant),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.desktop_windows_rounded, size: 18),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Windows shell renders the same Wave web client as the browser.',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                  if ((widget.webViewVersion ?? '').isNotEmpty)
-                    Text(
-                      widget.webViewVersion!,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                ],
-              ),
-            ),
         ],
       ),
     );
