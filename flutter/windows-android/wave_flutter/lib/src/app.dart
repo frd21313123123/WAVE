@@ -17,6 +17,9 @@ import 'services/settings_store.dart';
 import 'settings/app_settings.dart';
 import 'settings/settings_controller.dart';
 import 'theme/app_theme.dart';
+import 'update/app_update_service.dart';
+import 'update/update_check_gate.dart';
+import 'update/update_controller.dart';
 import 'widgets/wave_brand_logo.dart';
 
 class AppBootstrap {
@@ -28,6 +31,7 @@ class AppBootstrap {
     required this.sessionController,
     required this.settingsController,
     required this.callController,
+    required this.updateController,
   });
 
   final AppConfig appConfig;
@@ -37,6 +41,7 @@ class AppBootstrap {
   final SessionController sessionController;
   final SettingsController settingsController;
   final CallController callController;
+  final UpdateController updateController;
 
   static Future<AppBootstrap> initialize({AppConfig? appConfig}) async {
     final resolvedAppConfig = appConfig ?? await AppConfig.load();
@@ -78,6 +83,13 @@ class AppBootstrap {
       realtimeService: realtimeService,
       mediaEngineFactory: () => FlutterWebRtcCallEngine(),
     );
+    final updateController = UpdateController(
+      AppUpdateService(
+        githubOwner: 'frd21313123123',
+        githubRepository: 'WAVE',
+      ),
+    );
+    await updateController.loadInstalledVersion();
 
     return AppBootstrap(
       appConfig: resolvedAppConfig,
@@ -87,6 +99,7 @@ class AppBootstrap {
       sessionController: sessionController,
       settingsController: settingsController,
       callController: callController,
+      updateController: updateController,
     );
   }
 }
@@ -130,6 +143,9 @@ class WaveApp extends StatelessWidget {
             return controller;
           },
         ),
+        ChangeNotifierProvider<UpdateController>.value(
+          value: bootstrap.updateController,
+        ),
       ],
       child: Consumer2<SessionController, SettingsController>(
         builder: (context, session, settings, _) {
@@ -148,6 +164,11 @@ class WaveApp extends StatelessWidget {
               theme: AppTheme.light(),
               darkTheme: AppTheme.dark(),
               themeMode: themeMode,
+              builder: (context, child) {
+                return UpdateCheckGate(
+                  child: child ?? const SizedBox.shrink(),
+                );
+              },
               home: switch (session.status) {
                 SessionStatus.authenticated => const HomeScreen(),
                 SessionStatus.awaitingTwoFactor ||

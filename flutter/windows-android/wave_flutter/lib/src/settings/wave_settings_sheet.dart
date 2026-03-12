@@ -21,6 +21,9 @@ Future<T?> showWaveSettingsSheet<T>(
   SettingsActionCallback? onLogoutRequested,
   SettingsActionCallback? onRunMicrophoneTest,
   SettingsActionCallback? onPreviewCallTone,
+  SettingsActionCallback? onCheckForUpdates,
+  String? appVersionText,
+  String? updateStatusText,
   bool useRootNavigator = false,
 }) {
   return showModalBottomSheet<T>(
@@ -43,6 +46,9 @@ Future<T?> showWaveSettingsSheet<T>(
                 onLogoutRequested: onLogoutRequested,
                 onRunMicrophoneTest: onRunMicrophoneTest,
                 onPreviewCallTone: onPreviewCallTone,
+                onCheckForUpdates: onCheckForUpdates,
+                appVersionText: appVersionText,
+                updateStatusText: updateStatusText,
               ),
             ),
           ),
@@ -60,6 +66,9 @@ class WaveSettingsSheet extends StatefulWidget {
     this.onLogoutRequested,
     this.onRunMicrophoneTest,
     this.onPreviewCallTone,
+    this.onCheckForUpdates,
+    this.appVersionText,
+    this.updateStatusText,
   });
 
   final SettingsController controller;
@@ -67,6 +76,9 @@ class WaveSettingsSheet extends StatefulWidget {
   final SettingsActionCallback? onLogoutRequested;
   final SettingsActionCallback? onRunMicrophoneTest;
   final SettingsActionCallback? onPreviewCallTone;
+  final SettingsActionCallback? onCheckForUpdates;
+  final String? appVersionText;
+  final String? updateStatusText;
 
   @override
   State<WaveSettingsSheet> createState() => _WaveSettingsSheetState();
@@ -199,6 +211,18 @@ class _WaveSettingsSheetState extends State<WaveSettingsSheet>
 
   Future<void> _handlePreviewCallTone() async {
     final action = widget.onPreviewCallTone;
+    if (action == null) {
+      return;
+    }
+    try {
+      await action();
+    } catch (error) {
+      _showError(error.toString());
+    }
+  }
+
+  Future<void> _handleCheckForUpdates() async {
+    final action = widget.onCheckForUpdates;
     if (action == null) {
       return;
     }
@@ -945,6 +969,38 @@ class _WaveSettingsSheetState extends State<WaveSettingsSheet>
           ),
           const SizedBox(height: 16),
         ],
+        SettingsSectionCard(
+          title: 'App updates',
+          subtitle: 'Checks the latest GitHub Release for this device.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (widget.appVersionText != null)
+                Text(
+                  'Installed version: ${widget.appVersionText}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              if (widget.updateStatusText != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  widget.updateStatusText!,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              FilledButton.tonalIcon(
+                onPressed: widget.onCheckForUpdates == null
+                    ? null
+                    : _handleCheckForUpdates,
+                icon: const Icon(Icons.system_update_alt_rounded),
+                label: const Text('Check for updates'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
         SettingsSectionCard(
           title: 'Account controls',
           subtitle: 'Session exit and destructive account actions.',

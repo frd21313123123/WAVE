@@ -19,6 +19,8 @@ import '../services/api_client.dart';
 import '../settings/avatar_upload.dart';
 import '../settings/settings_controller.dart';
 import '../settings/wave_settings_sheet.dart';
+import '../update/update_controller.dart';
+import '../update/update_prompt.dart';
 import '../widgets/wave_avatar.dart';
 import '../widgets/wave_brand_logo.dart';
 
@@ -425,6 +427,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openSettingsSheet() async {
     final session = context.read<SessionController>();
     final settings = context.read<SettingsController>();
+    final updateController = context.read<UpdateController>();
     await showWaveSettingsSheet<void>(
       context,
       controller: settings,
@@ -432,6 +435,9 @@ class _HomeScreenState extends State<HomeScreen> {
       onPickAvatar: _pickAvatarUploadData,
       onRunMicrophoneTest: _runMicrophoneTest,
       onPreviewCallTone: _previewCallTone,
+      onCheckForUpdates: _checkForUpdatesFromSettings,
+      appVersionText: updateController.installedVersion,
+      updateStatusText: updateController.updateStatusLabel,
       onLogoutRequested: () async {
         final navigator = Navigator.of(context, rootNavigator: true);
         navigator.pop();
@@ -487,6 +493,46 @@ class _HomeScreenState extends State<HomeScreen> {
       UrlSource('${appConfig.baseUrl}/sound-call.mp3'),
       volume: _callToneVolume,
     );
+  }
+
+  Future<void> _checkForUpdatesFromSettings() async {
+    final updateController = context.read<UpdateController>();
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await updateController.checkForUpdates();
+    if (!mounted) {
+      return;
+    }
+
+    if (result.hasError) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(result.errorMessage!)),
+      );
+      return;
+    }
+
+    final update = result.update;
+    if (update == null) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'You already have the latest version (${result.currentVersion ?? updateController.installedVersion ?? 'unknown'}).',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final shouldOpen = await showAppUpdateDialog(context, update: update);
+    if (shouldOpen != true || !mounted) {
+      return;
+    }
+
+    final opened = await updateController.openUpdate(update);
+    if (!opened && mounted) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not open the update link.')),
+      );
+    }
   }
 
   Future<void> _playIncomingMessageCue() async {

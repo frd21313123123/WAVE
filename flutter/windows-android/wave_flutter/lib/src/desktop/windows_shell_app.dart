@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:webview_windows/webview_windows.dart';
 
 import '../theme/app_theme.dart';
+import '../update/app_update_service.dart';
+import '../update/update_prompt.dart';
 import '../widgets/wave_brand_logo.dart';
 import 'desktop_shell_settings_store.dart';
 
@@ -75,6 +77,7 @@ class WaveWindowsShellScreen extends StatefulWidget {
 class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
   late final WebviewController _controller;
   late final TextEditingController _urlController;
+  late final AppUpdateService _updateService;
 
   StreamSubscription<LoadingState>? _loadingSubscription;
   StreamSubscription<WebErrorStatus>? _loadErrorSubscription;
@@ -85,17 +88,26 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
   bool _controllerInitializeCalled = false;
   bool _initializing = true;
   bool _loading = true;
+  bool _checkingForUpdates = false;
   String? _fatalError;
   WebErrorStatus? _loadError;
+  String? _installedVersion;
+  AppUpdateInfo? _availableUpdate;
+  String? _updateError;
 
   @override
   void initState() {
     super.initState();
     _controller = WebviewController();
+    _updateService = AppUpdateService(
+      githubOwner: 'frd21313123123',
+      githubRepository: 'WAVE',
+    );
     _settings = widget.initialSettings;
     _urlController =
         TextEditingController(text: widget.initialSettings.baseUrl);
     unawaited(_initializeShell());
+    unawaited(_primeUpdateState());
   }
 
   @override
@@ -104,7 +116,21 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
     unawaited(_loadingSubscription?.cancel() ?? Future<void>.value());
     unawaited(_loadErrorSubscription?.cancel() ?? Future<void>.value());
     unawaited(_disposeController());
+    _updateService.dispose();
     super.dispose();
+  }
+
+  Future<void> _primeUpdateState() async {
+    final installedVersion = await _updateService.getInstalledVersion();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _installedVersion = installedVersion;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_checkForUpdates(showPrompt: true));
+    });
   }
 
   Future<void> _initializeShell() async {
@@ -250,6 +276,20 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
                   'Укажи тот же URL, чтобы функционал совпадал один в один.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
+                const SizedBox(height: 16),
+                Text(
+                  'Версия приложения: ${_installedVersion ?? 'unknown'}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _checkingForUpdates
+                      ? 'Проверка обновлений...'
+                      : _availableUpdate != null
+                          ? 'Доступно обновление ${_availableUpdate!.latestVersion}'
+                          : (_updateError ?? 'Обновлений не найдено.'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),
@@ -263,6 +303,14 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
                 _WindowsShellDialogAction.clearSession,
               ),
               child: const Text('Очистить session'),
+            ),
+            TextButton(
+              onPressed: _checkingForUpdates
+                  ? null
+                  : () => Navigator.of(context).pop(
+                        _WindowsShellDialogAction.checkForUpdates,
+                      ),
+              child: const Text('Проверить обновления'),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(
@@ -278,10 +326,81 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
     switch (action) {
       case _WindowsShellDialogAction.clearSession:
         await _clearSession();
+      case _WindowsShellDialogAction.checkForUpdates:
+        await _checkForUpdates(showPrompt: true);
       case _WindowsShellDialogAction.saveAndOpen:
         await _saveAndOpenRequestedUrl();
       case null:
         break;
+    }
+  }
+
+  Future<void> _checkForUpdates({required bool showPrompt}) async {
+    if (_checkingForUpdates) {
+      return;
+    }
+
+    setState(() {
+      _checkingForUpdates = true;
+      _updateError = null;
+    });
+
+    try {
+      final result = await _updateService.checkForUpdates();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _installedVersion = result.currentVersion ?? _installedVersion;
+        _availableUpdate = result.update;
+        _updateError = result.errorMessage;
+      });
+
+      if (result.hasError) {
+        if (showPrompt) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result.errorMessage!)),
+          );
+        }
+        return;
+      }
+
+      final update = result.update;
+      if (update == null) {
+        if (showPrompt) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Установлена актуальная версия (${result.currentVersion ?? _installedVersion ?? 'unknown'}).',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (!showPrompt) {
+        return;
+      }
+
+      final shouldOpen = await showAppUpdateDialog(context, update: update);
+      if (shouldOpen != true || !mounted) {
+        return;
+      }
+
+      final opened = await _updateService.openUpdate(update);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open the update link.')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _checkingForUpdates = false;
+        });
+      }
     }
   }
 
@@ -585,4 +704,5 @@ class _WindowsShellException implements Exception {
 enum _WindowsShellDialogAction {
   saveAndOpen,
   clearSession,
+  checkForUpdates,
 }

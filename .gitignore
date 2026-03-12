@@ -75,5 +75,10 @@ coverage/
 .tools/
 .gradle-home/
 wave_flutter/
+!flutter/windows-android/wave_flutter/
+!flutter/windows-android/wave_flutter/lib/
+!flutter/windows-android/wave_flutter/lib/src/
+!flutter/windows-android/wave_flutter/lib/src/update/
+!flutter/windows-android/wave_flutter/lib/src/update/*.dart
 runtime/artifacts/apk/
 runtime/logs/
