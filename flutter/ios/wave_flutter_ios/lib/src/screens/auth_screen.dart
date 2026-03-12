@@ -111,12 +111,18 @@ class _AuthScreenState extends State<AuthScreen> {
             ButtonSegment<_AuthMode>(
               value: _AuthMode.login,
               label: Text('Вход'),
-              icon: Icon(Icons.login_rounded),
+              icon: WaveBrandLogo(
+                size: 18,
+                excludeFromSemantics: true,
+              ),
             ),
             ButtonSegment<_AuthMode>(
               value: _AuthMode.register,
               label: Text('Регистрация'),
-              icon: Icon(Icons.person_add_alt_1_rounded),
+              icon: WaveBrandLogo(
+                size: 18,
+                excludeFromSemantics: true,
+              ),
             ),
           ],
           selected: {_mode},
@@ -157,7 +163,10 @@ class _AuthScreenState extends State<AuthScreen> {
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.login_rounded),
+                : const WaveBrandLogo(
+                    size: 18,
+                    excludeFromSemantics: true,
+                  ),
             label: const Text('Войти'),
           ),
         ] else ...[
@@ -195,7 +204,10 @@ class _AuthScreenState extends State<AuthScreen> {
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.rocket_launch_rounded),
+                : const WaveBrandLogo(
+                    size: 18,
+                    excludeFromSemantics: true,
+                  ),
             label: const Text('Создать аккаунт'),
           ),
         ],
@@ -216,10 +228,9 @@ class _AuthScreenState extends State<AuthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Icon(
-          Icons.shield_moon_outlined,
-          size: 48,
-          color: Theme.of(context).colorScheme.primary,
+        const WaveBrandLogo(
+          size: 72,
+          semanticLabel: 'Wave logo',
         ),
         const SizedBox(height: 14),
         Text(
@@ -253,7 +264,10 @@ class _AuthScreenState extends State<AuthScreen> {
                   dimension: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.verified_user_rounded),
+              : const WaveBrandLogo(
+                  size: 18,
+                  excludeFromSemantics: true,
+                ),
           label: const Text('Подтвердить'),
         ),
         const SizedBox(height: 10),
