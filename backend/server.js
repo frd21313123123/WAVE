@@ -4,7 +4,14 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 
-require("dotenv").config({ path: path.resolve(__dirname, "..", ".env") });
+const envPathCandidates = [
+  path.resolve(__dirname, "..", ".env"),
+  path.resolve(__dirname, ".env"),
+];
+const resolvedEnvPath =
+  envPathCandidates.find((candidate) => fs.existsSync(candidate)) || envPathCandidates[0];
+
+require("dotenv").config({ path: resolvedEnvPath });
 
 const bcrypt = require("bcryptjs");
 const compression = require("compression");
@@ -40,6 +47,80 @@ function readOptionalEnv(name, { minLength = 0 } = {}) {
     throw new Error(`Environment variable ${name} must be at least ${minLength} characters`);
   }
   return value;
+}
+
+function splitCsvEnv(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeIceServerEntry(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const urlsSource = Array.isArray(entry.urls)
+    ? entry.urls
+    : typeof entry.urls === "string"
+      ? [entry.urls]
+      : [];
+  const urls = urlsSource
+    .map((url) => String(url || "").trim())
+    .filter(Boolean);
+
+  if (urls.length === 0) {
+    return null;
+  }
+
+  const normalized = { urls };
+  if (entry.username) {
+    normalized.username = String(entry.username).trim();
+  }
+  if (entry.credential) {
+    normalized.credential = String(entry.credential).trim();
+  }
+  return normalized;
+}
+
+function buildIceServersConfig() {
+  const rawIceServersJson = readOptionalEnv("ICE_SERVERS_JSON");
+  if (rawIceServersJson) {
+    try {
+      const parsed = JSON.parse(rawIceServersJson);
+      if (Array.isArray(parsed)) {
+        const normalized = parsed
+          .map((entry) => normalizeIceServerEntry(entry))
+          .filter(Boolean);
+        if (normalized.length > 0) {
+          return normalized;
+        }
+      }
+    } catch (error) {
+      console.warn(`ICE_SERVERS_JSON is invalid: ${error.message}`);
+    }
+  }
+
+  const stunUrls = splitCsvEnv(readOptionalEnv("STUN_URLS"));
+  const turnUrls = splitCsvEnv(readOptionalEnv("TURN_URLS"));
+  const turnUsername = readOptionalEnv("TURN_USERNAME");
+  const turnPassword = readOptionalEnv("TURN_PASSWORD");
+
+  const iceServers = [];
+  const resolvedStunUrls =
+    stunUrls.length > 0 ? stunUrls : ["stun:stun.l.google.com:19302"];
+  iceServers.push({ urls: resolvedStunUrls });
+
+  if (turnUrls.length > 0 && turnUsername && turnPassword) {
+    iceServers.push({
+      urls: turnUrls,
+      username: turnUsername,
+      credential: turnPassword,
+    });
+  }
+
+  return iceServers;
 }
 
 const PORT = Number(process.env.PORT || 3000);
@@ -154,6 +235,7 @@ const firebaseMessagingAuth =
 const firebaseMessagingEndpoint = resolvedFirebaseProjectId
   ? `https://fcm.googleapis.com/v1/projects/${resolvedFirebaseProjectId}/messages:send`
   : "";
+const RTC_ICE_SERVERS = buildIceServersConfig();
 
 const pushSubscriptionsByUser = new Map();
 const nativePushDevicesByUser = new Map();
@@ -848,9 +930,25 @@ function validateRegistration(username, email, password) {
 
 const socketsByUser = new Map();
 const lastSeenByUser = new Map();
+const callSessionsById = new Map();
 
 const offlineMessageQueue = new Map();
 const NON_QUEUEABLE_TYPES = new Set(["typing", "call:signal", "presence:update", "pong"]);
+const CALL_SESSION_TTL_MS = 2 * 60 * 1000;
+
+function getCallIdFromSignalData(data) {
+  const callId = normalize(data?.callId);
+  return callId || "";
+}
+
+function cleanupExpiredCallSessions(now = Date.now()) {
+  for (const [callId, session] of callSessionsById.entries()) {
+    const updatedAt = Number(session?.updatedAt || 0);
+    if (!updatedAt || now - updatedAt > CALL_SESSION_TTL_MS) {
+      callSessionsById.delete(callId);
+    }
+  }
+}
 
 function queueMessageForUser(userId, payload) {
   if (NON_QUEUEABLE_TYPES.has(payload?.type)) return;
@@ -3015,6 +3113,9 @@ wss.on("connection", async (socket, req) => {
     if (payload.type === "call:signal") {
       const targetUserId = normalize(payload.targetUserId);
       const signalType = normalizeLower(payload.signalType);
+      const data =
+        payload.data && typeof payload.data === "object" ? payload.data : {};
+      const callId = getCallIdFromSignalData(data);
       const allowedSignalTypes = new Set([
         "offer",
         "answer",
@@ -3042,12 +3143,57 @@ wss.on("connection", async (socket, req) => {
           return;
         }
 
+        if (callId) {
+          cleanupExpiredCallSessions();
+          if (signalType === "offer") {
+            callSessionsById.set(callId, {
+              callId,
+              callerId: user.id,
+              calleeId: targetUserId,
+              conversationId: conversation.id,
+              state: "ringing",
+              updatedAt: Date.now(),
+            });
+          } else {
+            const session = callSessionsById.get(callId);
+            const matchesParticipants = Boolean(
+              session &&
+                session.conversationId === conversation.id &&
+                (
+                  (session.callerId === user.id && session.calleeId === targetUserId) ||
+                  (session.callerId === targetUserId && session.calleeId === user.id)
+                )
+            );
+            if (!matchesParticipants) {
+              return;
+            }
+
+            const sentByCallee =
+              session.callerId === targetUserId && session.calleeId === user.id;
+
+            if ((signalType === "answer" || signalType === "reject" || signalType === "busy") && !sentByCallee) {
+              return;
+            }
+
+            if (session.state === "accepted" && (signalType === "reject" || signalType === "busy")) {
+              return;
+            }
+
+            if (signalType === "answer") {
+              session.state = "accepted";
+            } else if (signalType === "reject" || signalType === "busy" || signalType === "end") {
+              session.state = "ended";
+            }
+            session.updatedAt = Date.now();
+          }
+        }
+
         sendToUser(targetUserId, {
           type: "call:signal",
           fromUserId: user.id,
           signalType,
           conversationId: conversation.id,
-          data: payload.data || {},
+          data,
         });
       } catch (error) {
         console.error("Failed to relay call signal", error);

@@ -21,7 +21,7 @@ class CallController extends ChangeNotifier {
   final CallMediaEngineFactory mediaEngineFactory;
   final Duration disconnectGrace;
 
-  final Map<String, List<Map<String, dynamic>>> _preOfferIceByUserId =
+  final Map<String, List<Map<String, dynamic>>> _preOfferIceByKey =
       <String, List<Map<String, dynamic>>>{};
 
   StreamSubscription<Map<String, dynamic>>? _realtimeSubscription;
@@ -37,6 +37,7 @@ class CallController extends ChangeNotifier {
   bool _recoveryOfferInFlight = false;
   String? _targetUserId;
   String? _conversationId;
+  String? _callId;
 
   CallUiState get state => _state;
   CallMediaEngine? get mediaEngine => _engine;
@@ -55,12 +56,13 @@ class CallController extends ChangeNotifier {
     _isActive = false;
     await _realtimeSubscription?.cancel();
     _realtimeSubscription = null;
-    _preOfferIceByUserId.clear();
+    _preOfferIceByKey.clear();
     await _disposeEngine();
     _stopElapsedTimer();
     _cancelDisconnectGrace();
     _targetUserId = null;
     _conversationId = null;
+    _callId = null;
     _setState(const CallUiState.idle());
   }
 
@@ -81,6 +83,7 @@ class CallController extends ChangeNotifier {
     final peerSnapshot = _toPeerSnapshot(peer);
     _targetUserId = peer.id;
     _conversationId = conversation.id;
+    _callId = _generateCallId();
 
     await _attachFreshEngine();
     _setState(
@@ -101,6 +104,7 @@ class CallController extends ChangeNotifier {
         targetUserId: peer.id,
         signalType: 'offer',
         conversationId: conversation.id,
+        callId: _callId,
         data: <String, dynamic>{
           'sdp': offer,
           'videoRequested': videoRequested,
@@ -125,6 +129,7 @@ class CallController extends ChangeNotifier {
 
     _targetUserId = pendingIncoming.fromUserId;
     _conversationId = pendingIncoming.conversationId;
+    _callId = pendingIncoming.callId;
     _setState(
       _state.copyWith(
         incomingActionInFlight: true,
@@ -152,6 +157,7 @@ class CallController extends ChangeNotifier {
         targetUserId: pendingIncoming.fromUserId,
         signalType: 'answer',
         conversationId: pendingIncoming.conversationId,
+        callId: pendingIncoming.callId,
         data: <String, dynamic>{'sdp': answer},
       );
     } catch (_) {
@@ -159,6 +165,7 @@ class CallController extends ChangeNotifier {
         targetUserId: pendingIncoming.fromUserId,
         signalType: 'reject',
         conversationId: pendingIncoming.conversationId,
+        callId: pendingIncoming.callId,
       );
       await _teardownSession(
         notifyPeer: false,
@@ -181,10 +188,18 @@ class CallController extends ChangeNotifier {
       targetUserId: pendingIncoming.fromUserId,
       signalType: 'reject',
       conversationId: pendingIncoming.conversationId,
+      callId: pendingIncoming.callId,
     );
-    _preOfferIceByUserId.remove(pendingIncoming.fromUserId);
+    _preOfferIceByKey.remove(
+      _signalQueueKey(
+        userId: pendingIncoming.fromUserId,
+        conversationId: pendingIncoming.conversationId,
+        callId: pendingIncoming.callId,
+      ),
+    );
     _targetUserId = null;
     _conversationId = null;
+    _callId = null;
     _setState(
       const CallUiState.idle().copyWith(
         statusText: statusText,
@@ -259,6 +274,7 @@ class CallController extends ChangeNotifier {
         : rawData is Map
             ? Map<String, dynamic>.from(rawData)
             : const <String, dynamic>{};
+    final signalCallId = _readCallId(data);
 
     if (fromUserId == null || signalType == null) {
       return;
@@ -269,6 +285,7 @@ class CallController extends ChangeNotifier {
         await _handleOffer(
           fromUserId: fromUserId,
           conversationId: conversationId,
+          callId: signalCallId,
           data: data,
         );
         return;
@@ -276,14 +293,23 @@ class CallController extends ChangeNotifier {
         await _handleAnswer(
           fromUserId: fromUserId,
           conversationId: conversationId,
+          callId: signalCallId,
           data: data,
         );
         return;
       case 'ice':
-        await _handleIce(fromUserId: fromUserId, data: data);
+        await _handleIce(
+          fromUserId: fromUserId,
+          conversationId: conversationId,
+          callId: signalCallId,
+          data: data,
+        );
         return;
       case 'reject':
-        if (_isCurrentPeer(fromUserId)) {
+        if (_isCurrentPeer(fromUserId) &&
+            _callIdsMatch(_callId, signalCallId) &&
+            !_state.isActive &&
+            !_state.isReconnecting) {
           await _teardownSession(
             notifyPeer: false,
             statusText: 'Собеседник отклонил звонок.',
@@ -292,7 +318,10 @@ class CallController extends ChangeNotifier {
         }
         return;
       case 'busy':
-        if (_isCurrentPeer(fromUserId)) {
+        if (_isCurrentPeer(fromUserId) &&
+            _callIdsMatch(_callId, signalCallId) &&
+            !_state.isActive &&
+            !_state.isReconnecting) {
           await _teardownSession(
             notifyPeer: false,
             statusText: 'Собеседник сейчас в другом звонке.',
@@ -301,8 +330,15 @@ class CallController extends ChangeNotifier {
         }
         return;
       case 'end':
-        if (_state.pendingIncoming?.fromUserId == fromUserId) {
-          _preOfferIceByUserId.remove(fromUserId);
+        if (_state.pendingIncoming?.fromUserId == fromUserId &&
+            _callIdsMatch(_state.pendingIncoming?.callId, signalCallId)) {
+          _preOfferIceByKey.remove(
+            _signalQueueKey(
+              userId: fromUserId,
+              conversationId: conversationId,
+              callId: signalCallId,
+            ),
+          );
           _setState(
             const CallUiState.idle().copyWith(
               statusText: 'Собеседник отменил звонок.',
@@ -311,7 +347,8 @@ class CallController extends ChangeNotifier {
           );
           return;
         }
-        if (_isCurrentPeer(fromUserId)) {
+        if (_isCurrentPeer(fromUserId) &&
+            _callIdsMatch(_callId, signalCallId)) {
           await _teardownSession(
             notifyPeer: false,
             statusText: 'Собеседник завершил звонок.',
@@ -327,6 +364,7 @@ class CallController extends ChangeNotifier {
   Future<void> _handleOffer({
     required String fromUserId,
     required String? conversationId,
+    required String? callId,
     required Map<String, dynamic> data,
   }) async {
     final sdp = data['sdp'];
@@ -341,11 +379,18 @@ class CallController extends ChangeNotifier {
         targetUserId: fromUserId,
         signalType: 'reject',
         conversationId: conversationId,
+        callId: callId,
       );
       return;
     }
 
-    if (_isCurrentPeer(fromUserId) && _engine != null && !_state.isIdle) {
+    if (_isCurrentPeer(fromUserId) &&
+        _engine != null &&
+        !_state.isIdle &&
+        _callIdsMatch(_callId, callId)) {
+      if (_state.incomingActionInFlight) {
+        return;
+      }
       try {
         await _engine!.applyRemoteOffer(sdpMap);
         final answer = await _engine!.createAnswer();
@@ -353,11 +398,13 @@ class CallController extends ChangeNotifier {
           targetUserId: fromUserId,
           signalType: 'answer',
           conversationId: conversationId ?? _conversationId,
+          callId: callId ?? _callId,
           data: <String, dynamic>{'sdp': answer},
         );
         if (_state.isOutgoing || _state.isReconnecting) {
           _markActive(
-            peer: _state.peer ?? _resolvePeerSnapshot(fromUserId, conversationId),
+            peer:
+                _state.peer ?? _resolvePeerSnapshot(fromUserId, conversationId),
             conversationId: conversationId ?? _conversationId ?? '',
             statusText: 'В звонке.',
           );
@@ -379,28 +426,44 @@ class CallController extends ChangeNotifier {
         targetUserId: fromUserId,
         signalType: 'busy',
         conversationId: conversationId,
+        callId: callId,
       );
       return;
     }
 
+    final samePendingCall = existingPending != null &&
+        existingPending.fromUserId == fromUserId &&
+        _callIdsMatch(existingPending.callId, callId);
     final queuedIce = List<Map<String, dynamic>>.from(
-      _preOfferIceByUserId.remove(fromUserId) ?? const <Map<String, dynamic>>[],
+      _preOfferIceByKey.remove(
+            _signalQueueKey(
+              userId: fromUserId,
+              conversationId: conversationId,
+              callId: callId,
+            ),
+          ) ??
+          const <Map<String, dynamic>>[],
     );
     final peer = _resolvePeerSnapshot(fromUserId, conversationId);
     final pendingIncoming = PendingIncomingCall(
       fromUserId: fromUserId,
       conversationId: conversationId ?? existingPending?.conversationId ?? '',
+      callId: callId ?? existingPending?.callId ?? '',
       offerSdp: sdpMap,
       peer: peer,
       pendingIceCandidates: <Map<String, dynamic>>[
-        ...existingPending?.pendingIceCandidates ?? const <Map<String, dynamic>>[],
+        ...(samePendingCall
+            ? existingPending.pendingIceCandidates
+            : const <Map<String, dynamic>>[]),
         ...queuedIce,
       ],
-      videoRequested: data['videoRequested'] == true || data['requestVideo'] == true,
+      videoRequested:
+          data['videoRequested'] == true || data['requestVideo'] == true,
     );
 
     _targetUserId = null;
     _conversationId = null;
+    _callId = null;
     _setState(
       CallUiState(
         stage: CallStage.incoming,
@@ -416,9 +479,12 @@ class CallController extends ChangeNotifier {
   Future<void> _handleAnswer({
     required String fromUserId,
     required String? conversationId,
+    required String? callId,
     required Map<String, dynamic> data,
   }) async {
-    if (!_isCurrentPeer(fromUserId) || _engine == null) {
+    if (!_isCurrentPeer(fromUserId) ||
+        _engine == null ||
+        !_callIdsMatch(_callId, callId)) {
       return;
     }
 
@@ -442,6 +508,8 @@ class CallController extends ChangeNotifier {
 
   Future<void> _handleIce({
     required String fromUserId,
+    required String? conversationId,
+    required String? callId,
     required Map<String, dynamic> data,
   }) async {
     final candidate = data['candidate'];
@@ -457,6 +525,7 @@ class CallController extends ChangeNotifier {
     final pendingIncoming = _state.pendingIncoming;
     if (pendingIncoming != null &&
         pendingIncoming.fromUserId == fromUserId &&
+        _callIdsMatch(pendingIncoming.callId, callId) &&
         _engine == null) {
       _setState(
         _state.copyWith(
@@ -471,12 +540,23 @@ class CallController extends ChangeNotifier {
       return;
     }
 
-    if (_isCurrentPeer(fromUserId) && _engine != null) {
+    if (_isCurrentPeer(fromUserId) &&
+        _engine != null &&
+        _callIdsMatch(_callId, callId)) {
       await _engine!.addRemoteIceCandidate(candidateMap);
       return;
     }
 
-    _preOfferIceByUserId.putIfAbsent(fromUserId, () => <Map<String, dynamic>>[]).add(candidateMap);
+    _preOfferIceByKey
+        .putIfAbsent(
+          _signalQueueKey(
+            userId: fromUserId,
+            conversationId: conversationId,
+            callId: callId,
+          ),
+          () => <Map<String, dynamic>>[],
+        )
+        .add(candidateMap);
   }
 
   Future<void> _attachFreshEngine() async {
@@ -495,6 +575,7 @@ class CallController extends ChangeNotifier {
           targetUserId: targetUserId,
           signalType: 'ice',
           conversationId: _conversationId,
+          callId: _callId,
           data: <String, dynamic>{'candidate': candidate},
         ),
       );
@@ -574,12 +655,14 @@ class CallController extends ChangeNotifier {
     if (engine == null || targetUserId == null || conversationId == null) {
       return;
     }
+    _callId ??= _generateCallId();
 
     final offer = await engine.createOffer(iceRestart: iceRestart);
     await _sendSignal(
       targetUserId: targetUserId,
       signalType: 'offer',
       conversationId: conversationId,
+      callId: _callId,
       data: <String, dynamic>{
         'sdp': offer,
         if (iceRestart) 'recovery': true,
@@ -691,13 +774,17 @@ class CallController extends ChangeNotifier {
   }) async {
     final pendingIncoming = _state.pendingIncoming;
     final targetUserId = _targetUserId ?? pendingIncoming?.fromUserId;
-    final conversationId = _conversationId ?? _state.conversationId ?? pendingIncoming?.conversationId;
+    final conversationId = _conversationId ??
+        _state.conversationId ??
+        pendingIncoming?.conversationId;
+    final callId = _callId ?? pendingIncoming?.callId;
 
     if (notifyPeer && targetUserId != null && conversationId != null) {
       await _sendSignal(
         targetUserId: targetUserId,
         signalType: 'end',
         conversationId: conversationId,
+        callId: callId,
       );
     }
 
@@ -705,6 +792,7 @@ class CallController extends ChangeNotifier {
     await _disposeEngine();
     _targetUserId = null;
     _conversationId = null;
+    _callId = null;
     _setState(
       const CallUiState.idle().copyWith(
         statusText: statusText,
@@ -717,8 +805,13 @@ class CallController extends ChangeNotifier {
     required String targetUserId,
     required String signalType,
     String? conversationId,
+    String? callId,
     Map<String, dynamic>? data,
   }) {
+    final payloadData = <String, dynamic>{
+      if (data != null) ...data,
+      if (callId != null && callId.isNotEmpty) 'callId': callId,
+    };
     return realtimeService.send(
       <String, dynamic>{
         'type': 'call:signal',
@@ -726,12 +819,50 @@ class CallController extends ChangeNotifier {
         'signalType': signalType,
         if (conversationId != null && conversationId.isNotEmpty)
           'conversationId': conversationId,
-        if (data != null && data.isNotEmpty) 'data': data,
+        if (payloadData.isNotEmpty) 'data': payloadData,
       },
     );
   }
 
-  ConversationSummary _assertCallableConversation(ConversationSummary conversation) {
+  String _generateCallId() {
+    final micros = DateTime.now().microsecondsSinceEpoch;
+    return 'call-$micros-${micros.toRadixString(36)}';
+  }
+
+  String? _readCallId(Map<String, dynamic> data) {
+    final value = data['callId']?.toString().trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
+  }
+
+  bool _callIdsMatch(String? currentCallId, String? incomingCallId) {
+    if ((currentCallId ?? '').isEmpty || (incomingCallId ?? '').isEmpty) {
+      return true;
+    }
+    return currentCallId == incomingCallId;
+  }
+
+  String _signalQueueKey({
+    required String userId,
+    String? conversationId,
+    String? callId,
+  }) {
+    final normalizedCallId = callId?.trim();
+    if (normalizedCallId != null && normalizedCallId.isNotEmpty) {
+      return '$userId::$normalizedCallId';
+    }
+    final normalizedConversationId = conversationId?.trim();
+    if (normalizedConversationId != null &&
+        normalizedConversationId.isNotEmpty) {
+      return '$userId::$normalizedConversationId';
+    }
+    return userId;
+  }
+
+  ConversationSummary _assertCallableConversation(
+      ConversationSummary conversation) {
     if (conversation.isGroup) {
       throw StateError('Calls are supported only for direct conversations.');
     }
@@ -777,7 +908,8 @@ class CallController extends ChangeNotifier {
         if (item.isGroup) {
           continue;
         }
-        if (item.participant?.id == userId || item.participantIds.contains(userId)) {
+        if (item.participant?.id == userId ||
+            item.participantIds.contains(userId)) {
           conversation = item;
           break;
         }

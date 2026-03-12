@@ -320,6 +320,7 @@ const state = {
     active: false,
     targetUserId: "",
     conversationId: "",
+    callId: "",
     peer: null,
     localStream: null,
     micSourceStream: null,
@@ -597,6 +598,7 @@ function saveCallRecoveryState() {
         userId: state.me.id,
         targetUserId: state.call.targetUserId,
         conversationId: state.call.conversationId,
+        callId: state.call.callId || "",
         savedAt: Date.now(),
       })
     );
@@ -620,6 +622,7 @@ function readCallRecoveryState() {
     const userId = String(parsed.userId || "");
     const targetUserId = String(parsed.targetUserId || "");
     const conversationId = String(parsed.conversationId || "");
+    const callId = String(parsed.callId || "");
     const savedAt = Number(parsed.savedAt || 0);
     const ageMs = Date.now() - savedAt;
 
@@ -644,6 +647,7 @@ function readCallRecoveryState() {
       userId,
       targetUserId,
       conversationId,
+      callId,
       savedAt,
     };
   } catch {
@@ -1037,11 +1041,13 @@ function cleanupCallState(options = {}) {
   state.call.active = false;
   state.call.targetUserId = "";
   state.call.conversationId = "";
+  state.call.callId = "";
   state.call.peer = null;
   state.call.localStream = null;
   state.call.pendingRemoteIceCandidates = [];
   state.call.disconnectTimer = null;
   state.call.recoveryInFlight = false;
+  state.call.incomingActionInFlight = false;
   state.call.muted = false;
   state.call.outputMuted = false;
   state.call.videoEnabled = false;
@@ -1091,6 +1097,90 @@ async function flushPeerIceQueue(peer, queuedCandidates) {
   }
 }
 
+function generateCallId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getCallIdFromSignalData(data) {
+  const callId = String(data?.callId || "").trim();
+  return callId || "";
+}
+
+function callIdsMatch(expectedCallId, receivedCallId) {
+  if (!expectedCallId || !receivedCallId) {
+    return true;
+  }
+  return expectedCallId === receivedCallId;
+}
+
+function areSessionDescriptionsEquivalent(first, second) {
+  if (!first || !second) {
+    return false;
+  }
+  return (
+    String(first.type || "") === String(second.type || "") &&
+    String(first.sdp || "").trim() === String(second.sdp || "").trim()
+  );
+}
+
+function sendCallSignal({
+  targetUserId,
+  signalType,
+  conversationId,
+  data = {},
+  callId = "",
+}) {
+  const payloadData = data && typeof data === "object" ? { ...data } : {};
+  const resolvedCallId = String(
+    callId ||
+      payloadData.callId ||
+      state.call.callId ||
+      state.call.pendingIncoming?.callId ||
+      ""
+  ).trim();
+
+  if (resolvedCallId) {
+    payloadData.callId = resolvedCallId;
+  }
+
+  return sendSocketPayload({
+    type: "call:signal",
+    targetUserId,
+    signalType,
+    conversationId,
+    data: payloadData,
+  });
+}
+
+async function applyRemoteOffer(peer, offerSdp, queuedCandidates = []) {
+  if (!offerSdp) {
+    throw new Error("Некорректный входящий offer.");
+  }
+
+  const nextOffer = new RTCSessionDescription(offerSdp);
+  const currentRemoteDescription =
+    peer.currentRemoteDescription || peer.remoteDescription || null;
+
+  if (areSessionDescriptionsEquivalent(currentRemoteDescription, nextOffer)) {
+    await flushPeerIceQueue(peer, queuedCandidates);
+    return peer.signalingState === "have-remote-offer";
+  }
+
+  if (peer.signalingState === "have-local-offer") {
+    try {
+      await peer.setLocalDescription({ type: "rollback" });
+    } catch {
+    }
+  }
+
+  await peer.setRemoteDescription(nextOffer);
+  await flushPeerIceQueue(peer, queuedCandidates);
+  return true;
+}
+
 function endCall(
   notifyPeer = true,
   statusText = "Звонок завершен.",
@@ -1099,11 +1189,11 @@ function endCall(
 ) {
   const targetUserId = state.call.targetUserId;
   if (notifyPeer && targetUserId) {
-    sendSocketPayload({
-      type: "call:signal",
+    sendCallSignal({
       targetUserId,
       signalType: "end",
       conversationId: state.call.conversationId || state.activeConversationId,
+      callId: state.call.callId,
     });
   }
 
@@ -1120,11 +1210,11 @@ function rejectPendingIncomingCall(statusText = "Входящий звонок �
     return;
   }
 
-  sendSocketPayload({
-    type: "call:signal",
+  sendCallSignal({
     targetUserId: pendingCall.fromUserId,
     signalType: "reject",
     conversationId: pendingCall.conversationId,
+    callId: pendingCall.callId,
   });
 
   stopCallRingtone();
@@ -1151,47 +1241,59 @@ async function acceptPendingIncomingCall() {
       getConversationById(pendingCall.conversationId) ||
       getConversationByParticipantId(pendingCall.fromUserId);
 
-    if (callerConversation && callerConversation.id !== state.activeConversationId) {
-      await selectConversation(callerConversation.id);
-    }
+    const conversationId = callerConversation?.id || pendingCall.conversationId;
+    const selectConversationTask =
+      callerConversation && callerConversation.id !== state.activeConversationId
+        ? selectConversation(callerConversation.id).catch(() => {})
+        : Promise.resolve();
 
     const rawStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
     const localStream = await createGainProcessedStream(rawStream);
     const peer = await createCallPeer(
       pendingCall.fromUserId,
-      callerConversation?.id || pendingCall.conversationId,
-      localStream
+      conversationId,
+      localStream,
+      { callId: pendingCall.callId }
     );
 
-    await peer.setRemoteDescription(new RTCSessionDescription(pendingCall.offerSdp));
-    await flushPeerIceQueue(peer, pendingCall.pendingIceCandidates || []);
-    const answer = await peer.createAnswer();
-    await peer.setLocalDescription(answer);
+    await applyRemoteOffer(peer, pendingCall.offerSdp, pendingCall.pendingIceCandidates || []);
+    await flushPeerIceQueue(peer, state.call.pendingRemoteIceCandidates);
+    if (peer.signalingState === "have-remote-offer") {
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+    }
 
-    sendSocketPayload({
-      type: "call:signal",
+    const answerSent = sendCallSignal({
       targetUserId: pendingCall.fromUserId,
       signalType: "answer",
-      conversationId: callerConversation?.id || pendingCall.conversationId,
+      conversationId,
+      callId: pendingCall.callId || state.call.callId,
       data: { sdp: peer.localDescription },
     });
+    if (!answerSent) {
+      throw new Error("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð¸Ñ‚ÑŒ Ð¾Ñ‚Ð²ÐµÑ‚ Ð½Ð° Ð·Ð²Ð¾Ð½Ð¾Ðº.");
+    }
 
     clearPendingIncomingCall();
     setCallStatus("В звонке.");
     startCallTimer();
+    await selectConversationTask;
   } catch (error) {
-    sendSocketPayload({
-      type: "call:signal",
+    sendCallSignal({
       targetUserId: pendingCall.fromUserId,
       signalType: "reject",
       conversationId: pendingCall.conversationId,
+      callId: pendingCall.callId,
     });
     cleanupCallState();
     setCallStatus(error?.message || "Не удалось принять звонок.", true);
+  } finally {
+    setIncomingCallActionInFlight(false);
   }
 }
 
-async function createCallPeer(targetUserId, conversationId, localStream) {
+async function createCallPeer(targetUserId, conversationId, localStream, options = {}) {
+  const callId = String(options.callId || "").trim();
   const PeerConnection = getPeerConnectionConstructor();
   if (!PeerConnection) {
     throw new Error("WebRTC не поддерживается в этом браузере.");
@@ -1209,11 +1311,11 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
 
   peer.onicecandidate = (event) => {
     if (event.candidate) {
-      sendSocketPayload({
-        type: "call:signal",
+      sendCallSignal({
         targetUserId,
         signalType: "ice",
         conversationId,
+        callId,
         data: { candidate: event.candidate.toJSON() },
       });
     }
@@ -1289,6 +1391,50 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
     }
   }, 1000);
 
+  const clearDisconnectRecovery = () => {
+    if (state.call.disconnectTimer) {
+      clearTimeout(state.call.disconnectTimer);
+      state.call.disconnectTimer = null;
+    }
+    state.call.recoveryInFlight = false;
+  };
+
+  const beginDisconnectRecovery = () => {
+    if (!state.call.active || state.call.peer !== peer) {
+      clearInterval(checkRemoteVideo);
+      return;
+    }
+
+    if (!state.call.disconnectTimer) {
+      setCallStatus("Связь нестабильна, пытаемся восстановить...");
+      state.call.disconnectTimer = setTimeout(() => {
+        state.call.disconnectTimer = null;
+        state.call.recoveryInFlight = false;
+        if (!state.call.active || state.call.peer !== peer) {
+          return;
+        }
+        if (
+          peer.connectionState === "connected" ||
+          peer.iceConnectionState === "connected" ||
+          peer.iceConnectionState === "completed"
+        ) {
+          return;
+        }
+        clearInterval(checkRemoteVideo);
+        endCall(true, "Соединение прервано.");
+      }, CALL_DISCONNECT_GRACE_MS);
+    }
+
+    if (!state.call.recoveryInFlight) {
+      state.call.recoveryInFlight = true;
+      handleNegotiationNeeded({ iceRestart: true }).finally(() => {
+        if (state.call.peer === peer) {
+          state.call.recoveryInFlight = false;
+        }
+      });
+    }
+  };
+
   peer.onconnectionstatechange = () => {
     if (!state.call.active || state.call.peer !== peer) {
       clearInterval(checkRemoteVideo);
@@ -1296,14 +1442,13 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
     }
 
     if (peer.connectionState === "connected") {
-      if (state.call.disconnectTimer) {
-        clearTimeout(state.call.disconnectTimer);
-        state.call.disconnectTimer = null;
-      }
+      clearDisconnectRecovery();
       return;
     }
 
-    if (["failed", "disconnected", "closed"].includes(peer.connectionState)) {
+    if (["failed", "disconnected"].includes(peer.connectionState)) {
+      beginDisconnectRecovery();
+      return;
       if (!state.call.disconnectTimer) {
         setCallStatus("Связь нестабильна, пытаемся восстановить...");
         state.call.disconnectTimer = setTimeout(() => {
@@ -1321,9 +1466,26 @@ async function createCallPeer(targetUserId, conversationId, localStream) {
     }
   };
 
+  peer.oniceconnectionstatechange = () => {
+    if (!state.call.active || state.call.peer !== peer) {
+      clearInterval(checkRemoteVideo);
+      return;
+    }
+
+    if (["connected", "completed"].includes(peer.iceConnectionState)) {
+      clearDisconnectRecovery();
+      return;
+    }
+
+    if (["failed", "disconnected"].includes(peer.iceConnectionState)) {
+      beginDisconnectRecovery();
+    }
+  };
+
   state.call.active = true;
   state.call.targetUserId = targetUserId;
   state.call.conversationId = conversationId;
+  state.call.callId = callId;
   state.call.peer = peer;
   state.call.localStream = localStream;
   state.call.pendingRemoteIceCandidates = [];
@@ -1375,22 +1537,27 @@ async function startOutgoingCall() {
   try {
     const rawStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
     const localStream = await createGainProcessedStream(rawStream);
+    const callId = generateCallId();
     const peer = await createCallPeer(
       targetUserId,
       state.activeConversationId,
-      localStream
+      localStream,
+      { callId }
     );
 
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
 
-    sendSocketPayload({
-      type: "call:signal",
+    const offerSent = sendCallSignal({
       targetUserId,
       signalType: "offer",
       conversationId: state.activeConversationId,
+      callId,
       data: { sdp: peer.localDescription },
     });
+    if (!offerSent) {
+      throw new Error("Failed to send call offer.");
+    }
 
     setCallStatus("Звоним...");
     startCallRingtone();
@@ -1444,23 +1611,28 @@ async function restoreCallAfterReloadIfNeeded() {
 
     const rawStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
     const localStream = await createGainProcessedStream(rawStream);
+    const callId = recovery.callId || generateCallId();
     const peer = await createCallPeer(
       recovery.targetUserId,
       conversation.id,
-      localStream
+      localStream,
+      { callId }
     );
     createdPeer = true;
 
     const offer = await peer.createOffer({ iceRestart: true });
     await peer.setLocalDescription(offer);
 
-    sendSocketPayload({
-      type: "call:signal",
+    const offerSent = sendCallSignal({
       targetUserId: recovery.targetUserId,
       signalType: "offer",
       conversationId: conversation.id,
+      callId,
       data: { sdp: peer.localDescription, recovery: true },
     });
+    if (!offerSent) {
+      throw new Error("Failed to send recovery call offer.");
+    }
 
     stopCallRingtone();
     setCallStatus("Восстанавливаем звонок...");
@@ -1484,67 +1656,79 @@ async function handleCallSignal(payload) {
   const signalType = String(payload.signalType);
   const fromUserId = String(payload.fromUserId);
   const conversationId = String(payload.conversationId || "");
-  const data = payload.data || {};
+  const data = payload.data && typeof payload.data === "object" ? payload.data : {};
+  const signalCallId = getCallIdFromSignalData(data);
 
   if (signalType === "offer") {
     if (state.call.active) {
-      // Handle renegotiation from same peer
-      if (fromUserId === state.call.targetUserId && state.call.peer) {
+      if (
+        fromUserId === state.call.targetUserId &&
+        state.call.peer &&
+        callIdsMatch(state.call.callId, signalCallId)
+      ) {
+        if (!data.sdp || state.call.incomingActionInFlight) {
+          return;
+        }
         try {
-          await state.call.peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          await applyRemoteOffer(state.call.peer, data.sdp, state.call.pendingRemoteIceCandidates);
           await flushPeerIceQueue(state.call.peer, state.call.pendingRemoteIceCandidates);
-          const answer = await state.call.peer.createAnswer();
-          await state.call.peer.setLocalDescription(answer);
+          if (state.call.peer.signalingState === "have-remote-offer") {
+            const answer = await state.call.peer.createAnswer();
+            await state.call.peer.setLocalDescription(answer);
+          }
 
-          sendSocketPayload({
-            type: "call:signal",
+          const answerSent = sendCallSignal({
             targetUserId: fromUserId,
             signalType: "answer",
             conversationId,
+            callId: signalCallId || state.call.callId,
             data: { sdp: state.call.peer.localDescription },
           });
+          if (!answerSent) {
+            throw new Error("Failed to send renegotiation answer.");
+          }
         } catch (e) {
           console.error("Renegotiation failed:", e);
         }
         return;
       }
 
-      sendSocketPayload({
-        type: "call:signal",
+      sendCallSignal({
         targetUserId: fromUserId,
         signalType: "busy",
         conversationId,
+        callId: signalCallId,
       });
       return;
     }
 
     if (!canUseAudioCalls()) {
-      sendSocketPayload({
-        type: "call:signal",
+      sendCallSignal({
         targetUserId: fromUserId,
         signalType: "reject",
         conversationId,
+        callId: signalCallId,
       });
       setCallStatus("Входящий звонок отклонен: звонки недоступны в этом браузере.", true);
       return;
     }
 
     if (state.call.pendingIncoming && state.call.pendingIncoming.fromUserId !== fromUserId) {
-      sendSocketPayload({
-        type: "call:signal",
+      sendCallSignal({
         targetUserId: fromUserId,
         signalType: "busy",
         conversationId,
+        callId: signalCallId,
       });
       return;
     }
 
     if (!data.sdp) {
-      sendSocketPayload({
-        type: "call:signal",
+      sendCallSignal({
         targetUserId: fromUserId,
         signalType: "reject",
         conversationId,
+        callId: signalCallId,
       });
       setCallStatus("Некорректный входящий offer.", true);
       return;
@@ -1553,13 +1737,21 @@ async function handleCallSignal(payload) {
     const callerConversation =
       getConversationById(conversationId) || getConversationByParticipantId(fromUserId);
     const resolvedConversationId = callerConversation?.id || conversationId;
+    const existingPending = state.call.pendingIncoming;
+    const samePendingCall =
+      existingPending &&
+      existingPending.fromUserId === fromUserId &&
+      callIdsMatch(existingPending.callId, signalCallId);
     const callerName = getDisplayName(callerConversation?.participant) || "Собеседник";
     state.call.pendingIncoming = {
       fromUserId,
       conversationId: resolvedConversationId,
+      callId: signalCallId,
       offerSdp: data.sdp,
       callerName,
-      pendingIceCandidates: [],
+      pendingIceCandidates: samePendingCall
+        ? [...(existingPending.pendingIceCandidates || [])]
+        : [],
     };
 
     setCallStatus(`Входящий звонок от ${callerName}.`);
@@ -1569,11 +1761,17 @@ async function handleCallSignal(payload) {
     return;
   }
 
-  if (!state.call.active || fromUserId !== state.call.targetUserId || !state.call.peer) {
+  if (
+    !state.call.active ||
+    fromUserId !== state.call.targetUserId ||
+    !state.call.peer ||
+    !callIdsMatch(state.call.callId, signalCallId)
+  ) {
     if (
       signalType === "ice" &&
       state.call.pendingIncoming &&
       state.call.pendingIncoming.fromUserId === fromUserId &&
+      callIdsMatch(state.call.pendingIncoming.callId, signalCallId) &&
       data?.candidate
     ) {
       state.call.pendingIncoming.pendingIceCandidates.push(data.candidate);
@@ -1583,7 +1781,8 @@ async function handleCallSignal(payload) {
     if (
       signalType === "end" &&
       state.call.pendingIncoming &&
-      state.call.pendingIncoming.fromUserId === fromUserId
+      state.call.pendingIncoming.fromUserId === fromUserId &&
+      callIdsMatch(state.call.pendingIncoming.callId, signalCallId)
     ) {
       stopCallRingtone();
       clearPendingIncomingCall();
@@ -1597,8 +1796,19 @@ async function handleCallSignal(payload) {
     if (!data.sdp) {
       return;
     }
-    await state.call.peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-    await flushPeerIceQueue(state.call.peer, state.call.pendingRemoteIceCandidates);
+    try {
+      const nextAnswer = new RTCSessionDescription(data.sdp);
+      const currentRemoteDescription =
+        state.call.peer.currentRemoteDescription || state.call.peer.remoteDescription || null;
+      if (!areSessionDescriptionsEquivalent(currentRemoteDescription, nextAnswer)) {
+        await state.call.peer.setRemoteDescription(nextAnswer);
+      }
+      await flushPeerIceQueue(state.call.peer, state.call.pendingRemoteIceCandidates);
+    } catch (error) {
+      console.error("Failed to apply answer:", error);
+      endCall(false, "Ð¡Ð¾ÐµÐ´Ð¸Ð½ÐµÐ½Ð¸Ðµ Ð¿Ñ€ÐµÑ€Ð²Ð°Ð½Ð¾.", false);
+      return;
+    }
     stopCallRingtone();
     setCallStatus("В звонке.");
     startCallTimer();
@@ -1624,12 +1834,18 @@ async function handleCallSignal(payload) {
   }
 
   if (signalType === "reject") {
+    if (state.call.peer.remoteDescription) {
+      return;
+    }
     playCallRejectedSound();
     endCall(false, "Собеседник отклонил звонок.", false);
     return;
   }
 
   if (signalType === "busy") {
+    if (state.call.peer.remoteDescription) {
+      return;
+    }
     endCall(false, "Собеседник сейчас в другом звонке.", false);
     return;
   }
@@ -6209,7 +6425,7 @@ gsDeleteGroupBtn.addEventListener("click", async () => {
 // PUSH NOTIFICATIONS (Service Worker + Web Push)
 // ========================
 let swRegistration = null;
-const SERVICE_WORKER_URL = "/sw.js?v=4";
+const SERVICE_WORKER_URL = "/sw.js?v=6";
 
 async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return null;
@@ -6437,18 +6653,27 @@ function togglePopover(popover, triggerChevron) {
   }
 }
 
-async function handleNegotiationNeeded() {
+async function handleNegotiationNeeded(options = {}) {
+  const iceRestart = Boolean(options.iceRestart);
   if (!state.call.active || !state.call.peer) return;
   try {
-    const offer = await state.call.peer.createOffer();
+    const offer = await state.call.peer.createOffer(
+      iceRestart ? { iceRestart: true } : undefined
+    );
     await state.call.peer.setLocalDescription(offer);
-    sendSocketPayload({
-      type: "call:signal",
+    const offerSent = sendCallSignal({
       targetUserId: state.call.targetUserId,
       signalType: "offer",
       conversationId: state.call.conversationId,
-      data: { sdp: state.call.peer.localDescription },
+      callId: state.call.callId,
+      data: {
+        sdp: state.call.peer.localDescription,
+        ...(iceRestart ? { recovery: true } : {}),
+      },
     });
+    if (!offerSent) {
+      throw new Error("Failed to send renegotiation offer.");
+    }
   } catch (err) {
     console.error("Negotiation failed:", err);
   }

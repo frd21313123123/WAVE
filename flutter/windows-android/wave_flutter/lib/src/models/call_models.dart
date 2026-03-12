@@ -53,6 +53,7 @@ class PendingIncomingCall {
   const PendingIncomingCall({
     required this.fromUserId,
     required this.conversationId,
+    required this.callId,
     required this.offerSdp,
     required this.peer,
     this.pendingIceCandidates = const <Map<String, dynamic>>[],
@@ -61,6 +62,7 @@ class PendingIncomingCall {
 
   final String fromUserId;
   final String conversationId;
+  final String callId;
   final Map<String, dynamic> offerSdp;
   final CallPeerSnapshot peer;
   final List<Map<String, dynamic>> pendingIceCandidates;
@@ -69,6 +71,7 @@ class PendingIncomingCall {
   PendingIncomingCall copyWith({
     String? fromUserId,
     String? conversationId,
+    String? callId,
     Map<String, dynamic>? offerSdp,
     CallPeerSnapshot? peer,
     List<Map<String, dynamic>>? pendingIceCandidates,
@@ -77,10 +80,10 @@ class PendingIncomingCall {
     return PendingIncomingCall(
       fromUserId: fromUserId ?? this.fromUserId,
       conversationId: conversationId ?? this.conversationId,
+      callId: callId ?? this.callId,
       offerSdp: offerSdp ?? this.offerSdp,
       peer: peer ?? this.peer,
-      pendingIceCandidates:
-          pendingIceCandidates ?? this.pendingIceCandidates,
+      pendingIceCandidates: pendingIceCandidates ?? this.pendingIceCandidates,
       videoRequested: videoRequested ?? this.videoRequested,
     );
   }
@@ -188,9 +191,8 @@ class CallUiState {
       statusText: statusText ?? this.statusText,
       disconnectReason: disconnectReason ?? this.disconnectReason,
       peer: clearPeer ? null : (peer ?? this.peer),
-      conversationId: clearConversationId
-          ? null
-          : (conversationId ?? this.conversationId),
+      conversationId:
+          clearConversationId ? null : (conversationId ?? this.conversationId),
       pendingIncoming: clearPendingIncoming
           ? null
           : (pendingIncoming ?? this.pendingIncoming),

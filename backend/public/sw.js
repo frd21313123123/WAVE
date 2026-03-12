@@ -3,12 +3,12 @@
    Push notifications + offline cache
    ============================ */
 
-const CACHE_NAME = "wave-v4";
+const CACHE_NAME = "wave-v6";
 const PRECACHE_URLS = [
     "/",
     "/index.html",
-    "/styles.css?v=20260313-3",
-    "/app.js?v=20260313-3",
+    "/styles.css?v=20260313-5",
+    "/app.js?v=20260313-5",
 ];
 
 /* ---------- Install ---------- */
