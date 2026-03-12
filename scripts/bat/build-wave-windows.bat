@@ -1,9 +1,10 @@
 @echo off
 setlocal EnableExtensions
 
-cd /d "%~dp0"
+for %%I in ("%~dp0..\..") do set "REPO_ROOT=%%~fI"
+cd /d "%REPO_ROOT%"
 
-set "PROJECT_DIR=%~dp0wave_flutter"
+set "PROJECT_DIR=%REPO_ROOT%\flutter\windows-android\wave_flutter"
 set "BUILD_MODE=release"
 set "EXE_PATH=%PROJECT_DIR%\build\windows\x64\runner\Release\wave_flutter.exe"
 

@@ -1,73 +1,55 @@
-﻿# Messenger
+# WAVE
 
-Веб-мессенджер с регистрацией, входом и чатом в реальном времени.
+WAVE is organized into separate zones so the repository root stays clean and each task has its own place.
 
-## Что реализовано
+## Structure
 
-- Регистрация аккаунта
-- Вход и выход
-- Сессия через `httpOnly` cookie + JWT
-- Поиск пользователей
-- Личные диалоги
-- Сообщения в реальном времени через WebSocket
-- Адаптивный интерфейс
+```text
+backend/                     Node.js backend, static client, tests, data
+flutter/
+  ios/wave_flutter_ios/      Flutter project for iOS
+  windows-android/wave_flutter/
+                             Flutter project for Windows and Android
+scripts/
+  bat/                       Windows launch/build helpers
+  powershell/                PowerShell automation
+  node/                      Utility Node.js scripts
+runtime/
+  artifacts/                 Build exports and screenshots
+  logs/                      Runtime and emulator logs
+  temp/                      Temporary working folders
+```
 
-## Быстрый запуск
+## Backend Quick Start
 
 ```bash
 cmd /c npm install
 copy .env.example .env
-# Обязательно: задайте безопасный JWT_SECRET (минимум 32 символа)
-# и сгенерируйте VAPID-ключи:
-# npx web-push generate-vapid-keys
 cmd /c npm run dev
 ```
 
-Приложение откроется на порту `3000`.
+Required `.env` values:
 
-## Доступ не только через localhost
+- `JWT_SECRET` with at least 32 characters
+- `VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_EMAIL`
 
-Сервер теперь по умолчанию слушает `0.0.0.0`, поэтому доступен из локальной сети.
-
-1. Запустите сервер:
+## Common Commands
 
 ```bash
 cmd /c npm start
+cmd /c npm run test:perf
+cmd /c npm run test:load
+cmd /c npm run icons
+cmd /c scripts\\bat\\start-server.bat
+cmd /c scripts\\bat\\run-mobile.bat
+cmd /c scripts\\bat\\build-wave-windows.bat
 ```
 
-2. Узнайте IP компьютера в сети (например, `192.168.1.23`).
-3. Откройте с другого устройства: `http://192.168.1.23:3000`.
-4. Разрешите входящий трафик на порт `3000` в firewall.
+## Notes
 
-## Чтобы мог войти любой человек из интернета
-
-Нужен публичный хостинг (VPS/облако) или туннель и HTTPS:
-
-1. Разверните приложение на сервере с белым IP.
-2. Откройте порты `80/443`.
-3. Подключите домен.
-4. Настройте HTTPS (например, через Nginx + Let's Encrypt).
-5. Запускайте с переменными окружения:
-
-```bash
-set HOST=0.0.0.0
-set PORT=3000
-set JWT_SECRET=your_strong_secret
-set COOKIE_SECURE=auto
-set TRUST_PROXY=1
-cmd /c npm start
-```
-
-## Переменные окружения
-
-- `PORT` - порт сервера (по умолчанию `3000`)
-- `HOST` - интерфейс прослушивания (`0.0.0.0` для внешнего доступа)
-- `JWT_SECRET` - секрет подписи JWT
-- `VAPID_PUBLIC_KEY` - публичный VAPID-ключ для push
-- `VAPID_PRIVATE_KEY` - приватный VAPID-ключ для push
-- `VAPID_EMAIL` - контакт для VAPID (формат `mailto:...`)
-- `COOKIE_SECURE` - `auto`, `true` или `false`
-- `TRUST_PROXY` - значение для `express trust proxy`
-- `PUBLIC_URL` - опционально, публичный URL для логов
-
-Пример: `.env.example`
+- The backend now lives in `backend/`, but `npm` commands are still executed from the repository root.
+- Flutter builds and mobile automation use `flutter/windows-android/wave_flutter`.
+- iOS-specific work uses `flutter/ios/wave_flutter_ios`.
+- Logs, temporary outputs, and exported artifacts are collected under `runtime/`.

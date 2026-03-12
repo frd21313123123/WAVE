@@ -2,7 +2,7 @@
 
 This folder contains the iOS-targeted Flutter client for Wave Messenger.
 It reuses the same Dart application code and feature set as the Android
-client from `../wave_flutter`, but ships with an iOS project scaffold,
+client from `../../windows-android/wave_flutter`, but ships with an iOS project scaffold,
 permissions, and CocoaPods configuration.
 
 ## Included
@@ -48,7 +48,7 @@ flutter run
 ## GitHub Actions
 
 The repository now includes an iOS workflow in
-`../.github/workflows/build-ios.yml`.
+`.github/workflows/build-ios.yml`.
 
 - Every run builds a downloadable iOS Simulator app artifact.
 - If Apple signing secrets are configured, the workflow also exports a signed

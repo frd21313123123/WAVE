@@ -1,0 +1,860 @@
+name: Unified Platform Release
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      ios_export_method:
+        description: Export method for the signed iOS IPA
+        required: false
+        default: ad-hoc
+        type: choice
+        options:
+          - ad-hoc
+          - enterprise
+          - app-store
+          - development
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: unified-platform-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RELEASE_TAG: latest
+  RELEASE_NAME: Wave Latest Build
+  FLUTTER_VERSION: 3.41.4
+  ANDROID_PROJECT_DIR: flutter/windows-android/wave_flutter
+  WINDOWS_PROJECT_DIR: flutter/windows-android/wave_flutter
+  WINDOWS_BUNDLE_DIR: flutter/windows-android/wave_flutter/build/windows/x64/runner/Release
+  IOS_PROJECT_DIR: flutter/ios/wave_flutter_ios
+  IOS_BUNDLE_ID: com.wave.messengerios
+  IOS_EXPORT_METHOD: ${{ github.event.inputs.ios_export_method || vars.IOS_EXPORT_METHOD || 'ad-hoc' }}
+  WAVE_BASE_URL: ${{ vars.WAVE_BASE_URL }}
+
+jobs:
+  build_android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      signing_ready: ${{ steps.android_signing.outputs.ready }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: ${{ env.ANDROID_PROJECT_DIR }}
+
+      - name: Analyze project
+        run: flutter analyze
+        working-directory: ${{ env.ANDROID_PROJECT_DIR }}
+
+      - name: Configure Android release signing
+        id: android_signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: ${{ env.ANDROID_PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+
+          required=(
+            ANDROID_KEYSTORE_BASE64
+            ANDROID_KEYSTORE_PASSWORD
+            ANDROID_KEY_ALIAS
+            ANDROID_KEY_PASSWORD
+          )
+          missing=()
+
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              missing+=("$key")
+            fi
+          done
+
+          if (( ${#missing[@]} == 0 )); then
+            python3 - <<'PY'
+            import base64
+            import os
+            import pathlib
+
+            project_dir = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "flutter" / "windows-android" / "wave_flutter"
+            project_dir.joinpath("android", "upload-keystore.jks").write_bytes(
+                base64.b64decode(os.environ["ANDROID_KEYSTORE_BASE64"])
+            )
+            PY
+
+            cat > android/key.properties <<EOF
+            storePassword=${ANDROID_KEYSTORE_PASSWORD}
+            keyPassword=${ANDROID_KEY_PASSWORD}
+            keyAlias=${ANDROID_KEY_ALIAS}
+            storeFile=upload-keystore.jks
+            EOF
+
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Android signing"
+              echo
+              echo "Using the configured Android release keystore."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Android signing fallback"
+              echo
+              echo "No Android release keystore secrets were found. The APK will be built with the debug signing config."
+              echo
+              echo "Missing secrets:"
+              for key in "${missing[@]}"; do
+                echo "- \`$key\`"
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Build release APK
+        shell: bash
+        working-directory: ${{ env.ANDROID_PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          args=(build apk --release)
+          if [[ -n "${WAVE_BASE_URL:-}" ]]; then
+            args+=(--dart-define=WAVE_BASE_URL="${WAVE_BASE_URL}")
+          fi
+          flutter "${args[@]}"
+
+      - name: Prepare APK asset
+        shell: bash
+        working-directory: ${{ env.ANDROID_PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-android"
+          cp build/app/outputs/flutter-apk/app-release.apk "$RUNNER_TEMP/release-android/wave-android-release.apk"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-release-android
+          path: ${{ runner.temp }}/release-android/wave-android-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Clean up Android signing files
+        if: always()
+        shell: bash
+        working-directory: ${{ env.ANDROID_PROJECT_DIR }}
+        run: |
+          rm -f android/key.properties android/upload-keystore.jks
+
+  build_windows:
+    name: Build Windows EXE
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Enable Windows desktop support
+        run: flutter config --enable-windows-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: ${{ env.WINDOWS_PROJECT_DIR }}
+
+      - name: Analyze project
+        run: flutter analyze
+        working-directory: ${{ env.WINDOWS_PROJECT_DIR }}
+
+      - name: Run tests
+        run: flutter test
+        working-directory: ${{ env.WINDOWS_PROJECT_DIR }}
+
+      - name: Build Windows release bundle
+        shell: pwsh
+        working-directory: ${{ env.WINDOWS_PROJECT_DIR }}
+        run: |
+          $args = @('build', 'windows', '--release')
+          if ($env:WAVE_BASE_URL) {
+            $args += "--dart-define=WAVE_BASE_URL=$env:WAVE_BASE_URL"
+          }
+          & flutter @args
+
+      - name: Package portable Windows bundle
+        shell: pwsh
+        run: |
+          $bundleDir = (Resolve-Path '${{ env.WINDOWS_BUNDLE_DIR }}').Path
+          $portableDir = Join-Path $env:RUNNER_TEMP 'wave-windows-portable'
+          $portableZip = Join-Path $env:RUNNER_TEMP 'wave-windows-portable-x64.zip'
+
+          if (Test-Path $portableDir) {
+            Remove-Item -Recurse -Force $portableDir
+          }
+          if (Test-Path $portableZip) {
+            Remove-Item -Force $portableZip
+          }
+
+          New-Item -ItemType Directory -Path $portableDir | Out-Null
+          Copy-Item -Path (Join-Path $bundleDir '*') -Destination $portableDir -Recurse -Force
+          Compress-Archive -Path (Join-Path $portableDir '*') -DestinationPath $portableZip -Force
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Windows installer EXE
+        shell: pwsh
+        run: |
+          $bundleDir = (Resolve-Path '${{ env.WINDOWS_BUNDLE_DIR }}').Path
+          $iconPath = (Resolve-Path '${{ env.WINDOWS_PROJECT_DIR }}\\windows\\runner\\resources\\app_icon.ico').Path
+          $outputDir = Join-Path $env:RUNNER_TEMP 'wave-windows-installer'
+          $issPath = Join-Path $env:RUNNER_TEMP 'wave-installer.iss'
+          $pubspecPath = (Resolve-Path '${{ env.WINDOWS_PROJECT_DIR }}\\pubspec.yaml').Path
+
+          if (Test-Path $outputDir) {
+            Remove-Item -Recurse -Force $outputDir
+          }
+          New-Item -ItemType Directory -Path $outputDir | Out-Null
+
+          $appVersion = '1.0.0'
+          $versionLine = Select-String -Path $pubspecPath -Pattern '^version:\\s*([0-9]+\\.[0-9]+\\.[0-9]+)'
+          if ($versionLine) {
+            $appVersion = $versionLine.Matches[0].Groups[1].Value
+          }
+
+          $script = @(
+            '#define MyAppName "Wave Messenger"',
+            "#define MyAppVersion `"$appVersion`"",
+            '#define MyAppExeName "wave_flutter.exe"',
+            '',
+            '[Setup]',
+            'AppId={{4D45F5D9-B8E2-49CA-8E84-2D31E15A89B9}',
+            'AppName={#MyAppName}',
+            'AppVersion={#MyAppVersion}',
+            'AppPublisher=Wave Messenger',
+            'DefaultDirName={localappdata}\Programs\Wave Messenger',
+            'DefaultGroupName=Wave Messenger',
+            'DisableProgramGroupPage=yes',
+            'PrivilegesRequired=lowest',
+            'PrivilegesRequiredOverridesAllowed=dialog',
+            'WizardStyle=modern',
+            'ArchitecturesAllowed=x64compatible',
+            'ArchitecturesInstallIn64BitMode=x64compatible',
+            'Compression=lzma',
+            'SolidCompression=yes',
+            "OutputDir=$outputDir",
+            'OutputBaseFilename=Wave-Messenger-Setup',
+            "SetupIconFile=$iconPath",
+            'UninstallDisplayIcon={app}\{#MyAppExeName}',
+            '',
+            '[Languages]',
+            'Name: "english"; MessagesFile: "compiler:Default.isl"',
+            '',
+            '[Tasks]',
+            'Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked',
+            '',
+            '[Files]',
+            "Source: `"$bundleDir\\*`"; DestDir: `"{app}`"; Flags: ignoreversion recursesubdirs createallsubdirs",
+            '',
+            '[Icons]',
+            'Name: "{autoprograms}\Wave Messenger"; Filename: "{app}\{#MyAppExeName}"',
+            'Name: "{autodesktop}\Wave Messenger"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon',
+            '',
+            '[Run]',
+            'Filename: "{app}\{#MyAppExeName}"; Description: "Launch Wave Messenger"; Flags: nowait postinstall skipifsilent'
+          ) -join "`r`n"
+
+          Set-Content -Path $issPath -Value $script -Encoding ascii
+
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          & $iscc $issPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup compilation failed."
+          }
+
+          Move-Item -Path (Join-Path $outputDir 'Wave-Messenger-Setup.exe') -Destination (Join-Path $env:RUNNER_TEMP 'wave-windows-x64-setup.exe') -Force
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-release-windows
+          path: |
+            ${{ runner.temp }}\wave-windows-portable-x64.zip
+            ${{ runner.temp }}\wave-windows-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  build_ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    timeout-minutes: 60
+    outputs:
+      signing_ready: ${{ steps.signing.outputs.ready }}
+    env:
+      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+      APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+    steps:
+      - name: Check iOS signing configuration
+        id: signing
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required=(
+            APPLE_CERTIFICATE_BASE64
+            APPLE_CERTIFICATE_PASSWORD
+            APPLE_PROVISIONING_PROFILE_BASE64
+            APPLE_TEAM_ID
+          )
+          missing=()
+
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              missing+=("$key")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Signed iOS IPA skipped"
+              echo
+              echo "A device-installable iPhone build needs Apple signing materials."
+              echo
+              echo "Missing secrets:"
+              for key in "${missing[@]}"; do
+                echo "- \`$key\`"
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            keychain_password="${APPLE_KEYCHAIN_PASSWORD:-$(uuidgen)}"
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "keychain_password=$keychain_password" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Enable iOS support
+        run: flutter config --enable-ios
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+
+      - name: Analyze project
+        run: flutter analyze
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+
+      - name: Install CocoaPods dependencies
+        run: pod install --repo-update
+        working-directory: ${{ env.IOS_PROJECT_DIR }}/ios
+
+      - name: Build iOS simulator app for PR validation
+        if: steps.signing.outputs.ready != 'true' && github.event_name == 'pull_request'
+        run: flutter build ios --debug --simulator
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+
+      - name: Install signing assets
+        if: steps.signing.outputs.ready == 'true'
+        id: signing_assets
+        shell: bash
+        env:
+          KEYCHAIN_PASSWORD: ${{ steps.signing.outputs.keychain_password }}
+        run: |
+          set -euo pipefail
+
+          export CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+          export PROFILE_PATH="$RUNNER_TEMP/build_profile.mobileprovision"
+          export KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          python3 - <<'PY'
+          import base64
+          import os
+          import pathlib
+
+          out = pathlib.Path(os.environ["RUNNER_TEMP"])
+          out.joinpath("build_certificate.p12").write_bytes(
+              base64.b64decode(os.environ["APPLE_CERTIFICATE_BASE64"])
+          )
+          out.joinpath("build_profile.mobileprovision").write_bytes(
+              base64.b64decode(os.environ["APPLE_PROVISIONING_PROFILE_BASE64"])
+          )
+          PY
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "$PROFILE_PATH" > "$RUNNER_TEMP/profile.plist"
+
+          profile_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")
+          profile_name=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
+
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+
+          echo "keychain_path=$KEYCHAIN_PATH" >> "$GITHUB_OUTPUT"
+          echo "profile_uuid=$profile_uuid" >> "$GITHUB_OUTPUT"
+          echo "profile_name=$profile_name" >> "$GITHUB_OUTPUT"
+
+      - name: Generate export options
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        env:
+          PROFILE_NAME: ${{ steps.signing_assets.outputs.profile_name }}
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+        run: |
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${IOS_EXPORT_METHOD}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>thinning</key>
+            <string>&lt;none&gt;</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${IOS_BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Build archive and export signed IPA
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        env:
+          PROFILE_NAME: ${{ steps.signing_assets.outputs.profile_name }}
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+
+          flutter build ios --release --no-codesign
+
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination generic/platform=iOS \
+            -archivePath build/ios/archive/WaveMessenger.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="${APPLE_TEAM_ID}" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+            PRODUCT_BUNDLE_IDENTIFIER="${IOS_BUNDLE_ID}" \
+            archive
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/ios/archive/WaveMessenger.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist ios/ExportOptions.plist
+
+      - name: Prepare signed iOS asset
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        working-directory: ${{ env.IOS_PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-ios"
+          cp build/ios/ipa/*.ipa "$RUNNER_TEMP/release-ios/wave-ios.ipa"
+
+      - name: Upload signed iOS artifact
+        if: steps.signing.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-release-ios-signed
+          path: ${{ runner.temp }}/release-ios/wave-ios.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Clean up signing assets
+        if: always() && steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${{ steps.signing_assets.outputs.profile_uuid }}.mobileprovision" || true
+          security delete-keychain "${{ steps.signing_assets.outputs.keychain_path }}" || true
+
+  publish_release:
+    name: Publish unified release
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs:
+      - build_android
+      - build_windows
+      - build_ios
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: wave-release-android
+          path: release-assets/android
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: wave-release-windows
+          path: release-assets/windows
+
+      - name: Download signed iOS artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: wave-release-ios-signed
+          path: release-assets/ios/signed
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare release assets and install page
+        shell: bash
+        env:
+          GH_REPO: ${{ github.repository }}
+          IOS_SIGNED: ${{ needs.build_ios.outputs.signing_ready }}
+          ANDROID_SIGNED: ${{ needs.build_android.outputs.signing_ready }}
+        run: |
+          set -euo pipefail
+
+          owner="${GH_REPO%/*}"
+          repo="${GH_REPO#*/}"
+          pages_url="https://${owner}.github.io/${repo}/ios/latest/"
+          release_base_url="https://github.com/${GH_REPO}/releases/download/${RELEASE_TAG}"
+          ios_manifest_url="${pages_url}manifest.plist"
+          ios_itms_url="itms-services://?action=download-manifest&url=${ios_manifest_url}"
+          app_version="$(sed -n 's/^version: //p' "${ANDROID_PROJECT_DIR}/pubspec.yaml" | head -n 1 | tr -d '\r')"
+          app_marketing_version="${app_version%%+*}"
+          ota_enabled="false"
+
+          mkdir -p release-package pages/ios/latest
+          touch pages/.nojekyll
+
+          cp release-assets/android/wave-android-release.apk release-package/
+          cp release-assets/windows/wave-windows-portable-x64.zip release-package/
+          cp release-assets/windows/wave-windows-x64-setup.exe release-package/
+
+          if [[ -f release-assets/ios/signed/wave-ios.ipa ]]; then
+            cp release-assets/ios/signed/wave-ios.ipa release-package/
+
+            if [[ "${IOS_EXPORT_METHOD}" == "ad-hoc" || "${IOS_EXPORT_METHOD}" == "enterprise" ]]; then
+              ota_enabled="true"
+              cat > release-package/wave-ios-manifest.plist <<EOF
+              <?xml version="1.0" encoding="UTF-8"?>
+              <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+              <plist version="1.0">
+              <dict>
+                <key>items</key>
+                <array>
+                  <dict>
+                    <key>assets</key>
+                    <array>
+                      <dict>
+                        <key>kind</key>
+                        <string>software-package</string>
+                        <key>url</key>
+                        <string>${release_base_url}/wave-ios.ipa</string>
+                      </dict>
+                    </array>
+                    <key>metadata</key>
+                    <dict>
+                      <key>bundle-identifier</key>
+                      <string>${IOS_BUNDLE_ID}</string>
+                      <key>bundle-version</key>
+                      <string>${app_marketing_version}</string>
+                      <key>kind</key>
+                      <string>software</string>
+                      <key>title</key>
+                      <string>Wave Messenger</string>
+                    </dict>
+                  </dict>
+                </array>
+              </dict>
+              </plist>
+              EOF
+
+              cp release-package/wave-ios-manifest.plist pages/ios/latest/manifest.plist
+
+              cat > pages/ios/latest/index.html <<EOF
+              <!doctype html>
+              <html lang="en">
+              <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>Wave iPhone Install</title>
+                <style>
+                  :root {
+                    color-scheme: light;
+                    --bg: #f2efe8;
+                    --card: #fffdfa;
+                    --ink: #1e2430;
+                    --muted: #556070;
+                    --accent: #0d6c91;
+                    --accent-2: #ef8354;
+                    --line: rgba(30, 36, 48, 0.12);
+                  }
+                  * { box-sizing: border-box; }
+                  body {
+                    margin: 0;
+                    min-height: 100vh;
+                    font-family: "Segoe UI", Arial, sans-serif;
+                    background:
+                      radial-gradient(circle at top left, rgba(13,108,145,0.16), transparent 34%),
+                      radial-gradient(circle at bottom right, rgba(239,131,84,0.2), transparent 38%),
+                      var(--bg);
+                    color: var(--ink);
+                    display: grid;
+                    place-items: center;
+                    padding: 24px;
+                  }
+                  main {
+                    width: min(560px, 100%);
+                    background: var(--card);
+                    border: 1px solid var(--line);
+                    border-radius: 24px;
+                    padding: 28px;
+                    box-shadow: 0 20px 60px rgba(30, 36, 48, 0.12);
+                  }
+                  h1 {
+                    margin: 0 0 12px;
+                    font-size: clamp(2rem, 7vw, 3rem);
+                    line-height: 0.95;
+                  }
+                  p {
+                    margin: 0 0 16px;
+                    color: var(--muted);
+                    line-height: 1.6;
+                  }
+                  .cta {
+                    display: inline-block;
+                    margin: 12px 0 18px;
+                    padding: 14px 22px;
+                    border-radius: 999px;
+                    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+                    color: #fffdfa;
+                    text-decoration: none;
+                    font-weight: 700;
+                  }
+                  .meta {
+                    padding-top: 16px;
+                    border-top: 1px solid var(--line);
+                    font-size: 0.95rem;
+                  }
+                  code {
+                    font-family: Consolas, monospace;
+                    font-size: 0.9em;
+                  }
+                </style>
+              </head>
+              <body>
+                <main>
+                  <h1>Wave on iPhone</h1>
+                  <p>Open this page in Safari on the iPhone that should receive the app, then start the OTA install.</p>
+                  <a class="cta" href="${ios_itms_url}">Install Wave Messenger</a>
+                  <p>You can also <a href="${release_base_url}/wave-ios.ipa">download the IPA directly</a>, but direct browser installation requires the OTA link above.</p>
+                  <div class="meta">
+                    <p>Export method: <code>${IOS_EXPORT_METHOD}</code></p>
+                    <p>For <code>ad-hoc</code> builds, the iPhone UDID must already be present in the provisioning profile. For <code>enterprise</code>, installation works only inside the enterprise distribution scope.</p>
+                  </div>
+                </main>
+              </body>
+              </html>
+              EOF
+            else
+              cat > pages/ios/latest/index.html <<EOF
+              <!doctype html>
+              <html lang="en">
+              <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>Wave iPhone Install</title>
+              </head>
+              <body>
+                <p>The signed IPA exists, but OTA installation is disabled because the export method is <strong>${IOS_EXPORT_METHOD}</strong>. Use <strong>ad-hoc</strong> or <strong>enterprise</strong> for browser-based iPhone installation.</p>
+              </body>
+              </html>
+              EOF
+            fi
+          else
+            cat > pages/ios/latest/index.html <<EOF
+            <!doctype html>
+            <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>Wave iPhone Install</title>
+            </head>
+            <body>
+              <p>No signed iOS build was published in this run.</p>
+              <p>Configure <code>APPLE_CERTIFICATE_BASE64</code>, <code>APPLE_CERTIFICATE_PASSWORD</code>, <code>APPLE_PROVISIONING_PROFILE_BASE64</code>, and <code>APPLE_TEAM_ID</code> to generate a device-installable IPA.</p>
+            </body>
+            </html>
+            EOF
+          fi
+
+          cat > release-notes.md <<EOF
+          ## Downloads
+          - [Windows installer (.exe)](${release_base_url}/wave-windows-x64-setup.exe)
+          - [Windows portable bundle (.zip)](${release_base_url}/wave-windows-portable-x64.zip)
+          - [Android APK](${release_base_url}/wave-android-release.apk)
+          EOF
+
+          if [[ -f release-package/wave-ios.ipa ]]; then
+            cat >> release-notes.md <<EOF
+          - [Download iOS IPA](${release_base_url}/wave-ios.ipa)
+          EOF
+            if [[ "${ota_enabled}" == "true" ]]; then
+              cat >> release-notes.md <<EOF
+          - [Install on iPhone](${pages_url})
+          EOF
+            else
+              cat >> release-notes.md <<EOF
+          - iPhone OTA install is disabled for export method \`${IOS_EXPORT_METHOD}\`. Switch to \`ad-hoc\` or \`enterprise\` if you want browser installation on iPhone.
+          EOF
+            fi
+          else
+            cat >> release-notes.md <<'EOF'
+          - iPhone build is unavailable in this run. Add Apple signing secrets to publish an installable IPA.
+          EOF
+          fi
+
+          cat >> release-notes.md <<EOF
+
+          ## Release behavior
+          - This workflow keeps a single moving release at tag \`${RELEASE_TAG}\`. Older tags and releases are removed before every publish.
+          - Android signing status: $( [[ "${ANDROID_SIGNED}" == "true" ]] && echo "custom release keystore" || echo "debug keystore fallback" ).
+          - A Flutter Windows app needs its companion files next to the executable, so the release publishes both a portable bundle and a one-click Windows installer \`.exe\`.
+          - Per Apple distribution rules, direct browser install on iPhone requires an \`ad-hoc\` or \`enterprise\` signed IPA. For \`ad-hoc\`, the target device must be registered in the provisioning profile.
+          EOF
+
+      - name: Delete previous releases and tags
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t release_tags < <(gh api "repos/${GH_REPO}/releases" --paginate --jq '.[].tag_name')
+          for tag in "${release_tags[@]}"; do
+            if [[ -n "${tag}" && "${tag}" != "${RELEASE_TAG}" ]]; then
+              gh release delete "${tag}" --cleanup-tag -y || true
+            fi
+          done
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release delete "${RELEASE_TAG}" --cleanup-tag -y || true
+          fi
+
+          gh api -X DELETE "repos/${GH_REPO}/git/refs/tags/${RELEASE_TAG}" >/dev/null 2>&1 || true
+
+          mapfile -t refs < <(gh api "repos/${GH_REPO}/git/matching-refs/tags/" --paginate --jq '.[].ref')
+          for ref in "${refs[@]}"; do
+            tag="${ref#refs/tags/}"
+            if [[ -n "${tag}" && "${tag}" != "${RELEASE_TAG}" ]]; then
+              gh api -X DELETE "repos/${GH_REPO}/git/refs/tags/${tag}" >/dev/null 2>&1 || true
+            fi
+          done
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${RELEASE_TAG}" release-package/* \
+            --title "${RELEASE_NAME}" \
+            --target "${GITHUB_SHA}" \
+            --notes-file release-notes.md \
+            --latest
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
+  deploy_ios_install_page:
+    name: Deploy iOS install page
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: publish_release
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

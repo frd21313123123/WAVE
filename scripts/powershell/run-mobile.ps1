@@ -14,12 +14,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$FlutterRoot = Join-Path $RepoRoot "wave_flutter"
+$ScriptsRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepoRoot = Split-Path -Parent (Split-Path -Parent $ScriptsRoot)
+$FlutterRoot = Join-Path $RepoRoot "flutter\\windows-android\\wave_flutter"
 $AndroidRoot = Join-Path $FlutterRoot "android"
 $LocalPropertiesPath = Join-Path $AndroidRoot "local.properties"
-$LogsRoot = Join-Path $RepoRoot "logs"
-$ArtifactsRoot = Join-Path $RepoRoot "artifacts"
+$LogsRoot = Join-Path $RepoRoot "runtime\\logs"
+$ArtifactsRoot = Join-Path $RepoRoot "runtime\\artifacts"
 $ApkExportsRoot = Join-Path $ArtifactsRoot "apk"
 $EmulatorLog = Join-Path $LogsRoot "mobile-emulator.log"
 $EmulatorErrLog = Join-Path $LogsRoot "mobile-emulator.err.log"
@@ -557,7 +558,7 @@ if ($NoWatch) {
     return
 }
 
-Write-Step "Watch mode is active. Edit files in wave_flutter and the app will rebuild automatically."
+Write-Step "Watch mode is active. Edit files in flutter/windows-android/wave_flutter and the app will rebuild automatically."
 Write-Step "Press Ctrl+C to stop the auto builder."
 
 $snapshot = New-WatchSnapshot

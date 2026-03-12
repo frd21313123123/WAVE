@@ -7,7 +7,7 @@
  *
  * Запуск:
  *   npm run test:perf
- *   node tests/perf-benchmark.js
+ *   node backend/tests/perf-benchmark.js
  */
 
 "use strict";

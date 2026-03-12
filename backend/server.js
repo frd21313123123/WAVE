@@ -3,7 +3,7 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 
-require("dotenv").config({ path: path.join(__dirname, ".env") });
+require("dotenv").config({ path: path.resolve(__dirname, "..", ".env") });
 
 const bcrypt = require("bcryptjs");
 const compression = require("compression");

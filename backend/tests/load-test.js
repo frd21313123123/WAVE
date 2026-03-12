@@ -8,6 +8,7 @@
  * Запуск:
  *   npm start                        # сначала поднять сервер
  *   npm run test:load
+ *   node backend/tests/load-test.js
  *   npm run test:load -- --concurrency=50 --duration=15
  *
  * Параметры:

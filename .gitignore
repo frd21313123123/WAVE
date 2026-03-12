@@ -20,8 +20,8 @@ lerna-debug.log*
 .env*.local
 
 # Database / Storage
-data/*.json
-data/*.sqlite
+backend/data/*.json
+backend/data/*.sqlite
 *.sqlite
 *.sqlite3
 *.db
@@ -61,8 +61,10 @@ out/
 .flutter-plugins-dependencies
 .packages
 **/android/local.properties
+**/android/key.properties
+**/android/*.jks
 **/.gradle/
-wave_flutter/.gradle_wrapper_seed/
+flutter/windows-android/wave_flutter/.gradle_wrapper_seed/
 
 # Testing
 coverage/
@@ -71,4 +73,5 @@ coverage/
 # Misc
 .history/
 .tools/
-artifacts/apk/
+runtime/artifacts/apk/
+runtime/logs/

@@ -154,7 +154,7 @@ function createMinimalPng(size) {
     return Buffer.concat([signature, ihdr, idat, iend]);
 }
 
-const dir = path.join(__dirname, "public", "icons");
+const dir = path.resolve(__dirname, "..", "..", "backend", "public", "icons");
 if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
 fs.writeFileSync(path.join(dir, "icon-192.png"), createMinimalPng(192));

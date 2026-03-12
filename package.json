@@ -2,12 +2,13 @@
   "name": "messenger",
   "version": "1.0.0",
   "description": "Realtime messenger with registration and login",
-  "main": "server.js",
+  "main": "backend/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "test:perf": "node tests/perf-benchmark.js",
-    "test:load": "node tests/load-test.js"
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js",
+    "test:perf": "node backend/tests/perf-benchmark.js",
+    "test:load": "node backend/tests/load-test.js",
+    "icons": "node scripts/node/generate-icons.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
