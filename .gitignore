@@ -73,5 +73,7 @@ coverage/
 # Misc
 .history/
 .tools/
+.gradle-home/
+wave_flutter/
 runtime/artifacts/apk/
 runtime/logs/
