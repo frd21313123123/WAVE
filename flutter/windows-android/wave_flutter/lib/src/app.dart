@@ -93,10 +93,31 @@ class AppBootstrap {
       settingsController: settingsController,
     );
 
+    Future<Map<String, dynamic>?> loadRtcConfiguration() async {
+      try {
+        final payload = await apiClient.get('/api/calls/ice-config');
+        final iceServers = payload['iceServers'];
+        if (iceServers is! List) {
+          return null;
+        }
+        return <String, dynamic>{
+          'iceServers': iceServers
+              .whereType<Map>()
+              .map((entry) => Map<String, dynamic>.from(entry))
+              .toList(growable: false),
+        };
+      } catch (_) {
+        return null;
+      }
+    }
+
     final callController = CallController(
       chatController: chatController,
       realtimeService: realtimeService,
-      mediaEngineFactory: () => FlutterWebRtcCallEngine(),
+      mediaEngineFactory: ({rtcConfiguration}) => FlutterWebRtcCallEngine(
+        rtcConfiguration: rtcConfiguration,
+      ),
+      rtcConfigurationLoader: loadRtcConfiguration,
     );
     final updateController = UpdateController(
       AppUpdateService(

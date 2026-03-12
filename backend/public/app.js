@@ -336,6 +336,9 @@ const state = {
     screenShareEnabled: false,
     timerInterval: null,
     timerStart: null,
+    iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
+    iceServersLoadedAt: 0,
+    iceServersRequest: null,
     micGainNode: null,
     micAudioCtx: null,
     micProcessedStream: null,
@@ -1155,6 +1158,79 @@ function sendCallSignal({
   });
 }
 
+function normalizeIceServerList(entries) {
+  if (!Array.isArray(entries)) {
+    return [{ urls: ["stun:stun.l.google.com:19302"] }];
+  }
+
+  const normalized = entries
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const urlsSource = Array.isArray(entry.urls)
+        ? entry.urls
+        : typeof entry.urls === "string"
+          ? [entry.urls]
+          : [];
+      const urls = urlsSource
+        .map((url) => String(url || "").trim())
+        .filter(Boolean);
+      if (urls.length === 0) {
+        return null;
+      }
+
+      const nextEntry = { urls };
+      if (entry.username) {
+        nextEntry.username = String(entry.username).trim();
+      }
+      if (entry.credential) {
+        nextEntry.credential = String(entry.credential).trim();
+      }
+      return nextEntry;
+    })
+    .filter(Boolean);
+
+  return normalized.length > 0
+    ? normalized
+    : [{ urls: ["stun:stun.l.google.com:19302"] }];
+}
+
+async function loadCallIceServers(force = false) {
+  const now = Date.now();
+  if (
+    !force &&
+    Array.isArray(state.call.iceServers) &&
+    state.call.iceServers.length > 0 &&
+    state.call.iceServersLoadedAt &&
+    now - state.call.iceServersLoadedAt < 10 * 60 * 1000
+  ) {
+    return state.call.iceServers;
+  }
+
+  if (state.call.iceServersRequest) {
+    return state.call.iceServersRequest;
+  }
+
+  state.call.iceServersRequest = api("/api/calls/ice-config")
+    .then((payload) => {
+      const iceServers = normalizeIceServerList(payload.iceServers);
+      state.call.iceServers = iceServers;
+      state.call.iceServersLoadedAt = Date.now();
+      return iceServers;
+    })
+    .catch(() => {
+      state.call.iceServersLoadedAt = Date.now();
+      return state.call.iceServers;
+    })
+    .finally(() => {
+      state.call.iceServersRequest = null;
+    });
+
+  return state.call.iceServersRequest;
+}
+
 async function applyRemoteOffer(peer, offerSdp, queuedCandidates = []) {
   if (!offerSdp) {
     throw new Error("Некорректный входящий offer.");
@@ -1299,8 +1375,9 @@ async function createCallPeer(targetUserId, conversationId, localStream, options
     throw new Error("WebRTC не поддерживается в этом браузере.");
   }
 
+  const iceServers = await loadCallIceServers();
   const peer = new PeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    iceServers,
   });
 
   if (localStream) {
@@ -4617,6 +4694,7 @@ async function bootstrapSession(user) {
   renderSearchResults([]);
   updateAvatarPreview();
   await refreshTwoFaStatus();
+  await loadCallIceServers(true).catch(() => {});
   await loadConversations();
   connectSocket();
 }
@@ -6425,7 +6503,7 @@ gsDeleteGroupBtn.addEventListener("click", async () => {
 // PUSH NOTIFICATIONS (Service Worker + Web Push)
 // ========================
 let swRegistration = null;
-const SERVICE_WORKER_URL = "/sw.js?v=6";
+const SERVICE_WORKER_URL = "/sw.js?v=7";
 
 async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return null;

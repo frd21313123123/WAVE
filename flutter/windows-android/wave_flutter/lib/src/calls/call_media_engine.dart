@@ -5,7 +5,8 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../models/call_models.dart';
 
-typedef CallMediaEngineFactory = CallMediaEngine Function();
+typedef CallMediaEngineFactory =
+    CallMediaEngine Function({Map<String, dynamic>? rtcConfiguration});
 
 abstract class CallMediaEngine extends ChangeNotifier {
   Stream<Map<String, dynamic>> get localIceCandidates;

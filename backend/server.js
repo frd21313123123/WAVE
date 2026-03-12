@@ -1294,6 +1294,10 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
   res.json({ user: toPublicUser(req.user) });
 });
 
+app.get("/api/calls/ice-config", requireAuth, (req, res) => {
+  return res.json({ iceServers: RTC_ICE_SERVERS });
+});
+
 app.get("/api/auth/2fa/status", requireAuth, (req, res) => {
   return res.json({ enabled: Boolean(req.user.twoFactor?.enabled) });
 });

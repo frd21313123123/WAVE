@@ -13,12 +13,14 @@ class CallController extends ChangeNotifier {
     required this.chatController,
     required this.realtimeService,
     required this.mediaEngineFactory,
+    this.rtcConfigurationLoader,
     this.disconnectGrace = const Duration(seconds: 12),
   });
 
   final ChatController chatController;
   final RealtimeService realtimeService;
   final CallMediaEngineFactory mediaEngineFactory;
+  final Future<Map<String, dynamic>?> Function()? rtcConfigurationLoader;
   final Duration disconnectGrace;
 
   final Map<String, List<Map<String, dynamic>>> _preOfferIceByKey =
@@ -561,7 +563,13 @@ class CallController extends ChangeNotifier {
 
   Future<void> _attachFreshEngine() async {
     await _disposeEngine();
-    final engine = mediaEngineFactory();
+    Map<String, dynamic>? rtcConfiguration;
+    if (rtcConfigurationLoader != null) {
+      try {
+        rtcConfiguration = await rtcConfigurationLoader!();
+      } catch (_) {}
+    }
+    final engine = mediaEngineFactory(rtcConfiguration: rtcConfiguration);
     _engine = engine;
     _lastObservedConnectionState = engine.connectionState;
     engine.addListener(_handleEngineUpdated);
