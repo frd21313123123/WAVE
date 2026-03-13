@@ -333,44 +333,15 @@ class _WaveSettingsSheetState extends State<WaveSettingsSheet>
                         ],
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        if (widget.onCheckForUpdates != null)
-                          FilledButton.tonalIcon(
-                            onPressed: _handleCheckForUpdates,
-                            icon: const Icon(Icons.system_update_alt_rounded),
-                            label: const Text('Проверить обновления'),
-                          ),
-                        if (widget.updateStatusText != null) ...[
-                          const SizedBox(height: 8),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 260),
-                            child: Text(
-                              widget.updateStatusText!,
-                              textAlign: TextAlign.right,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                            ),
-                          ),
-                        ],
-                        if (controller.isBusy) ...[
-                          const SizedBox(height: 10),
-                          const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ],
-                      ],
-                    ),
+                    if (controller.isBusy)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 12),
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
                   ],
                 ),
               ),

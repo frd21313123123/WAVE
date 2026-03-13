@@ -53,7 +53,6 @@ class AppUpdateService {
         );
       }
 
-      final tagName = payload['tag_name']?.toString() ?? '';
       final releaseName = payload['name']?.toString() ?? '';
       final releasePageUrl =
           Uri.tryParse(payload['html_url']?.toString() ?? '');
@@ -67,9 +66,11 @@ class AppUpdateService {
       final update = _buildUpdateInfo(
         payload: payload,
         currentVersion: currentVersion,
-        releaseTag: tagName,
         releaseName: releaseName,
-        latestVersion: _extractVersion('$tagName $releaseName'),
+        latestVersion: _extractVersion([
+          payload['tag_name']?.toString() ?? '',
+          releaseName,
+        ]),
         releasePageUrl: releasePageUrl,
       );
 
@@ -181,7 +182,6 @@ class AppUpdateService {
   AppUpdateInfo? _buildUpdateInfo({
     required Map<String, dynamic> payload,
     required String currentVersion,
-    required String releaseTag,
     required String releaseName,
     required String? latestVersion,
     required Uri releasePageUrl,
@@ -215,25 +215,7 @@ class AppUpdateService {
       );
     }
 
-    if (selectedAsset == null) {
-      return null;
-    }
-
-    return AppUpdateInfo(
-      currentVersion: currentVersion,
-      latestVersion: _fallbackReleaseLabel(
-        tagName: releaseTag,
-        publishedAt: publishedAt,
-      ),
-      releaseName: resolvedReleaseName,
-      releaseNotes: payload['body']?.toString() ?? '',
-      releasePageUrl: releasePageUrl,
-      publishedAt: publishedAt,
-      downloadUrl: Uri.tryParse(selectedAsset.downloadUrl),
-      assetName: selectedAsset.name,
-      actionLabel: _actionLabelForCurrentPlatform(true),
-      canDetermineIfNewer: false,
-    );
+    return null;
   }
 
   _GithubReleaseAsset? _selectAssetForCurrentPlatform(
@@ -272,40 +254,28 @@ class AppUpdateService {
     };
   }
 
-  String _fallbackReleaseLabel({
-    required String tagName,
-    required DateTime? publishedAt,
-  }) {
-    if (publishedAt != null) {
-      final local = publishedAt.toLocal();
-      final year = local.year.toString().padLeft(4, '0');
-      final month = local.month.toString().padLeft(2, '0');
-      final day = local.day.toString().padLeft(2, '0');
-      final hour = local.hour.toString().padLeft(2, '0');
-      final minute = local.minute.toString().padLeft(2, '0');
-      return '$year-$month-$day $hour:$minute';
+  String? _extractVersion(List<String> sources) {
+    for (final source in sources) {
+      final match = RegExp(
+        r'(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:[-+][0-9A-Za-z.-]+)?',
+      ).firstMatch(source);
+      if (match == null) {
+        continue;
+      }
+      final major = match.group(1);
+      final minor = match.group(2);
+      final patch = match.group(3);
+      final revision = match.group(4);
+      if (major == null || minor == null || patch == null) {
+        continue;
+      }
+
+      return revision == null
+          ? '$major.$minor.$patch'
+          : '$major.$minor.$patch.$revision';
     }
 
-    final normalizedTag = tagName.trim();
-    return normalizedTag.isNotEmpty ? normalizedTag : 'latest';
-  }
-
-  String? _extractVersion(String source) {
-    final match = RegExp(
-      r'(\d+)\.(\d+)\.(\d+(?:[-+][0-9A-Za-z.-]+)?)',
-    ).firstMatch(source);
-    if (match == null) {
-      return null;
-    }
-
-    final major = match.group(1);
-    final minor = match.group(2);
-    final patch = match.group(3);
-    if (major == null || minor == null || patch == null) {
-      return null;
-    }
-
-    return '$major.$minor.$patch';
+    return null;
   }
 
   String _sanitizeFileName(String value) {
@@ -321,7 +291,7 @@ class AppUpdateService {
     final a = _parseVersion(left);
     final b = _parseVersion(right);
 
-    for (var i = 0; i < 3; i += 1) {
+    for (var i = 0; i < 4; i += 1) {
       final delta = a.core[i] - b.core[i];
       if (delta != 0) {
         return delta;
@@ -354,6 +324,7 @@ class AppUpdateService {
         core.isNotEmpty ? core[0] : 0,
         core.length > 1 ? core[1] : 0,
         core.length > 2 ? core[2] : 0,
+        core.length > 3 ? core[3] : 0,
       ],
       preRelease: parts.length > 1 ? parts.sublist(1).join('-') : null,
     );
