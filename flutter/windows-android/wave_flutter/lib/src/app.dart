@@ -60,7 +60,14 @@ class AppBootstrap {
       realtimeService: realtimeService,
       appConfig: resolvedAppConfig,
     );
-    await notificationService.initialize();
+    try {
+      await notificationService.initialize();
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Wave bootstrap: notification service initialization failed: '
+        '$error\n$stackTrace',
+      );
+    }
     final chatController = ChatController(
       apiClient: apiClient,
       realtimeService: realtimeService,
@@ -125,7 +132,14 @@ class AppBootstrap {
         githubRepository: 'WAVE',
       ),
     );
-    await updateController.loadInstalledVersion();
+    try {
+      await updateController.loadInstalledVersion();
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Wave bootstrap: failed to load installed app version: '
+        '$error\n$stackTrace',
+      );
+    }
 
     return AppBootstrap(
       appConfig: resolvedAppConfig,
