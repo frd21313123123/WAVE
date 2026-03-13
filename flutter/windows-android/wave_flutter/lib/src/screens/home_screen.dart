@@ -55,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
   _MobileChatFilter _mobileChatFilter = _MobileChatFilter.all;
   _ProfileFeedTab _profileFeedTab = _ProfileFeedTab.posts;
   bool _mobileChatOpen = false;
+  String? _mobilePendingConversationId;
   ChatController? _chatController;
   CallController? _callController;
   SettingsController? _settingsController;
@@ -319,9 +320,21 @@ class _HomeScreenState extends State<HomeScreen> {
     required List<ChatMessage> messages,
   }) {
     final updateController = context.watch<UpdateController>();
-    final showConversation = _mobileTab == _MobileHomeTab.chats &&
-        _mobileChatOpen &&
-        activeConversation != null;
+    final pendingConversationId = _mobilePendingConversationId;
+    final pendingConversation = pendingConversationId == null
+        ? null
+        : chat.conversationById(pendingConversationId);
+    final mobileConversation = activeConversation ?? pendingConversation;
+    final mobileConversationMessages = mobileConversation == null
+        ? const <ChatMessage>[]
+        : activeConversation?.id == mobileConversation.id
+            ? messages
+            : chat.messagesFor(mobileConversation.id);
+    final isConversationLoading = pendingConversationId != null &&
+        (mobileConversation?.id == pendingConversationId ||
+            mobileConversation == null);
+    final showConversation =
+        _mobileTab == _MobileHomeTab.chats && _mobileChatOpen;
     final filteredConversations =
         _filterMobileConversations(chat.conversations);
     final unreadDockCount = chat.conversations.where((conversation) {
@@ -344,12 +357,12 @@ class _HomeScreenState extends State<HomeScreen> {
               child: showConversation
                   ? _ChatPane(
                       key: ValueKey<String>(
-                        'mobile-chat-${activeConversation.id}',
+                        'mobile-chat-${mobileConversation?.id ?? pendingConversationId ?? 'loading'}',
                       ),
                       currentUser: currentUser,
                       settingsController: settings,
-                      conversation: activeConversation,
-                      messages: messages,
+                      conversation: mobileConversation,
+                      messages: mobileConversationMessages,
                       typingDisplayName: chat.typingDisplayName,
                       composerController: _composerController,
                       scrollController: _scrollController,
@@ -362,6 +375,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           _startOutgoingCall(videoRequested: true),
                       showBackButton: true,
                       onBack: _closeMobileConversation,
+                      isLoading: isConversationLoading,
+                      loadingConversationTitle: mobileConversation?.titleFor(
+                        currentUser.id,
+                      ),
                     )
                   : _MobileHomeView(
                       key: ValueKey<String>('mobile-tab-${_mobileTab.name}'),
@@ -443,14 +460,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openMobileConversation(String conversationId) async {
     final chat = context.read<ChatController>();
-    await chat.openConversation(conversationId);
     if (!mounted) {
       return;
     }
     setState(() {
       _mobileTab = _MobileHomeTab.chats;
       _mobileChatOpen = true;
+      _mobilePendingConversationId = conversationId;
     });
+    try {
+      await chat.openConversation(conversationId);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    } finally {
+      if (mounted && _mobilePendingConversationId == conversationId) {
+        setState(() {
+          _mobilePendingConversationId = null;
+        });
+      }
+    }
   }
 
   void _closeMobileConversation() {
@@ -459,6 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     setState(() {
       _mobileChatOpen = false;
+      _mobilePendingConversationId = null;
     });
   }
 
@@ -469,6 +503,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _mobileTab = tab;
       _mobileChatOpen = false;
+      _mobilePendingConversationId = null;
     });
   }
 
@@ -1153,6 +1188,8 @@ class _ChatPane extends StatelessWidget {
     required this.onStartVideoCall,
     this.showBackButton = false,
     this.onBack,
+    this.isLoading = false,
+    this.loadingConversationTitle,
   });
 
   final PublicUser currentUser;
@@ -1169,19 +1206,33 @@ class _ChatPane extends StatelessWidget {
   final VoidCallback onStartVideoCall;
   final bool showBackButton;
   final VoidCallback? onBack;
+  final bool isLoading;
+  final String? loadingConversationTitle;
 
   @override
   Widget build(BuildContext context) {
     final active = conversation;
-    if (active == null) {
+    if (active == null && !isLoading) {
       return const _EmptyChatState();
     }
 
-    final partner = active.participant;
+    final partner = active?.participant;
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final canSend = !active.blockedMe;
-    final canStartCall = !active.isGroup &&
+    final title =
+        active?.titleFor(currentUser.id) ?? loadingConversationTitle ?? 'Chat';
+    final subtitle = active == null
+        ? 'Loading chat, please wait...'
+        : active.isGroup
+            ? '${active.participants.length} участников'
+            : partner?.online == true
+                ? 'в сети'
+                : partner?.lastSeenAt != null
+                    ? 'был(а) ${DateFormat('dd.MM HH:mm').format(partner!.lastSeenAt!)}'
+                    : '@${partner?.username ?? ''}';
+    final canSend = active != null && !active.blockedMe;
+    final canStartCall = active != null &&
+        !active.isGroup &&
         !active.blockedByMe &&
         !active.blockedMe &&
         partner != null;
@@ -1217,8 +1268,8 @@ class _ChatPane extends StatelessWidget {
                   const SizedBox(width: 8),
                 ],
                 WaveAvatar(
-                  label: active.avatarLabelFor(currentUser.id),
-                  imageUrl: active.avatarSourceFor(currentUser.id),
+                  label: active?.avatarLabelFor(currentUser.id) ?? title,
+                  imageUrl: active?.avatarSourceFor(currentUser.id),
                   radius: 22,
                 ),
                 const SizedBox(width: 12),
@@ -1227,7 +1278,7 @@ class _ChatPane extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        active.titleFor(currentUser.id),
+                        title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style:
@@ -1237,13 +1288,7 @@ class _ChatPane extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        active.isGroup
-                            ? '${active.participants.length} участников'
-                            : partner?.online == true
-                                ? 'в сети'
-                                : partner?.lastSeenAt != null
-                                    ? 'был(а) ${DateFormat('dd.MM HH:mm').format(partner!.lastSeenAt!)}'
-                                    : '@${partner?.username ?? ''}',
+                        subtitle,
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -1264,7 +1309,7 @@ class _ChatPane extends StatelessWidget {
               ],
             ),
           ),
-          if (active.blockedMe)
+          if (active?.blockedMe == true)
             Container(
               width: double.infinity,
               color: scheme.errorContainer,
@@ -1275,34 +1320,55 @@ class _ChatPane extends StatelessWidget {
               ),
             ),
           Expanded(
-            child: ListView.separated(
-              controller: scrollController,
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-              itemCount: messages.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final message = messages[index];
-                final isMine = message.senderId == currentUser.id;
-                final canEdit = isMine && message.canEdit && !message.isPending;
-                final senderName = active.isGroup && !isMine
-                    ? _senderNameFor(active, message.senderId, message.sender)
-                    : null;
-                final displayText =
-                    settingsController.decodeMessageText(message);
-                final encrypted =
-                    settingsController.isMessageEncrypted(message);
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: isLoading && messages.isEmpty
+                  ? _ChatLoadingBody(
+                      key: ValueKey<String>(
+                        'chat-loading-${active?.id ?? loadingConversationTitle ?? 'pending'}',
+                      ),
+                    )
+                  : ListView.separated(
+                      key: ValueKey<String>(
+                        'chat-messages-${active?.id ?? 'pending'}',
+                      ),
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                      itemCount: messages.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final message = messages[index];
+                        final isMine = message.senderId == currentUser.id;
+                        final canEdit =
+                            isMine && message.canEdit && !message.isPending;
+                        final senderName =
+                            active != null && active.isGroup && !isMine
+                                ? _senderNameFor(
+                                    active,
+                                    message.senderId,
+                                    message.sender,
+                                  )
+                                : null;
+                        final displayText =
+                            settingsController.decodeMessageText(message);
+                        final encrypted =
+                            settingsController.isMessageEncrypted(message);
 
-                return GestureDetector(
-                  onLongPress: canEdit ? () => onEditMessage(message) : null,
-                  child: _MessageBubble(
-                    message: message,
-                    isMine: isMine,
-                    senderName: senderName,
-                    displayText: displayText,
-                    encrypted: encrypted,
-                  ),
-                );
-              },
+                        return GestureDetector(
+                          onLongPress:
+                              canEdit ? () => onEditMessage(message) : null,
+                          child: _MessageBubble(
+                            message: message,
+                            isMine: isMine,
+                            senderName: senderName,
+                            displayText: displayText,
+                            encrypted: encrypted,
+                          ),
+                        );
+                      },
+                    ),
             ),
           ),
           AnimatedSwitcher(
@@ -1475,16 +1541,12 @@ class _MessageBubble extends StatelessWidget {
                     ),
                   ],
                 ] else if (message.isVoice) ...[
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.graphic_eq_rounded, color: textColor),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Голосовое сообщение',
-                        style: TextStyle(color: textColor),
-                      ),
-                    ],
+                  _VoiceMessageBubble(
+                    voiceData: message.voiceData,
+                    foregroundColor: textColor,
+                    accentColor: isMine
+                        ? Colors.white.withValues(alpha: 0.24)
+                        : scheme.primary.withValues(alpha: 0.12),
                   ),
                 ] else ...[
                   Text(
@@ -1534,6 +1596,263 @@ class _MessageBubble extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ChatLoadingBody extends StatelessWidget {
+  const _ChatLoadingBody({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+                color: Colors.black.withValues(alpha: 0.08),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.8,
+                    color: scheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Loading chat...',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Please wait while messages are loading.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VoiceMessageBubble extends StatefulWidget {
+  const _VoiceMessageBubble({
+    required this.voiceData,
+    required this.foregroundColor,
+    required this.accentColor,
+  });
+
+  final String? voiceData;
+  final Color foregroundColor;
+  final Color accentColor;
+
+  @override
+  State<_VoiceMessageBubble> createState() => _VoiceMessageBubbleState();
+}
+
+class _VoiceMessageBubbleState extends State<_VoiceMessageBubble> {
+  final AudioPlayer _player = AudioPlayer();
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<void>? _completionSubscription;
+  late _DecodedAudioSource? _audioSource;
+  PlayerState _playerState = PlayerState.stopped;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+  String? _playbackError;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioSource = _decodeVoiceData(widget.voiceData);
+    _playerStateSubscription = _player.onPlayerStateChanged.listen((state) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _playerState = state;
+      });
+    });
+    _positionSubscription = _player.onPositionChanged.listen((position) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _position = position;
+      });
+    });
+    _durationSubscription = _player.onDurationChanged.listen((duration) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _duration = duration;
+      });
+    });
+    _completionSubscription = _player.onPlayerComplete.listen((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _position = _duration;
+        _playerState = PlayerState.completed;
+      });
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _VoiceMessageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.voiceData != widget.voiceData) {
+      unawaited(_player.stop());
+      _audioSource = _decodeVoiceData(widget.voiceData);
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      _playbackError = null;
+      _playerState = PlayerState.stopped;
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_player.dispose());
+    unawaited(_playerStateSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_positionSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_durationSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_completionSubscription?.cancel() ?? Future<void>.value());
+    super.dispose();
+  }
+
+  Future<void> _togglePlayback() async {
+    final audioSource = _audioSource;
+    if (audioSource == null) {
+      setState(() {
+        _playbackError = 'Voice message is unavailable.';
+      });
+      return;
+    }
+
+    try {
+      if (_playerState == PlayerState.playing) {
+        await _player.pause();
+      } else if (_playerState == PlayerState.paused) {
+        await _player.resume();
+      } else {
+        await _player.play(
+          BytesSource(
+            audioSource.bytes,
+            mimeType: audioSource.mimeType,
+          ),
+        );
+      }
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _playbackError = null;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _playbackError = 'Unable to play this voice message.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = _duration.inMilliseconds <= 0
+        ? 0.0
+        : (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0);
+    final buttonIcon = _playerState == PlayerState.playing
+        ? Icons.pause_rounded
+        : Icons.play_arrow_rounded;
+
+    return SizedBox(
+      width: 220,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: _togglePlayback,
+            child: Ink(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: widget.accentColor,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Icon(buttonIcon, color: widget.foregroundColor),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _playbackError ?? 'Voice message',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: widget.foregroundColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    minHeight: 6,
+                    value: progress,
+                    backgroundColor:
+                        widget.foregroundColor.withValues(alpha: 0.18),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      widget.foregroundColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${_formatPlaybackDuration(_position)} / ${_formatPlaybackDuration(_duration)}',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: widget.foregroundColor.withValues(alpha: 0.82),
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -4474,6 +4793,59 @@ Uint8List? _decodeDataImage(String? value) {
   } catch (_) {
     return null;
   }
+}
+
+_DecodedAudioSource? _decodeVoiceData(String? value) {
+  if (value == null || !value.startsWith('data:audio')) {
+    return null;
+  }
+  final comma = value.indexOf(',');
+  if (comma < 0) {
+    return null;
+  }
+
+  final meta = value.substring(5, comma);
+  final mimeType = meta.split(';').first.trim().toLowerCase();
+  try {
+    final bytes = base64Decode(value.substring(comma + 1));
+    return _DecodedAudioSource(
+      bytes: bytes,
+      mimeType: _normalizeAudioMimeType(mimeType, bytes),
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+String? _normalizeAudioMimeType(String? mimeType, Uint8List bytes) {
+  if (bytes.length >= 4 &&
+      bytes[0] == 0x4F &&
+      bytes[1] == 0x67 &&
+      bytes[2] == 0x67 &&
+      bytes[3] == 0x53) {
+    return 'audio/ogg';
+  }
+
+  if (mimeType == null || mimeType.isEmpty) {
+    return null;
+  }
+  return mimeType;
+}
+
+String _formatPlaybackDuration(Duration duration) {
+  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return '$minutes:$seconds';
+}
+
+class _DecodedAudioSource {
+  const _DecodedAudioSource({
+    required this.bytes,
+    this.mimeType,
+  });
+
+  final Uint8List bytes;
+  final String? mimeType;
 }
 
 String _conversationPreviewDecoded(
