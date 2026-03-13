@@ -1953,11 +1953,12 @@ function updateComposerUi() {
   const conversation = getActiveConversation();
   const blockedMe = Boolean(conversation?.blockedMe);
   const disabled = state.chatLocked || !conversation || blockedMe;
+  const hasText = String(messageInput.value || "").trim().length > 0;
 
   messageInput.disabled = disabled;
   vigenereToggle.disabled = disabled;
   if (sendMessageBtn) {
-    sendMessageBtn.disabled = disabled;
+    sendMessageBtn.disabled = disabled || !hasText;
   }
 
   messageInput.placeholder = blockedMe
@@ -3170,7 +3171,7 @@ function updateEncryptionStrength() {
   }
 
   if (encSaveBtn) {
-    encSaveBtn.disabled = rawValue.trim().length === 0 || encGlobalScramble;
+    encSaveBtn.disabled = encGlobalScramble;
   }
 }
 function renderEncryptionVisual() {
@@ -5276,6 +5277,7 @@ vigenereToggle.addEventListener("click", () => {
 messageInput.addEventListener("input", () => {
   messageInput.style.height = "auto";
   messageInput.style.height = `${Math.min(messageInput.scrollHeight, 130)}px`;
+  updateComposerUi();
 });
 
 messageInput.addEventListener("keydown", (event) => {
@@ -5355,6 +5357,7 @@ messageForm.addEventListener("submit", async (event) => {
 
   const plainText = messageInput.value.trim();
   if (!plainText) {
+    updateComposerUi();
     return;
   }
 
@@ -5370,6 +5373,7 @@ messageForm.addEventListener("submit", async (event) => {
     }
     messageInput.value = "";
     messageInput.style.height = "auto";
+    updateComposerUi();
     state.replyToMessage = null;
     replyBar.classList.add("hidden");
     await sendMessageWithOptimistic(body);
@@ -5380,6 +5384,7 @@ messageForm.addEventListener("submit", async (event) => {
     messageInput.value = plainText;
     messageInput.style.height = "auto";
     messageInput.style.height = `${Math.min(messageInput.scrollHeight, 130)}px`;
+    updateComposerUi();
     if (replyToMessageBeforeSend) {
       state.replyToMessage = replyToMessageBeforeSend;
       replyBarText.textContent = getMessageTypePreview(replyToMessageBeforeSend, "Сообщение").slice(0, 80);

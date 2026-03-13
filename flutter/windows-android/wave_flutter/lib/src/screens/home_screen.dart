@@ -339,6 +339,17 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message)),
       );
+    } catch (_) {
+      _composerController.text = text;
+      _composerController.selection = TextSelection.collapsed(
+        offset: _composerController.text.length,
+      );
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось отправить сообщение.')),
+      );
     }
   }
 
@@ -934,7 +945,7 @@ class _ChatPane extends StatelessWidget {
 
     final partner = active.participant;
     final scheme = Theme.of(context).colorScheme;
-    final canSend = !active.blockedMe;
+    final canCompose = !active.blockedMe;
     final canStartCall = !active.isGroup &&
         !active.blockedByMe &&
         !active.blockedMe &&
@@ -1064,42 +1075,56 @@ class _ChatPane extends StatelessWidget {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: composerController,
-                      enabled: canSend,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.send,
-                      decoration: InputDecoration(
-                        hintText:
-                            canSend ? 'Сообщение' : 'Сообщения недоступны',
-                        prefixIcon: settingsController.settings.vigenereEnabled
-                            ? const Icon(Icons.lock_outline_rounded)
-                            : const Padding(
-                                padding: EdgeInsets.all(10),
-                                child: WaveBrandLogo(
-                                  size: 24,
-                                  excludeFromSemantics: true,
-                                ),
-                              ),
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: composerController,
+                builder: (context, value, _) {
+                  final hasMessage = value.text.trim().isNotEmpty;
+                  final canSend = canCompose && hasMessage;
+
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: composerController,
+                          enabled: canCompose,
+                          minLines: 1,
+                          maxLines: 5,
+                          textInputAction: TextInputAction.send,
+                          decoration: InputDecoration(
+                            hintText: canCompose
+                                ? 'Сообщение'
+                                : 'Сообщения недоступны',
+                            prefixIcon:
+                                settingsController.settings.vigenereEnabled
+                                    ? const Icon(Icons.lock_outline_rounded)
+                                    : const Padding(
+                                        padding: EdgeInsets.all(10),
+                                        child: WaveBrandLogo(
+                                          size: 24,
+                                          excludeFromSemantics: true,
+                                        ),
+                                      ),
+                          ),
+                          onChanged: onComposerChanged,
+                          onSubmitted: (_) {
+                            if (canSend) {
+                              onSend();
+                            }
+                          },
+                        ),
                       ),
-                      onChanged: onComposerChanged,
-                      onSubmitted: (_) => onSend(),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton(
-                    onPressed: canSend ? onSend : null,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.all(16),
-                      shape: const CircleBorder(),
-                    ),
-                    child: const Icon(Icons.send_rounded),
-                  ),
-                ],
+                      const SizedBox(width: 10),
+                      FilledButton(
+                        onPressed: canSend ? onSend : null,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.all(16),
+                          shape: const CircleBorder(),
+                        ),
+                        child: const Icon(Icons.send_rounded),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
