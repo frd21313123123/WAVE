@@ -2707,6 +2707,7 @@ function saveUiSettings() {
         theme: state.ui.theme,
         targetLanguage: state.ui.targetLanguage,
         vigenereEnabled: state.ui.vigenereEnabled,
+        vigenereKey: normalizeVigenereKey(state.ui.vigenereKey),
         sidebarWidth: normalizeSidebarWidth(state.ui.sidebarWidth),
         microphoneId: state.ui.microphoneId || "",
         speakerId: state.ui.speakerId || "",
@@ -2731,8 +2732,8 @@ function loadUiSettings() {
     state.ui.theme = normalizeTheme(parsed.theme);
     state.ui.targetLanguage = "off";
     state.ui.vigenereEnabled = Boolean(parsed.vigenereEnabled);
+    state.ui.vigenereKey = normalizeVigenereKey(parsed.vigenereKey);
     state.ui.sidebarWidth = normalizeSidebarWidth(parsed.sidebarWidth);
-    state.ui.vigenereKey = DEFAULT_VIGENERE_KEY;
     state.ui.microphoneId = String(parsed.microphoneId || "");
     state.ui.speakerId = String(parsed.speakerId || "");
     state.ui.fullscreen = parsed.fullscreen !== false;
@@ -5172,7 +5173,7 @@ fullscreenToggleBtn.addEventListener("click", () => {
 
 if (vigenereKeyInput) {
   vigenereKeyInput.addEventListener("input", () => {
-    state.ui.vigenereKey = normalizeVigenereKey(vigenereKeyInput.value);
+    state.ui.vigenereKey = String(vigenereKeyInput.value || "");
     saveUiSettings();
     renderMessages();
     pulseEncryptionKeyIcon();
@@ -5207,6 +5208,7 @@ if (encSaveBtn) {
     }
     const raw = String(vigenereKeyInput.value || "").trim();
     state.ui.vigenereKey = normalizeVigenereKey(vigenereKeyInput.value);
+    vigenereKeyInput.value = state.ui.vigenereKey;
     saveUiSettings();
     renderMessages();
     setEncryptionSaveHint(
@@ -5364,6 +5366,9 @@ messageForm.addEventListener("submit", async (event) => {
 
   try {
     messageSubmitInFlight = true;
+    if (sendMessageBtn) {
+      sendMessageBtn.disabled = true;
+    }
     const body = encrypted ? { text, encryption: { type: "vigenere" } } : { text };
     if (replyToMessageBeforeSend) {
       body.replyToId = replyToMessageBeforeSend.id;
@@ -5387,6 +5392,7 @@ messageForm.addEventListener("submit", async (event) => {
     }
   } finally {
     messageSubmitInFlight = false;
+    updateComposerUi();
   }
 });
 
@@ -7472,5 +7478,4 @@ window.addEventListener("beforeunload", stopMicTest);
 })();
 
 init();
-
 
