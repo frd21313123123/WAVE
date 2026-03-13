@@ -25,6 +25,12 @@ import '../update/update_prompt.dart';
 import '../widgets/wave_avatar.dart';
 import '../widgets/wave_brand_logo.dart';
 
+enum _MobileHomeTab { chats, contacts, settings, profile }
+
+enum _MobileChatFilter { all, direct, groups }
+
+enum _ProfileFeedTab { posts, archived }
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -41,6 +47,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, String> _conversationMessageSoundKeys = <String, String>{};
   String? _lastConversationId;
   int _lastMessageCount = 0;
+  _MobileHomeTab _mobileTab = _MobileHomeTab.chats;
+  _MobileChatFilter _mobileChatFilter = _MobileChatFilter.all;
+  _ProfileFeedTab _profileFeedTab = _ProfileFeedTab.posts;
+  bool _mobileChatOpen = false;
   ChatController? _chatController;
   CallController? _callController;
   SettingsController? _settingsController;
@@ -240,6 +250,18 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    if (!isWide) {
+      return _buildMobileScaffold(
+        currentUser: currentUser,
+        chat: chat,
+        settings: settings,
+        callController: callController,
+        callState: callState,
+        activeConversation: activeConversation,
+        messages: messages,
+      );
+    }
+
     return Scaffold(
       drawer: isWide
           ? null
@@ -278,6 +300,196 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildMobileScaffold({
+    required PublicUser currentUser,
+    required ChatController chat,
+    required SettingsController settings,
+    required CallController callController,
+    required CallUiState callState,
+    required ConversationSummary? activeConversation,
+    required List<ChatMessage> messages,
+  }) {
+    final showConversation =
+        _mobileTab == _MobileHomeTab.chats &&
+            _mobileChatOpen &&
+            activeConversation != null;
+    final filteredConversations = _filterMobileConversations(chat.conversations);
+    final directConversations = chat.conversations
+        .where((conversation) => !conversation.isGroup)
+        .toList(growable: false);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F2F5),
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 240),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: showConversation
+                  ? _ChatPane(
+                      key: ValueKey<String>(
+                        'mobile-chat-${activeConversation.id}',
+                      ),
+                      currentUser: currentUser,
+                      settingsController: settings,
+                      conversation: activeConversation,
+                      messages: messages,
+                      typingDisplayName: chat.typingDisplayName,
+                      composerController: _composerController,
+                      scrollController: _scrollController,
+                      onComposerChanged: (_) => chat.sendTypingSignal(),
+                      onSend: () => _sendMessage(chat),
+                      onEditMessage: (message) => _editMessage(chat, message),
+                      onStartAudioCall: () =>
+                          _startOutgoingCall(videoRequested: false),
+                      onStartVideoCall: () =>
+                          _startOutgoingCall(videoRequested: true),
+                      showBackButton: true,
+                      onBack: _closeMobileConversation,
+                    )
+                  : _MobileHomeView(
+                      key: ValueKey<String>('mobile-tab-${_mobileTab.name}'),
+                      currentUser: currentUser,
+                      conversations: filteredConversations,
+                      allConversations: chat.conversations,
+                      directConversations: directConversations,
+                      settingsController: settings,
+                      activeTab: _mobileTab,
+                      selectedFilter: _mobileChatFilter,
+                      selectedFeedTab: _profileFeedTab,
+                      onFilterChanged: (value) {
+                        setState(() {
+                          _mobileChatFilter = value;
+                        });
+                      },
+                      onFeedTabChanged: (value) {
+                        setState(() {
+                          _profileFeedTab = value;
+                        });
+                      },
+                      onTabChanged: _setMobileTab,
+                      onOpenConversation: _openMobileConversation,
+                      onOpenNewChat: () => unawaited(_openNewChatSheet()),
+                      onOpenNewGroup: () => unawaited(_openNewGroupSheet()),
+                      onOpenSettings: () => unawaited(_openSettingsSheet()),
+                      onOpenProfileEditor: () => unawaited(_openProfileSheet()),
+                      onUploadAvatar: _uploadAvatarFromProfile,
+                      onLogout: _logoutFromMobileShell,
+                    ),
+            ),
+          ),
+          if (callState.pendingIncoming != null)
+            IncomingCallSheet(
+              state: callState,
+              onAccept: () => unawaited(_acceptIncomingCall()),
+              onReject: () => unawaited(callController.rejectIncomingCall()),
+              onAcceptWithVideo: () =>
+                  unawaited(_acceptIncomingCall(videoRequested: true)),
+            ),
+        ],
+      ),
+      bottomNavigationBar: showConversation
+          ? null
+          : SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: _MobileBottomDock(
+                  activeTab: _mobileTab,
+                  onTabSelected: _setMobileTab,
+                ),
+              ),
+            ),
+    );
+  }
+
+  List<ConversationSummary> _filterMobileConversations(
+    List<ConversationSummary> conversations,
+  ) {
+    return conversations.where((conversation) {
+      switch (_mobileChatFilter) {
+        case _MobileChatFilter.all:
+          return true;
+        case _MobileChatFilter.direct:
+          return !conversation.isGroup;
+        case _MobileChatFilter.groups:
+          return conversation.isGroup;
+      }
+    }).toList(growable: false);
+  }
+
+  Future<void> _openMobileConversation(String conversationId) async {
+    final chat = context.read<ChatController>();
+    await chat.openConversation(conversationId);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _mobileTab = _MobileHomeTab.chats;
+      _mobileChatOpen = true;
+    });
+  }
+
+  void _closeMobileConversation() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _mobileChatOpen = false;
+    });
+  }
+
+  void _setMobileTab(_MobileHomeTab tab) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _mobileTab = tab;
+      _mobileChatOpen = false;
+    });
+  }
+
+  Future<void> _openProfileSheet() async {
+    final session = context.read<SessionController>();
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        return _ProfileSheet(session: session);
+      },
+    );
+  }
+
+  Future<void> _uploadAvatarFromProfile() async {
+    final settings = context.read<SettingsController>();
+    try {
+      final upload = await _pickAvatarUploadData();
+      if (upload == null) {
+        return;
+      }
+      await settings.uploadAvatarBytes(
+        upload.bytes,
+        mimeType: upload.mimeType,
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    }
+  }
+
+  Future<void> _logoutFromMobileShell() async {
+    await context.read<SessionController>().logout();
   }
 
   void _scheduleAutoScroll(String? conversationId, int messageCount) {
@@ -900,6 +1112,7 @@ class _ConversationPane extends StatelessWidget {
 
 class _ChatPane extends StatelessWidget {
   const _ChatPane({
+    super.key,
     required this.currentUser,
     required this.settingsController,
     required this.conversation,
@@ -912,6 +1125,8 @@ class _ChatPane extends StatelessWidget {
     required this.onEditMessage,
     required this.onStartAudioCall,
     required this.onStartVideoCall,
+    this.showBackButton = false,
+    this.onBack,
   });
 
   final PublicUser currentUser;
@@ -926,6 +1141,8 @@ class _ChatPane extends StatelessWidget {
   final ValueChanged<ChatMessage> onEditMessage;
   final VoidCallback onStartAudioCall;
   final VoidCallback onStartVideoCall;
+  final bool showBackButton;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -963,6 +1180,16 @@ class _ChatPane extends StatelessWidget {
             ),
             child: Row(
               children: [
+                if (showBackButton) ...[
+                  IconButton.filledTonal(
+                    onPressed: onBack,
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                    style: IconButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 WaveAvatar(
                   label: active.avatarLabelFor(currentUser.id),
                   imageUrl: active.avatarSourceFor(currentUser.id),
@@ -1772,6 +1999,1251 @@ class _ProfileSheetState extends State<_ProfileSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MobileHomeView extends StatelessWidget {
+  const _MobileHomeView({
+    super.key,
+    required this.currentUser,
+    required this.conversations,
+    required this.allConversations,
+    required this.directConversations,
+    required this.settingsController,
+    required this.activeTab,
+    required this.selectedFilter,
+    required this.selectedFeedTab,
+    required this.onFilterChanged,
+    required this.onFeedTabChanged,
+    required this.onTabChanged,
+    required this.onOpenConversation,
+    required this.onOpenNewChat,
+    required this.onOpenNewGroup,
+    required this.onOpenSettings,
+    required this.onOpenProfileEditor,
+    required this.onUploadAvatar,
+    required this.onLogout,
+  });
+
+  final PublicUser currentUser;
+  final List<ConversationSummary> conversations;
+  final List<ConversationSummary> allConversations;
+  final List<ConversationSummary> directConversations;
+  final SettingsController settingsController;
+  final _MobileHomeTab activeTab;
+  final _MobileChatFilter selectedFilter;
+  final _ProfileFeedTab selectedFeedTab;
+  final ValueChanged<_MobileChatFilter> onFilterChanged;
+  final ValueChanged<_ProfileFeedTab> onFeedTabChanged;
+  final ValueChanged<_MobileHomeTab> onTabChanged;
+  final Future<void> Function(String conversationId) onOpenConversation;
+  final VoidCallback onOpenNewChat;
+  final VoidCallback onOpenNewGroup;
+  final VoidCallback onOpenSettings;
+  final VoidCallback onOpenProfileEditor;
+  final Future<void> Function() onUploadAvatar;
+  final Future<void> Function() onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFFF4F5F7),
+            Color(0xFFF0F2F5),
+            Color(0xFFECEFF3),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: switch (activeTab) {
+        _MobileHomeTab.chats => _MobileChatsTab(
+            currentUser: currentUser,
+            conversations: conversations,
+            allConversations: allConversations,
+            selectedFilter: selectedFilter,
+            settingsController: settingsController,
+            onFilterChanged: onFilterChanged,
+            onOpenConversation: onOpenConversation,
+            onOpenNewChat: onOpenNewChat,
+            onOpenNewGroup: onOpenNewGroup,
+            onOpenSettings: onOpenSettings,
+            onLogout: onLogout,
+          ),
+        _MobileHomeTab.contacts => _MobileContactsTab(
+            directConversations: directConversations,
+            onOpenConversation: onOpenConversation,
+          ),
+        _MobileHomeTab.settings => _MobileSettingsTab(
+            currentUser: currentUser,
+            onOpenSettings: onOpenSettings,
+            onTabChanged: onTabChanged,
+          ),
+        _MobileHomeTab.profile => _MobileProfileTab(
+            currentUser: currentUser,
+            selectedFeedTab: selectedFeedTab,
+            onFeedTabChanged: onFeedTabChanged,
+            onUploadAvatar: onUploadAvatar,
+            onOpenProfileEditor: onOpenProfileEditor,
+            onOpenSettings: onOpenSettings,
+          ),
+      },
+    );
+  }
+}
+
+class _MobileChatsTab extends StatelessWidget {
+  const _MobileChatsTab({
+    required this.currentUser,
+    required this.conversations,
+    required this.allConversations,
+    required this.selectedFilter,
+    required this.settingsController,
+    required this.onFilterChanged,
+    required this.onOpenConversation,
+    required this.onOpenNewChat,
+    required this.onOpenNewGroup,
+    required this.onOpenSettings,
+    required this.onLogout,
+  });
+
+  final PublicUser currentUser;
+  final List<ConversationSummary> conversations;
+  final List<ConversationSummary> allConversations;
+  final _MobileChatFilter selectedFilter;
+  final SettingsController settingsController;
+  final ValueChanged<_MobileChatFilter> onFilterChanged;
+  final Future<void> Function(String conversationId) onOpenConversation;
+  final VoidCallback onOpenNewChat;
+  final VoidCallback onOpenNewGroup;
+  final VoidCallback onOpenSettings;
+  final Future<void> Function() onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final directCount = allConversations.where((item) => !item.isGroup).length;
+    final groupCount = allConversations.where((item) => item.isGroup).length;
+    final theme = Theme.of(context);
+
+    return Stack(
+      children: [
+        ListView(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 126),
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x12000000),
+                        blurRadius: 18,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: const WaveBrandLogo(size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Wave',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: const Color(0xFF1C232D),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        '@${currentUser.username}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF7C8798),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert_rounded),
+                  onSelected: (value) {
+                    if (value == 'chat') {
+                      onOpenNewChat();
+                    } else if (value == 'group') {
+                      onOpenNewGroup();
+                    } else if (value == 'settings') {
+                      onOpenSettings();
+                    } else if (value == 'logout') {
+                      unawaited(onLogout());
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'chat', child: Text('Новый чат')),
+                    PopupMenuItem(value: 'group', child: Text('Новая группа')),
+                    PopupMenuItem(value: 'settings', child: Text('Настройки')),
+                    PopupMenuItem(value: 'logout', child: Text('Выйти')),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.88),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.search_rounded, color: Color(0xFF8891A0)),
+                  SizedBox(width: 10),
+                  Text(
+                    'Search chats',
+                    style: TextStyle(
+                      color: Color(0xFF8891A0),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _MobileFilterChip(
+                    label: 'All Chats',
+                    count: allConversations.length,
+                    selected: selectedFilter == _MobileChatFilter.all,
+                    onTap: () => onFilterChanged(_MobileChatFilter.all),
+                  ),
+                  const SizedBox(width: 8),
+                  _MobileFilterChip(
+                    label: 'Direct',
+                    count: directCount,
+                    selected: selectedFilter == _MobileChatFilter.direct,
+                    onTap: () => onFilterChanged(_MobileChatFilter.direct),
+                  ),
+                  const SizedBox(width: 8),
+                  _MobileFilterChip(
+                    label: 'Groups',
+                    count: groupCount,
+                    selected: selectedFilter == _MobileChatFilter.groups,
+                    onTap: () => onFilterChanged(_MobileChatFilter.groups),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            if (conversations.isEmpty)
+              _MobileBlankCard(
+                title: 'No chats yet',
+                subtitle:
+                    'Start a direct conversation or create a group to fill the list.',
+                actionLabel: 'New chat',
+                onAction: onOpenNewChat,
+              )
+            else
+              ...conversations.map(
+                (conversation) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _MobileConversationTile(
+                    currentUser: currentUser,
+                    conversation: conversation,
+                    settingsController: settingsController,
+                    onTap: () => onOpenConversation(conversation.id),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        Positioned(
+          right: 18,
+          bottom: 102,
+          child: FloatingActionButton(
+            heroTag: 'mobile-chat-fab',
+            onPressed: onOpenNewChat,
+            backgroundColor: const Color(0xFF2DA8FF),
+            foregroundColor: Colors.white,
+            child: const Icon(Icons.add_rounded),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MobileContactsTab extends StatelessWidget {
+  const _MobileContactsTab({
+    required this.directConversations,
+    required this.onOpenConversation,
+  });
+
+  final List<ConversationSummary> directConversations;
+  final Future<void> Function(String conversationId) onOpenConversation;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 126),
+      children: [
+        Text(
+          'Contacts',
+          style: theme.textTheme.headlineMedium?.copyWith(
+            color: const Color(0xFF1D232D),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Quick access to people you already talk to in Wave.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: const Color(0xFF778294),
+          ),
+        ),
+        const SizedBox(height: 18),
+        if (directConversations.isEmpty)
+          const _MobileBlankCard(
+            title: 'No contacts yet',
+            subtitle: 'Open a direct chat and your people will appear here.',
+          )
+        else
+          ...directConversations.map((conversation) {
+            final partner = conversation.participant;
+            final subtitle = partner == null
+                ? 'Wave contact'
+                : partner.online
+                    ? 'online'
+                    : partner.lastSeenAt != null
+                        ? 'last seen ${DateFormat('dd.MM HH:mm').format(partner.lastSeenAt!)}'
+                        : '@${partner.username}';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Material(
+                color: Colors.white.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(28),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(28),
+                  onTap: () => onOpenConversation(conversation.id),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        WaveAvatar(
+                          label: conversation.titleFor(''),
+                          imageUrl: conversation.avatarSourceFor(''),
+                          radius: 28,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                conversation.titleFor(''),
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                subtitle,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: const Color(0xFF808998),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Color(0xFF9DA4B0),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+}
+
+class _MobileSettingsTab extends StatelessWidget {
+  const _MobileSettingsTab({
+    required this.currentUser,
+    required this.onOpenSettings,
+    required this.onTabChanged,
+  });
+
+  final PublicUser currentUser;
+  final VoidCallback onOpenSettings;
+  final ValueChanged<_MobileHomeTab> onTabChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 126),
+      children: [
+        Center(
+          child: Column(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  WaveAvatar(
+                    label: currentUser.displayNameOrUsername,
+                    imageUrl: currentUser.avatarUrl,
+                    radius: 44,
+                  ),
+                  Positioned(
+                    right: -4,
+                    bottom: -4,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2DA8FF),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white, width: 3),
+                      ),
+                      child: const Icon(
+                        Icons.photo_camera_outlined,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                currentUser.displayNameOrUsername,
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  color: const Color(0xFF1B222C),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${currentUser.email}  •  @${currentUser.username}',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF7D8796),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(30),
+          ),
+          child: Column(
+            children: [
+              _MobileSettingsRow(
+                icon: Icons.person_rounded,
+                iconColor: const Color(0xFF2DA8FF),
+                title: 'Account',
+                subtitle: 'Display name, avatar, profile details',
+                onTap: () {
+                  onTabChanged(_MobileHomeTab.profile);
+                },
+              ),
+              _MobileSettingsRow(
+                icon: Icons.chat_bubble_rounded,
+                iconColor: const Color(0xFFF0A11C),
+                title: 'Chat Settings',
+                subtitle: 'Theme, composer, message behavior',
+                onTap: onOpenSettings,
+              ),
+              _MobileSettingsRow(
+                icon: Icons.key_rounded,
+                iconColor: const Color(0xFF43C948),
+                title: 'Privacy & Security',
+                subtitle: 'Encryption, 2FA, protected chats',
+                onTap: onOpenSettings,
+              ),
+              _MobileSettingsRow(
+                icon: Icons.notifications_active_rounded,
+                iconColor: const Color(0xFFF2516B),
+                title: 'Notifications',
+                subtitle: 'Sounds, badges and message alerts',
+                onTap: onOpenSettings,
+              ),
+              _MobileSettingsRow(
+                icon: Icons.folder_copy_rounded,
+                iconColor: const Color(0xFF5F85FF),
+                title: 'Data and Storage',
+                subtitle: 'Media cache and downloads',
+                onTap: onOpenSettings,
+              ),
+              _MobileSettingsRow(
+                icon: Icons.battery_saver_rounded,
+                iconColor: const Color(0xFFF28A2D),
+                title: 'Power Saving',
+                subtitle: 'Reduce activity when battery is low',
+                onTap: onOpenSettings,
+                isLast: true,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MobileProfileTab extends StatelessWidget {
+  const _MobileProfileTab({
+    required this.currentUser,
+    required this.selectedFeedTab,
+    required this.onFeedTabChanged,
+    required this.onUploadAvatar,
+    required this.onOpenProfileEditor,
+    required this.onOpenSettings,
+  });
+
+  final PublicUser currentUser;
+  final _ProfileFeedTab selectedFeedTab;
+  final ValueChanged<_ProfileFeedTab> onFeedTabChanged;
+  final Future<void> Function() onUploadAvatar;
+  final VoidCallback onOpenProfileEditor;
+  final VoidCallback onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final joinedAt = DateFormat('dd.MM.yyyy').format(currentUser.createdAt);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 126),
+      children: [
+        Center(
+          child: Column(
+            children: [
+              WaveAvatar(
+                label: currentUser.displayNameOrUsername,
+                imageUrl: currentUser.avatarUrl,
+                radius: 52,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                currentUser.displayNameOrUsername,
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  color: const Color(0xFF171E28),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'online',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: const Color(0xFF7A8392),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+        Row(
+          children: [
+            Expanded(
+              child: _MobileShortcutCard(
+                icon: Icons.photo_camera_outlined,
+                label: 'Set Photo',
+                onTap: () => unawaited(onUploadAvatar()),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _MobileShortcutCard(
+                icon: Icons.edit_outlined,
+                label: 'Edit Info',
+                onTap: onOpenProfileEditor,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _MobileShortcutCard(
+                icon: Icons.settings_outlined,
+                label: 'Settings',
+                onTap: onOpenSettings,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(30),
+          ),
+          child: Column(
+            children: [
+              _MobileInfoRow(
+                value: currentUser.email,
+                label: 'Email',
+              ),
+              const SizedBox(height: 18),
+              _MobileInfoRow(
+                value: '@${currentUser.username}',
+                label: 'Username',
+              ),
+              const SizedBox(height: 18),
+              _MobileInfoRow(
+                value: 'Joined $joinedAt',
+                label: 'Account',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _MobileSegmentButton(
+                  label: 'Posts',
+                  selected: selectedFeedTab == _ProfileFeedTab.posts,
+                  onTap: () => onFeedTabChanged(_ProfileFeedTab.posts),
+                ),
+              ),
+              Expanded(
+                child: _MobileSegmentButton(
+                  label: 'Archived Posts',
+                  selected: selectedFeedTab == _ProfileFeedTab.archived,
+                  onTap: () => onFeedTabChanged(_ProfileFeedTab.archived),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 26),
+        Container(
+          padding: const EdgeInsets.fromLTRB(22, 26, 22, 24),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(34),
+          ),
+          child: Column(
+            children: [
+              Text(
+                selectedFeedTab == _ProfileFeedTab.posts
+                    ? 'No posts yet...'
+                    : 'No archived posts',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: const Color(0xFF141A24),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Publish photos and short moments so they appear here in the profile.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF7C8798),
+                ),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: onOpenProfileEditor,
+                icon: const Icon(Icons.add_a_photo_outlined),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF2DA8FF),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 14,
+                  ),
+                ),
+                label: const Text('Add a post'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MobileBottomDock extends StatelessWidget {
+  const _MobileBottomDock({
+    required this.activeTab,
+    required this.onTabSelected,
+  });
+
+  final _MobileHomeTab activeTab;
+  final ValueChanged<_MobileHomeTab> onTabSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.98),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            blurRadius: 32,
+            offset: Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _MobileBottomDockItem(
+              icon: Icons.chat_bubble_outline_rounded,
+              label: 'Chats',
+              selected: activeTab == _MobileHomeTab.chats,
+              onTap: () => onTabSelected(_MobileHomeTab.chats),
+            ),
+          ),
+          Expanded(
+            child: _MobileBottomDockItem(
+              icon: Icons.perm_contact_calendar_outlined,
+              label: 'Contacts',
+              selected: activeTab == _MobileHomeTab.contacts,
+              onTap: () => onTabSelected(_MobileHomeTab.contacts),
+            ),
+          ),
+          Expanded(
+            child: _MobileBottomDockItem(
+              icon: Icons.settings_outlined,
+              label: 'Settings',
+              selected: activeTab == _MobileHomeTab.settings,
+              onTap: () => onTabSelected(_MobileHomeTab.settings),
+            ),
+          ),
+          Expanded(
+            child: _MobileBottomDockItem(
+              icon: Icons.person_outline_rounded,
+              label: 'Profile',
+              selected: activeTab == _MobileHomeTab.profile,
+              onTap: () => onTabSelected(_MobileHomeTab.profile),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileBottomDockItem extends StatelessWidget {
+  const _MobileBottomDockItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const activeColor = Color(0xFF258FDD);
+    const inactiveColor = Color(0xFF2A3039);
+
+    return Material(
+      color: selected ? const Color(0xFFE8F4FF) : Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: selected ? activeColor : inactiveColor,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? activeColor : inactiveColor,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileConversationTile extends StatelessWidget {
+  const _MobileConversationTile({
+    required this.currentUser,
+    required this.conversation,
+    required this.settingsController,
+    required this.onTap,
+  });
+
+  final PublicUser currentUser;
+  final ConversationSummary conversation;
+  final SettingsController settingsController;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lastMessage = conversation.lastMessage;
+    final unread = lastMessage != null &&
+        lastMessage.senderId != currentUser.id &&
+        lastMessage.readAt == null;
+
+    return Material(
+      color: Colors.white.withValues(alpha: 0.9),
+      borderRadius: BorderRadius.circular(30),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(30),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  WaveAvatar(
+                    label: conversation.avatarLabelFor(currentUser.id),
+                    imageUrl: conversation.avatarSourceFor(currentUser.id),
+                    radius: 28,
+                  ),
+                  if (!conversation.isGroup &&
+                      conversation.participant?.online == true)
+                    Positioned(
+                      right: 0,
+                      bottom: 1,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3CCB69),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            conversation.titleFor(currentUser.id),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: const Color(0xFF111821),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          _formatTime(conversation.updatedAt),
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: const Color(0xFF8090A0),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _conversationPreviewDecoded(
+                              conversation,
+                              settingsController,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: const Color(0xFF7B8595),
+                            ),
+                          ),
+                        ),
+                        if (unread)
+                          Container(
+                            margin: const EdgeInsets.only(left: 10),
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2DA8FF),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text(
+                              '1',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileSettingsRow extends StatelessWidget {
+  const _MobileSettingsRow({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.isLast = false,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.vertical(
+          top: const Radius.circular(30),
+          bottom: Radius.circular(isLast ? 30 : 0),
+        ),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          decoration: BoxDecoration(
+            border: isLast
+                ? null
+                : const Border(
+                    bottom: BorderSide(
+                      color: Color(0xFFE8ECF2),
+                    ),
+                  ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, color: iconColor),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF7D8897),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF97A0AE),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileShortcutCard extends StatelessWidget {
+  const _MobileShortcutCard({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.88),
+      borderRadius: BorderRadius.circular(26),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(26),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
+          child: Column(
+            children: [
+              Icon(icon, size: 26, color: const Color(0xFF1D232E)),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF1A2029),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileInfoRow extends StatelessWidget {
+  const _MobileInfoRow({
+    required this.value,
+    required this.label,
+  });
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: const Color(0xFF141A24),
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF8B94A2),
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MobileSegmentButton extends StatelessWidget {
+  const _MobileSegmentButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? const Color(0xFFE3F2FF) : Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: selected
+                  ? const Color(0xFF258FDD)
+                  : const Color(0xFF7A8494),
+              fontSize: 15,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileFilterChip extends StatelessWidget {
+  const _MobileFilterChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected
+          ? const Color(0xFFE5F3FF)
+          : Colors.white.withValues(alpha: 0.82),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected
+                      ? const Color(0xFF258FDD)
+                      : const Color(0xFF6E7785),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? const Color(0xFF2DA8FF)
+                      : const Color(0xFFDCE2EA),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    color: selected ? Colors.white : const Color(0xFF79808C),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileBlankCard extends StatelessWidget {
+  const _MobileBlankCard({
+    required this.title,
+    required this.subtitle,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String title;
+  final String subtitle;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 26, 22, 24),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(32),
+      ),
+      child: Column(
+        children: [
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF7E8795),
+                ),
+          ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 18),
+            FilledButton(
+              onPressed: onAction,
+              child: Text(actionLabel!),
+            ),
+          ],
+        ],
       ),
     );
   }

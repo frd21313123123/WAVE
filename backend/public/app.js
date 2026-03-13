@@ -177,6 +177,25 @@ const desktopHomeBtn = document.getElementById("desktopHomeBtn");
 const desktopNewGroupBtn = document.getElementById("desktopNewGroupBtn");
 const desktopSettingsBtn = document.getElementById("desktopSettingsBtn");
 const desktopLogoutBtn = document.getElementById("desktopLogoutBtn");
+const mobileMenuBtn = document.getElementById("mobileMenuBtn");
+const mobileMenuSheet = document.getElementById("mobileMenuSheet");
+const mobileMenuNewChatBtn = document.getElementById("mobileMenuNewChatBtn");
+const mobileMenuNewGroupBtn = document.getElementById("mobileMenuNewGroupBtn");
+const mobileMenuSettingsBtn = document.getElementById("mobileMenuSettingsBtn");
+const mobileMenuLogoutBtn = document.getElementById("mobileMenuLogoutBtn");
+const mobileContactsPanel = document.getElementById("mobileContactsPanel");
+const mobileContactsList = document.getElementById("mobileContactsList");
+const mobileSettingsPanel = document.getElementById("mobileSettingsPanel");
+const mobileSettingsContent = document.getElementById("mobileSettingsContent");
+const mobileProfilePanel = document.getElementById("mobileProfilePanel");
+const mobileProfileContent = document.getElementById("mobileProfileContent");
+const mobileFab = document.getElementById("mobileFab");
+const mobileBottomAvatar = document.getElementById("mobileBottomAvatar");
+const mobileTabButtons = Array.from(document.querySelectorAll("[data-mobile-tab-btn]"));
+const mobileChatFilters = Array.from(document.querySelectorAll("[data-chat-filter]"));
+const mobileFilterAllCount = document.getElementById("mobileFilterAllCount");
+const mobileFilterDirectCount = document.getElementById("mobileFilterDirectCount");
+const mobileFilterGroupsCount = document.getElementById("mobileFilterGroupsCount");
 
 const UI_SETTINGS_KEY = "messenger_ui_settings_v1";
 const DEFAULT_VIGENERE_KEY = "WAVE";
@@ -215,6 +234,9 @@ const ALLOWED_TRANSLATION_LANGS = new Set([
   "pl",
 ]);
 const ALLOWED_THEMES = new Set(["light", "dark"]);
+const ALLOWED_MOBILE_TABS = new Set(["chats", "contacts", "settings", "profile"]);
+const ALLOWED_PROFILE_FEEDS = new Set(["posts", "archived"]);
+const ALLOWED_CHAT_FILTERS = new Set(["all", "direct", "groups"]);
 const ENC_SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
 const SAFE_AVATAR_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i;
 const desktopShellModeEnabled =
@@ -375,6 +397,9 @@ const state = {
     speakerId: "",
     fullscreen: true,
     pinnedConversationIds: [],
+    mobileTab: "chats",
+    mobileProfileFeed: "posts",
+    mobileChatFilter: "all",
   },
 };
 
@@ -2460,6 +2485,7 @@ async function api(path, options = {}) {
 function showAuth() {
   chatView.classList.add("hidden");
   authView.classList.remove("hidden");
+  state.ui.mobileTab = "chats";
   setSettingsPanelOpen(false);
   if (state.call.active) {
     endCall(true, "Звонок завершен.");
@@ -2495,18 +2521,21 @@ function showAuth() {
   setNoConversationHeader();
   updateDeleteUi();
   updateChatLockUi();
+  renderMobileShell();
 }
 
 function showChat() {
   authView.classList.add("hidden");
   chatView.classList.remove("hidden");
   applySidebarWidth(state.ui.sidebarWidth);
+  setMobileTab(state.ui.mobileTab, { persist: false });
   renderActiveConversationHeader();
   updateChatLockUi();
 }
 
 function resetMobileChatState() {
   chatView.classList.remove("chat-open");
+  toggleMobileMenu(false);
 }
 
 function openMobileChatState() {
@@ -2534,6 +2563,7 @@ function returnToMainMenu() {
   renderConversationList();
   renderMessages();
   resetMobileChatState();
+  setMobileTab("chats", { persist: false });
   updateDeleteUi();
   updateChatLockUi();
 
@@ -2554,6 +2584,30 @@ function normalizeTheme(value) {
     return "light";
   }
   return theme;
+}
+
+function normalizeMobileTab(value) {
+  const tab = String(value || "").trim().toLowerCase();
+  if (!ALLOWED_MOBILE_TABS.has(tab)) {
+    return "chats";
+  }
+  return tab;
+}
+
+function normalizeMobileProfileFeed(value) {
+  const feed = String(value || "").trim().toLowerCase();
+  if (!ALLOWED_PROFILE_FEEDS.has(feed)) {
+    return "posts";
+  }
+  return feed;
+}
+
+function normalizeMobileChatFilter(value) {
+  const filter = String(value || "").trim().toLowerCase();
+  if (!ALLOWED_CHAT_FILTERS.has(filter)) {
+    return "all";
+  }
+  return filter;
 }
 
 function normalizeVigenereKey(value) {
@@ -2727,6 +2781,9 @@ function saveUiSettings() {
         pinnedConversationIds: normalizePinnedConversationIds(
           state.ui.pinnedConversationIds
         ),
+        mobileTab: normalizeMobileTab(state.ui.mobileTab),
+        mobileProfileFeed: normalizeMobileProfileFeed(state.ui.mobileProfileFeed),
+        mobileChatFilter: normalizeMobileChatFilter(state.ui.mobileChatFilter),
       })
     );
   } catch {
@@ -2752,6 +2809,9 @@ function loadUiSettings() {
     state.ui.pinnedConversationIds = normalizePinnedConversationIds(
       parsed.pinnedConversationIds
     );
+    state.ui.mobileTab = normalizeMobileTab(parsed.mobileTab);
+    state.ui.mobileProfileFeed = normalizeMobileProfileFeed(parsed.mobileProfileFeed);
+    state.ui.mobileChatFilter = normalizeMobileChatFilter(parsed.mobileChatFilter);
   } catch {
   }
 }
@@ -2761,6 +2821,148 @@ function applyFullscreen() {
   if (fullscreenToggleBtn) {
     fullscreenToggleBtn.textContent = state.ui.fullscreen ? "Оконный режим" : "На весь экран";
   }
+}
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return char;
+    }
+  });
+}
+
+function getMobileIconSvg(kind) {
+  switch (kind) {
+    case "account":
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="7" r="4"></circle></svg>';
+    case "chat":
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+    case "shield":
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true"><path d="M12 22s8-3.2 8-10V5l-8-3-8 3v7c0 6.8 8 10 8 10Z"></path><path d="m9.5 12.8 1.8 1.9 3.2-3.6"></path></svg>';
+    case "bell":
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true"><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 0 0-5-5.9V4a1 1 0 1 0-2 0v1.1A6 6 0 0 0 6 11v3.2a2 2 0 0 1-.6 1.4L4 17h5"></path><path d="M10 17a2 2 0 0 0 4 0"></path></svg>';
+    case "storage":
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"></path><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"></path></svg>';
+    case "battery":
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true"><rect x="2" y="7" width="18" height="10" rx="2"></rect><path d="M22 11v2"></path><path d="m11 9-3 4h3l-1 4 4-6h-3l1-2"></path></svg>';
+    case "camera":
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+    case "edit":
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
+    case "settings":
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
+    default:
+      return "";
+  }
+}
+
+function buildMobileAvatarMarkup(label, avatarUrl, className, { online = false } = {}) {
+  const safeAvatarUrl = getSafeAvatarUrl(avatarUrl);
+  const initial = escapeHtml(getInitial(label));
+  const classes = `${className}${online ? " online" : ""}`;
+  if (safeAvatarUrl) {
+    return `<span class="${classes}" data-initial="${initial}"><img src="${safeAvatarUrl}" alt="${escapeHtml(label)}"></span>`;
+  }
+  return `<span class="${classes}" data-initial="${initial}">${initial}</span>`;
+}
+
+function getUnreadConversationCount(conversation) {
+  if (!conversation || !state.me) {
+    return 0;
+  }
+
+  const loadedMessages = state.messagesByConversation.get(conversation.id) || [];
+  const loadedUnread = loadedMessages.filter(
+    (message) => message.senderId !== state.me.id && !message.readAt
+  ).length;
+  if (loadedUnread > 0) {
+    return loadedUnread;
+  }
+
+  return conversation.lastMessage &&
+    conversation.lastMessage.senderId !== state.me.id &&
+    !conversation.lastMessage.readAt
+    ? 1
+    : 0;
+}
+
+function openSettingsPanelForTab(tab) {
+  const nextTab = String(tab || "appearance").trim().toLowerCase() || "appearance";
+  setSettingsPanelOpen(true);
+  if (state.me) {
+    refreshTwoFaStatus();
+    displayNameInput.value = state.me.displayName || "";
+    displayNameStatus.textContent = DISPLAY_NAME_HINT_TEXT;
+  }
+  const targetButton = document.querySelector(`.settings-tab-btn[data-tab="${nextTab}"]`);
+  if (targetButton) {
+    targetButton.click();
+  }
+}
+
+function toggleMobileMenu(forceOpen) {
+  if (!mobileMenuSheet) {
+    return;
+  }
+  const shouldOpen =
+    typeof forceOpen === "boolean"
+      ? forceOpen
+      : mobileMenuSheet.classList.contains("hidden");
+  mobileMenuSheet.classList.toggle("hidden", !shouldOpen);
+}
+
+function setMobileProfileFeed(feed, { persist = true } = {}) {
+  state.ui.mobileProfileFeed = normalizeMobileProfileFeed(feed);
+  if (persist) {
+    saveUiSettings();
+  }
+  renderMobileProfileOverview();
+}
+
+function setMobileChatFilter(filter, { persist = true } = {}) {
+  state.ui.mobileChatFilter = normalizeMobileChatFilter(filter);
+  if (persist) {
+    saveUiSettings();
+  }
+  renderConversationList();
+}
+
+function setMobileTab(tab, { persist = true } = {}) {
+  state.ui.mobileTab = normalizeMobileTab(tab);
+  if (chatView) {
+    chatView.dataset.mobileTab = state.ui.mobileTab;
+  }
+  if (mobileContactsPanel) {
+    mobileContactsPanel.classList.toggle("hidden", state.ui.mobileTab !== "contacts");
+  }
+  if (mobileSettingsPanel) {
+    mobileSettingsPanel.classList.toggle("hidden", state.ui.mobileTab !== "settings");
+  }
+  if (mobileProfilePanel) {
+    mobileProfilePanel.classList.toggle("hidden", state.ui.mobileTab !== "profile");
+  }
+  mobileTabButtons.forEach((button) => {
+    button.classList.toggle(
+      "active",
+      button.dataset.mobileTabBtn === state.ui.mobileTab
+    );
+  });
+  toggleMobileMenu(false);
+  if (persist) {
+    saveUiSettings();
+  }
+  renderMobileShell();
 }
 
 function ensureMicTestBars() {
@@ -3717,18 +3919,50 @@ async function deleteConversationById(conversationId) {
 function renderConversationList() {
   conversationList.innerHTML = "";
   sortConversations();
+  const allCount = state.conversations.length;
+  const directCount = state.conversations.filter((conversation) => conversation.type !== "group").length;
+  const groupCount = state.conversations.filter((conversation) => conversation.type === "group").length;
+  if (mobileFilterAllCount) {
+    mobileFilterAllCount.textContent = String(allCount);
+  }
+  if (mobileFilterDirectCount) {
+    mobileFilterDirectCount.textContent = String(directCount);
+  }
+  if (mobileFilterGroupsCount) {
+    mobileFilterGroupsCount.textContent = String(groupCount);
+  }
+  mobileChatFilters.forEach((button) => {
+    button.classList.toggle(
+      "active",
+      button.dataset.chatFilter === state.ui.mobileChatFilter
+    );
+  });
   if (desktopHomeBtn) {
     desktopHomeBtn.classList.toggle("active", !state.activeConversationId);
   }
 
-  if (state.conversations.length === 0) {
+  const conversationsToRender = state.conversations.filter((conversation) => {
+    if (!isMobileLayout()) {
+      return true;
+    }
+    if (state.ui.mobileChatFilter === "direct") {
+      return conversation.type !== "group";
+    }
+    if (state.ui.mobileChatFilter === "groups") {
+      return conversation.type === "group";
+    }
+    return true;
+  });
+
+  if (conversationsToRender.length === 0) {
     conversationList.appendChild(
       createEmptyListNote("Пока нет чатов. Найдите пользователя выше.")
     );
+    renderMobileShell();
     return;
   }
 
-  for (const conversation of state.conversations) {
+  for (const conversation of conversationsToRender) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "list-item";
@@ -3821,12 +4055,24 @@ function renderConversationList() {
     row.appendChild(titleWrap);
     row.appendChild(timeEl);
 
+    const previewRow = document.createElement("div");
+    previewRow.className = "item-sub-row";
+
     const previewEl = document.createElement("p");
     previewEl.className = "item-sub";
     previewEl.textContent = preview;
+    previewRow.appendChild(previewEl);
+
+    const unreadCount = getUnreadConversationCount(conversation);
+    if (unreadCount > 0) {
+      const unreadBadge = document.createElement("span");
+      unreadBadge.className = "item-unread";
+      unreadBadge.textContent = unreadCount > 9 ? "9+" : String(unreadCount);
+      previewRow.appendChild(unreadBadge);
+    }
 
     button.appendChild(row);
-    button.appendChild(previewEl);
+    button.appendChild(previewRow);
 
     button.addEventListener("click", () => {
       selectConversation(conversation.id).catch(() => {});
@@ -3844,6 +4090,7 @@ function renderConversationList() {
     wrapper.appendChild(button);
     conversationList.appendChild(wrapper);
   }
+  renderMobileShell();
 }
 
 function addMessage(message) {
@@ -4708,6 +4955,7 @@ async function bootstrapSession(user) {
   resetLoginTwoFactorStep();
   renderSearchResults([]);
   updateAvatarPreview();
+  renderMobileShell();
   await refreshTwoFaStatus();
   await loadCallIceServers(true).catch(() => {});
   await loadConversations();
@@ -5424,11 +5672,75 @@ mobileBack.addEventListener("click", () => {
   resetMobileChatState();
 });
 
+mobileTabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setMobileTab(button.dataset.mobileTabBtn);
+  });
+});
+
+mobileChatFilters.forEach((button) => {
+  button.addEventListener("click", () => {
+    setMobileChatFilter(button.dataset.chatFilter);
+  });
+});
+
+if (mobileMenuBtn) {
+  mobileMenuBtn.addEventListener("click", () => {
+    toggleMobileMenu();
+  });
+}
+
+if (mobileMenuNewChatBtn) {
+  mobileMenuNewChatBtn.addEventListener("click", () => {
+    setMobileTab("chats");
+    userSearch.focus();
+  });
+}
+
+if (mobileMenuNewGroupBtn) {
+  mobileMenuNewGroupBtn.addEventListener("click", () => {
+    setMobileTab("chats");
+    createGroupBtn.click();
+  });
+}
+
+if (mobileMenuSettingsBtn) {
+  mobileMenuSettingsBtn.addEventListener("click", () => {
+    setMobileTab("settings");
+  });
+}
+
+if (mobileMenuLogoutBtn) {
+  mobileMenuLogoutBtn.addEventListener("click", () => {
+    logoutBtn.click();
+  });
+}
+
+if (mobileFab) {
+  mobileFab.addEventListener("click", () => {
+    setMobileTab("chats");
+    userSearch.focus();
+  });
+}
+
+document.addEventListener("click", (event) => {
+  if (
+    mobileMenuSheet &&
+    !mobileMenuSheet.classList.contains("hidden") &&
+    !mobileMenuSheet.contains(event.target) &&
+    !mobileMenuBtn?.contains(event.target)
+  ) {
+    toggleMobileMenu(false);
+  }
+});
+
 window.addEventListener("resize", () => {
   if (!window.matchMedia("(max-width: 950px)").matches) {
     chatView.classList.remove("chat-open");
+    toggleMobileMenu(false);
   }
   applySidebarWidth(state.ui.sidebarWidth);
+  renderMobileShell();
 });
 
 document.addEventListener("keydown", (event) => {
@@ -5496,6 +5808,252 @@ function formatLastSeen(isoDate) {
   if (diff < 60) return `был(а) ${diff} мин. назад`;
   if (diff < 1440) return `был(а) ${Math.floor(diff / 60)} ч. назад`;
   return `был(а) ${Math.floor(diff / 1440)} дн. назад`;
+}
+
+function renderMobileBottomAvatar() {
+  if (!mobileBottomAvatar) {
+    return;
+  }
+  const name = state.me ? getDisplayName(state.me) || state.me.username : "Wave";
+  const safeAvatarUrl = getSafeAvatarUrl(state.me?.avatarUrl);
+  const initial = getInitial(name);
+  mobileBottomAvatar.dataset.initial = initial;
+  mobileBottomAvatar.innerHTML = safeAvatarUrl
+    ? `<img src="${safeAvatarUrl}" alt="${escapeHtml(name)}">`
+    : escapeHtml(initial);
+}
+
+function renderMobileContactsOverview() {
+  if (!mobileContactsList) {
+    return;
+  }
+
+  const contacts = state.conversations.filter(
+    (conversation) => conversation.type !== "group" && conversation.participant
+  );
+  if (contacts.length === 0) {
+    mobileContactsList.innerHTML = `
+      <div class="mobile-profile-empty">
+        <p class="mobile-profile-name">No contacts yet</p>
+        <p class="mobile-profile-sub">Начните прямой чат, и контакты появятся здесь.</p>
+      </div>
+    `;
+    return;
+  }
+
+  mobileContactsList.innerHTML = contacts
+    .map((conversation) => {
+      const partner = conversation.participant;
+      const name = getDisplayName(partner) || partner.username || "Контакт";
+      const subtitle = partner.online
+        ? "online"
+        : partner.lastSeenAt
+          ? formatLastSeen(partner.lastSeenAt)
+          : `@${partner.username || ""}`;
+      return `
+        <button class="mobile-contact-card" type="button" data-mobile-contact="${escapeHtml(conversation.id)}">
+          ${buildMobileAvatarMarkup(name, partner.avatarUrl, "mobile-contact-avatar", {
+            online: partner.online,
+          })}
+          <div class="mobile-contact-meta">
+            <p class="mobile-contact-name">${escapeHtml(name)}</p>
+            <p class="mobile-contact-sub">${escapeHtml(subtitle)}</p>
+          </div>
+          <span class="mobile-contact-sub">›</span>
+        </button>
+      `;
+    })
+    .join("");
+
+  mobileContactsList.querySelectorAll("[data-mobile-contact]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setMobileTab("chats");
+      selectConversation(button.dataset.mobileContact).catch(() => { });
+    });
+  });
+}
+
+function renderMobileSettingsOverview() {
+  if (!mobileSettingsContent) {
+    return;
+  }
+
+  if (!state.me) {
+    mobileSettingsContent.innerHTML = "";
+    return;
+  }
+
+  const name = getDisplayName(state.me) || state.me.username || "Wave";
+  const items = [
+    {
+      tab: "appearance",
+      icon: "account",
+      color: "#2da8ff",
+      title: "Account",
+      sub: "Display name, avatar, profile details",
+    },
+    {
+      tab: "theme",
+      icon: "chat",
+      color: "#f0a11c",
+      title: "Chat Settings",
+      sub: "Theme, layout and message behavior",
+    },
+    {
+      tab: "security",
+      icon: "shield",
+      color: "#43c948",
+      title: "Privacy & Security",
+      sub: "2FA, protection and encrypted chats",
+    },
+    {
+      tab: "sounds",
+      icon: "bell",
+      color: "#f2516b",
+      title: "Notifications",
+      sub: "Sounds, badges and call feedback",
+    },
+    {
+      tab: "theme",
+      icon: "storage",
+      color: "#5f85ff",
+      title: "Data and Storage",
+      sub: "Media cache and downloads",
+    },
+    {
+      tab: "theme",
+      icon: "battery",
+      color: "#f28a2d",
+      title: "Power Saving",
+      sub: "Reduce activity on low battery",
+    },
+  ];
+
+  mobileSettingsContent.innerHTML = `
+    <div class="mobile-settings-overview">
+      ${buildMobileAvatarMarkup(name, state.me.avatarUrl, "mobile-settings-avatar")}
+      <p class="mobile-settings-name">${escapeHtml(name)}</p>
+      <p class="mobile-settings-sub">${escapeHtml(state.me.email || "")} • @${escapeHtml(
+        state.me.username || ""
+      )}</p>
+    </div>
+    <div class="mobile-settings-list">
+      ${items
+        .map(
+          (item) => `
+            <button class="mobile-settings-item" type="button" data-settings-tab="${item.tab}">
+              <span class="mobile-settings-item-icon" style="background:${item.color};">
+                ${getMobileIconSvg(item.icon)}
+              </span>
+              <span class="mobile-settings-item-text">
+                <span class="mobile-settings-item-title">${escapeHtml(item.title)}</span>
+                <span class="mobile-settings-item-sub">${escapeHtml(item.sub)}</span>
+              </span>
+              <span class="mobile-contact-sub">›</span>
+            </button>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+
+  mobileSettingsContent.querySelectorAll("[data-settings-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openSettingsPanelForTab(button.dataset.settingsTab);
+    });
+  });
+}
+
+function renderMobileProfileOverview() {
+  if (!mobileProfileContent) {
+    return;
+  }
+
+  if (!state.me) {
+    mobileProfileContent.innerHTML = "";
+    return;
+  }
+
+  const name = getDisplayName(state.me) || state.me.username || "Wave";
+  const joinedDate = state.me.createdAt
+    ? new Date(state.me.createdAt).toLocaleDateString("ru-RU")
+    : "recently";
+  const feed = normalizeMobileProfileFeed(state.ui.mobileProfileFeed);
+
+  mobileProfileContent.innerHTML = `
+    <div class="mobile-profile-hero">
+      ${buildMobileAvatarMarkup(name, state.me.avatarUrl, "mobile-profile-avatar")}
+      <p class="mobile-profile-name">${escapeHtml(name)}</p>
+      <p class="mobile-profile-sub">online</p>
+    </div>
+    <div class="mobile-profile-actions">
+      <button class="mobile-profile-action" type="button" data-profile-action="photo">
+        ${getMobileIconSvg("camera")}
+        <span>Set Photo</span>
+      </button>
+      <button class="mobile-profile-action" type="button" data-profile-action="edit">
+        ${getMobileIconSvg("edit")}
+        <span>Edit Info</span>
+      </button>
+      <button class="mobile-profile-action" type="button" data-profile-action="settings">
+        ${getMobileIconSvg("settings")}
+        <span>Settings</span>
+      </button>
+    </div>
+    <div class="mobile-profile-card">
+      <div class="mobile-profile-fields">
+        <div>
+          <span class="mobile-profile-field-value">${escapeHtml(state.me.email || "")}</span>
+          <span class="mobile-profile-field-label">Email</span>
+        </div>
+        <div>
+          <span class="mobile-profile-field-value">@${escapeHtml(state.me.username || "")}</span>
+          <span class="mobile-profile-field-label">Username</span>
+        </div>
+        <div>
+          <span class="mobile-profile-field-value">Joined ${escapeHtml(joinedDate)}</span>
+          <span class="mobile-profile-field-label">Account</span>
+        </div>
+      </div>
+    </div>
+    <div class="mobile-profile-segments">
+      <button class="mobile-profile-segment ${feed === "posts" ? "active" : ""}" type="button" data-profile-feed="posts">Posts</button>
+      <button class="mobile-profile-segment ${feed === "archived" ? "active" : ""}" type="button" data-profile-feed="archived">Archived Posts</button>
+    </div>
+    <div class="mobile-profile-empty">
+      <p class="mobile-profile-name">${feed === "posts" ? "No posts yet..." : "No archived posts"}</p>
+      <p class="mobile-profile-sub">Publish photos and moments so they appear here in the profile.</p>
+      <button class="mobile-profile-primary-btn" type="button" data-profile-action="post">Add a post</button>
+    </div>
+  `;
+
+  mobileProfileContent.querySelectorAll("[data-profile-feed]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setMobileProfileFeed(button.dataset.profileFeed);
+    });
+  });
+
+  mobileProfileContent.querySelectorAll("[data-profile-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.dataset.profileAction;
+      if (action === "settings") {
+        setMobileTab("settings");
+        return;
+      }
+      openSettingsPanelForTab("appearance");
+    });
+  });
+}
+
+function renderMobileShell() {
+  if (!chatView) {
+    return;
+  }
+  chatView.dataset.mobileTab = normalizeMobileTab(state.ui.mobileTab);
+  renderMobileBottomAvatar();
+  renderMobileContactsOverview();
+  renderMobileSettingsOverview();
+  renderMobileProfileOverview();
 }
 
 // ========================
@@ -5785,6 +6343,7 @@ avatarFileInput.addEventListener("change", async () => {
       const payload = await api("/api/auth/avatar", { method: "POST", body: { avatar: reader.result } });
       if (state.me) state.me.avatarUrl = payload.avatarUrl;
       updateAvatarPreview();
+      renderMobileShell();
     } catch (e) { alert(e.message); }
   };
   reader.readAsDataURL(file);
@@ -5804,6 +6363,7 @@ displayNameSaveBtn.addEventListener("click", async () => {
     const payload = await api("/api/auth/profile", { method: "PUT", body: { displayName: value } });
     if (state.me) state.me.displayName = payload.displayName || null;
     meName.textContent = `${getDisplayName(state.me) || state.me.username} (${state.me.email})`;
+    renderMobileShell();
     displayNameStatus.textContent = "Никнейм сохранён!";
     setTimeout(() => { displayNameStatus.textContent = DISPLAY_NAME_HINT_TEXT; }, 2500);
   } catch (e) {
@@ -5822,6 +6382,7 @@ function updateAvatarPreview() {
     img.alt = "Avatar";
     avatarPreview.appendChild(img);
   }
+  renderMobileBottomAvatar();
 }
 
 // ========================
@@ -6712,6 +7273,8 @@ async function init() {
   setSettingsPanelOpen(false);
   setAuthTab("login");
   renderSearchResults([]);
+  setMobileTab(state.ui.mobileTab, { persist: false });
+  renderMobileShell();
 
   await registerServiceWorker();
   await checkPushState();

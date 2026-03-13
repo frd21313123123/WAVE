@@ -284,7 +284,37 @@
         </div>
       </aside>
       <aside class="sidebar">
-        <header class="sidebar-header">
+        <div class="mobile-wave-topbar">
+          <div class="mobile-wave-brand">
+            <span class="mobile-wave-brand-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+                stroke-linejoin="round" width="22" height="22" aria-hidden="true">
+                <path d="M2 15c1.4-2.4 3-3.6 4.8-3.6 1.9 0 3.4 1.2 4.8 3.6 1.4 2.4 3 3.6 4.9 3.6 1.9 0 3.5-1.2 4.9-3.6">
+                </path>
+                <path d="M2 9.1c1.4-2.4 3-3.6 4.8-3.6 1.9 0 3.4 1.2 4.8 3.6 1.4 2.4 3 3.6 4.9 3.6 1.9 0 3.5-1.2 4.9-3.6">
+                </path>
+              </svg>
+            </span>
+            <span>Wave</span>
+          </div>
+          <button id="mobileMenuBtn" class="mobile-icon-btn" type="button" aria-label="Открыть меню">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+              stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+              <circle cx="12" cy="5" r="1.5"></circle>
+              <circle cx="12" cy="12" r="1.5"></circle>
+              <circle cx="12" cy="19" r="1.5"></circle>
+            </svg>
+          </button>
+        </div>
+
+        <div id="mobileMenuSheet" class="mobile-menu-sheet hidden" aria-label="Мобильное меню">
+          <button id="mobileMenuNewChatBtn" type="button">Новый чат</button>
+          <button id="mobileMenuNewGroupBtn" type="button">Новая группа</button>
+          <button id="mobileMenuSettingsBtn" type="button">Настройки</button>
+          <button id="mobileMenuLogoutBtn" class="danger-action" type="button">Выйти</button>
+        </div>
+
+        <header class="sidebar-header desktop-sidebar-header">
           <div class="sidebar-header-user">
             <p class="mini-label">Аккаунт</p>
             <h2 id="meName">...</h2>
@@ -318,8 +348,83 @@
         <p class="mini-label section-label">Найденные пользователи</p>
         <ul id="searchResults" class="list"></ul>
 
+        <div id="mobileChatFilters" class="mobile-chat-filters">
+          <button class="mobile-chat-filter active" type="button" data-chat-filter="all">
+            <span>All Chats</span>
+            <span id="mobileFilterAllCount" class="mobile-chat-filter-count">0</span>
+          </button>
+          <button class="mobile-chat-filter" type="button" data-chat-filter="direct">
+            <span>Direct</span>
+            <span id="mobileFilterDirectCount" class="mobile-chat-filter-count">0</span>
+          </button>
+          <button class="mobile-chat-filter" type="button" data-chat-filter="groups">
+            <span>Groups</span>
+            <span id="mobileFilterGroupsCount" class="mobile-chat-filter-count">0</span>
+          </button>
+        </div>
+
         <p class="mini-label section-label">Диалоги</p>
         <ul id="conversationList" class="list"></ul>
+
+        <section id="mobileContactsPanel" class="mobile-tab-panel mobile-mobile-panel hidden" data-mobile-panel="contacts">
+          <div class="mobile-panel-shell">
+            <div class="mobile-panel-copy">
+              <h2>Contacts</h2>
+              <p>Люди, с которыми вы уже общаетесь в Wave.</p>
+            </div>
+            <div id="mobileContactsList" class="mobile-info-stack"></div>
+          </div>
+        </section>
+
+        <section id="mobileSettingsPanel" class="mobile-tab-panel mobile-mobile-panel hidden" data-mobile-panel="settings">
+          <div id="mobileSettingsContent" class="mobile-panel-shell"></div>
+        </section>
+
+        <section id="mobileProfilePanel" class="mobile-tab-panel mobile-mobile-panel hidden" data-mobile-panel="profile">
+          <div id="mobileProfileContent" class="mobile-panel-shell"></div>
+        </section>
+
+        <button id="mobileFab" class="mobile-fab" type="button" aria-label="Создать чат">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+            stroke-linejoin="round" width="22" height="22" aria-hidden="true">
+            <path d="M12 5v14"></path>
+            <path d="M5 12h14"></path>
+          </svg>
+        </button>
+
+        <nav class="mobile-bottom-nav" aria-label="Мобильная навигация">
+          <button class="mobile-bottom-btn active" type="button" data-mobile-tab-btn="chats">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" width="21" height="21" aria-hidden="true">
+              <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>Chats</span>
+          </button>
+          <button class="mobile-bottom-btn" type="button" data-mobile-tab-btn="contacts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" width="21" height="21" aria-hidden="true">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <span>Contacts</span>
+          </button>
+          <button class="mobile-bottom-btn" type="button" data-mobile-tab-btn="settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" width="21" height="21" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+              </path>
+            </svg>
+            <span>Settings</span>
+          </button>
+          <button class="mobile-bottom-btn" type="button" data-mobile-tab-btn="profile">
+            <span id="mobileBottomAvatar" class="mobile-bottom-avatar" data-initial="W"></span>
+            <span>Profile</span>
+          </button>
+        </nav>
       </aside>
       <div id="sidebarResizeHandle" class="sidebar-resize-handle" role="separator" aria-orientation="vertical"
         aria-label="Изменить ширину списка чатов" tabindex="0"></div>
