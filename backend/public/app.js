@@ -217,6 +217,10 @@ const ALLOWED_TRANSLATION_LANGS = new Set([
 const ALLOWED_THEMES = new Set(["light", "dark"]);
 const ENC_SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
 const SAFE_AVATAR_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i;
+const desktopShellModeEnabled =
+  new URLSearchParams(window.location.search).get("desktopShell") === "1";
+
+document.documentElement.classList.toggle("desktop-shell-mode", desktopShellModeEnabled);
 
 function getSafeAvatarUrl(value) {
   const avatarUrl = String(value || "").trim();
@@ -1102,11 +1106,19 @@ async function flushPeerIceQueue(peer, queuedCandidates) {
   }
 }
 
-function generateCallId() {
+function generateRuntimeId(prefix) {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
   }
-  return `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function generateCallId() {
+  return generateRuntimeId("call");
+}
+
+function generateClientMessageId() {
+  return generateRuntimeId("msg");
 }
 
 function getCallIdFromSignalData(data) {
@@ -4179,7 +4191,7 @@ async function sendMessageWithOptimistic(body) {
   }
 
   const conversationId = state.activeConversationId;
-  const clientMessageId = crypto.randomUUID();
+  const clientMessageId = generateClientMessageId();
   const optimisticMessage = createOptimisticMessage(conversationId, body, clientMessageId);
 
   state.pendingOutgoingByClientId.set(clientMessageId, optimisticMessage.id);
@@ -5286,7 +5298,7 @@ messageInput.addEventListener("keydown", (event) => {
   }
 
   event.preventDefault();
-  messageForm.requestSubmit();
+  void submitMessageForm();
 });
 
 let screenshotPasteInFlight = false;
@@ -5338,8 +5350,7 @@ messageInput.addEventListener("paste", async (event) => {
   }
 });
 
-messageForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
+async function submitMessageForm() {
 
   if (messageSubmitInFlight) {
     return;
@@ -5394,7 +5405,19 @@ messageForm.addEventListener("submit", async (event) => {
     messageSubmitInFlight = false;
     updateComposerUi();
   }
+}
+
+messageForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void submitMessageForm();
 });
+
+if (sendMessageBtn) {
+  sendMessageBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    void submitMessageForm();
+  });
+}
 
 mobileBack.addEventListener("click", () => {
   setDeleteMode(false);
