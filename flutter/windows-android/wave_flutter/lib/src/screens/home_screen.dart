@@ -705,16 +705,18 @@ class _ConversationPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.white.withValues(alpha: 0.92),
-            scheme.surface.withValues(alpha: 0.82),
+            scheme.primary.withValues(alpha: isDark ? 0.16 : 0.08),
+            scheme.tertiary.withValues(alpha: isDark ? 0.14 : 0.06),
+            scheme.surface,
           ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
       ),
       child: Column(
@@ -838,7 +840,7 @@ class _ConversationPane extends StatelessWidget {
                                             color: scheme.secondary,
                                             shape: BoxShape.circle,
                                             border: Border.all(
-                                              color: Colors.white,
+                                              color: scheme.surface,
                                               width: 2,
                                             ),
                                           ),
@@ -934,6 +936,7 @@ class _ChatPane extends StatelessWidget {
 
     final partner = active.participant;
     final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final canSend = !active.blockedMe;
     final canStartCall = !active.isGroup &&
         !active.blockedByMe &&
@@ -941,13 +944,17 @@ class _ChatPane extends StatelessWidget {
         partner != null;
 
     return Container(
-      color: Colors.white.withValues(alpha: 0.55),
+      color: isDark
+          ? scheme.surfaceContainerHighest.withValues(alpha: 0.34)
+          : Colors.white.withValues(alpha: 0.55),
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.78),
+              color: isDark
+                  ? scheme.surfaceContainerHigh.withValues(alpha: 0.72)
+                  : Colors.white.withValues(alpha: 0.78),
               border: Border(
                 bottom: BorderSide(
                   color: scheme.outlineVariant.withValues(alpha: 0.35),
@@ -1127,8 +1134,13 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final bubbleColor = isMine ? scheme.primary : Colors.white;
-    final textColor = isMine ? Colors.white : const Color(0xFF152238);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bubbleColor = isMine
+        ? scheme.primary
+        : (isDark ? scheme.surfaceContainerHighest : Colors.white);
+    final textColor = isMine
+        ? scheme.onPrimary
+        : (isDark ? scheme.onSurface : const Color(0xFF152238));
     final imageBytes = _decodeDataImage(message.imageData);
 
     return Align(
@@ -1147,7 +1159,7 @@ class _MessageBubble extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 blurRadius: 18,
-                color: Colors.black.withValues(alpha: 0.06),
+                color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.06),
                 offset: const Offset(0, 8),
               ),
             ],
