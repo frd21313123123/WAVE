@@ -7357,45 +7357,98 @@ html.theme-changing .theme-icon-moon {
   .mobile-bottom-nav {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
+    gap: 0;
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    padding: 7px 8px calc(8px + env(safe-area-inset-bottom, 0px));
-    border-top: 1px solid var(--line);
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+    border-top: none;
     background: var(--surface);
     z-index: 6;
+    overflow: hidden;
+  }
+
+  .mobile-bottom-indicator {
+    position: absolute;
+    top: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    left: 8px;
+    width: calc((100% - 16px) / 3);
+    border-radius: 2rem;
+    background: #e5f3ff;
+    box-shadow: 0 4px 14px rgba(0, 136, 204, 0.08);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      left 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+      width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+      opacity 0.24s ease;
   }
 
   .mobile-bottom-btn {
+    position: relative;
+    z-index: 1;
     border: 0;
-    border-radius: 14px;
+    border-radius: 2rem;
     background: transparent;
-    color: var(--text-subtle);
-    padding: 7px 6px;
+    color: #1f2937;
+    padding: 8px 6px;
     display: inline-flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    min-height: 62px;
     font-size: 0.67rem;
     font-weight: 600;
     cursor: pointer;
-    transition: transform 0.12s ease, color 0.12s ease, background-color 0.12s ease;
+    transition: transform 0.2s ease, color 0.3s ease;
   }
 
-  .mobile-bottom-btn span {
+  .mobile-bottom-btn-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    margin-bottom: 5px;
+  }
+
+  .mobile-bottom-btn-label {
     line-height: 1;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    transition: color 0.3s ease;
   }
 
   .mobile-bottom-btn.active {
-    color: var(--accent-strong);
-    background: var(--accent-soft);
+    color: #0088cc;
   }
 
   .mobile-bottom-btn:active {
-    transform: scale(0.95);
+    transform: scale(0.9);
+  }
+
+  .mobile-bottom-badge {
+    position: absolute;
+    top: -6px;
+    right: -10px;
+    min-width: 20px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: #3390ec;
+    border: 2px solid #fff;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    transition: transform 0.5s ease;
+  }
+
+  .mobile-bottom-btn[data-active="true"] .mobile-bottom-badge {
+    transform: scale(1.1);
   }
 
   .chat-view.chat-open .mobile-bottom-nav,
@@ -8557,27 +8610,34 @@ html.theme-changing .theme-icon-moon {
   }
 
   .mobile-bottom-nav {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     left: 16px;
     right: 16px;
     bottom: 12px;
     padding: 8px;
     border: none;
-    border-radius: 999px;
+    border-radius: 2.5rem;
     background: rgba(255, 255, 255, 0.98);
-    box-shadow: 0 24px 40px -28px rgba(0, 0, 0, 0.34);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
   }
 
   .mobile-bottom-btn {
-    min-height: 62px;
-    border-radius: 999px;
-    gap: 6px;
+    min-height: 64px;
+    border-radius: 2rem;
     color: #1b2028;
   }
 
   .mobile-bottom-btn.active {
-    background: #e8f4ff;
-    color: #258fdd;
+    background: transparent;
+    color: #0088cc;
+  }
+
+  .mobile-bottom-indicator {
+    top: 8px;
+    bottom: 8px;
+    border-radius: 2rem;
   }
 
   .mobile-bottom-avatar {
@@ -8592,12 +8652,23 @@ html.theme-changing .theme-icon-moon {
     color: #fff;
     background: linear-gradient(140deg, #2da8ff, #1d8de1);
     overflow: hidden;
+    border: 1px solid #d7dde7;
+    transition:
+      border-color 0.3s ease,
+      box-shadow 0.3s ease,
+      transform 0.3s ease;
   }
 
   .mobile-bottom-avatar img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  .mobile-bottom-btn[data-active="true"] .mobile-bottom-avatar {
+    border: 2px solid #0088cc;
+    box-shadow: 0 0 0 2px #fff;
+    transform: translateZ(0);
   }
 
   .mobile-panel-shell {
@@ -8698,7 +8769,80 @@ html.theme-changing .theme-icon-moon {
 
   .mobile-settings-overview {
     padding: 22px 18px;
-    text-align: center;
+    text-align: left;
+  }
+
+  .mobile-settings-summary-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .mobile-settings-summary-copy {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .mobile-settings-summary-row .mobile-settings-avatar {
+    width: 76px;
+    height: 76px;
+    margin: 0;
+  }
+
+  .mobile-settings-shell {
+    display: grid;
+    gap: 16px;
+  }
+
+  .mobile-settings-groups {
+    display: grid;
+    gap: 16px;
+  }
+
+  .mobile-settings-group-card {
+    background: rgba(255, 255, 255, 0.94);
+    border-radius: 30px;
+    box-shadow: 0 18px 36px -30px rgba(0, 0, 0, 0.34);
+    overflow: hidden;
+  }
+
+  .mobile-settings-group-head {
+    padding: 18px 18px 10px;
+  }
+
+  .mobile-settings-group-head h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 800;
+    color: #151b24;
+  }
+
+  .mobile-settings-group-head p {
+    margin: 6px 0 0;
+    color: #7b8696;
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+
+  .mobile-settings-group-body {
+    padding-bottom: 6px;
+  }
+
+  .mobile-settings-mounted .mobile-settings-panel-inline {
+    display: block !important;
+    flex: none;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .mobile-settings-mounted .mobile-settings-panel-inline + .mobile-settings-panel-inline {
+    margin-top: 4px;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+  }
+
+  .mobile-settings-mounted .mobile-settings-panel-inline .settings-section {
+    padding: 14px 18px 10px;
+    border-bottom-color: rgba(15, 23, 42, 0.08);
   }
 
   .mobile-settings-avatar,
@@ -8795,7 +8939,7 @@ html.theme-changing .theme-icon-moon {
 
   .mobile-profile-actions {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
     margin-bottom: 18px;
   }
@@ -8886,6 +9030,7 @@ html.theme-changing .theme-icon-moon {
   [data-theme="dark"] #conversationList .list-item,
   [data-theme="dark"] .mobile-contact-card,
   [data-theme="dark"] .mobile-settings-overview,
+  [data-theme="dark"] .mobile-settings-group-card,
   [data-theme="dark"] .mobile-settings-item,
   [data-theme="dark"] .mobile-profile-card,
   [data-theme="dark"] .mobile-profile-action,
@@ -8896,11 +9041,34 @@ html.theme-changing .theme-icon-moon {
     color: #f0f2f7;
   }
 
+  [data-theme="dark"] .mobile-bottom-indicator {
+    background: rgba(35, 119, 191, 0.34);
+    box-shadow: 0 6px 18px rgba(0, 136, 204, 0.14);
+  }
+
+  [data-theme="dark"] .mobile-bottom-btn {
+    color: #f0f2f7;
+  }
+
+  [data-theme="dark"] .mobile-bottom-btn.active,
+  [data-theme="dark"] .mobile-bottom-btn[data-active="true"] {
+    color: #69bfff;
+  }
+
+  [data-theme="dark"] .mobile-bottom-avatar {
+    border-color: rgba(205, 216, 232, 0.16);
+  }
+
+  [data-theme="dark"] .mobile-bottom-btn[data-active="true"] .mobile-bottom-avatar {
+    box-shadow: 0 0 0 2px rgba(28, 30, 42, 0.96);
+  }
+
   [data-theme="dark"] .mobile-wave-brand,
   [data-theme="dark"] .mobile-panel-copy h2,
   [data-theme="dark"] .mobile-contact-name,
   [data-theme="dark"] .mobile-profile-name,
   [data-theme="dark"] .mobile-settings-name,
+  [data-theme="dark"] .mobile-settings-group-head h2,
   [data-theme="dark"] .mobile-settings-item-title,
   [data-theme="dark"] .mobile-profile-field-value,
   [data-theme="dark"] #conversationList .item-title {
@@ -8910,6 +9078,7 @@ html.theme-changing .theme-icon-moon {
   [data-theme="dark"] .mobile-panel-copy p,
   [data-theme="dark"] .mobile-contact-sub,
   [data-theme="dark"] .mobile-settings-sub,
+  [data-theme="dark"] .mobile-settings-group-head p,
   [data-theme="dark"] .mobile-profile-sub,
   [data-theme="dark"] .mobile-settings-item-sub,
   [data-theme="dark"] .mobile-profile-field-label,

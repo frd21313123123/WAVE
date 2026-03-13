@@ -18,7 +18,7 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260313-7" />
+  <link rel="stylesheet" href="./styles.css?v=20260313-9" />
 </head>
 
 <body>
@@ -366,18 +366,47 @@
         <p class="mini-label section-label">Диалоги</p>
         <ul id="conversationList" class="list"></ul>
 
-        <section id="mobileContactsPanel" class="mobile-tab-panel mobile-mobile-panel hidden" data-mobile-panel="contacts">
-          <div class="mobile-panel-shell">
-            <div class="mobile-panel-copy">
-              <h2>Contacts</h2>
-              <p>Люди, с которыми вы уже общаетесь в Wave.</p>
-            </div>
-            <div id="mobileContactsList" class="mobile-info-stack"></div>
-          </div>
-        </section>
-
         <section id="mobileSettingsPanel" class="mobile-tab-panel mobile-mobile-panel hidden" data-mobile-panel="settings">
-          <div id="mobileSettingsContent" class="mobile-panel-shell"></div>
+          <div id="mobileSettingsContent" class="mobile-panel-shell mobile-settings-shell">
+            <div id="mobileSettingsSummary" class="mobile-settings-overview"></div>
+            <div id="mobileSettingsGroups" class="mobile-settings-groups">
+              <section class="mobile-settings-group-card" data-mobile-settings-anchor="display">
+                <div class="mobile-settings-group-head">
+                  <h2>Display</h2>
+                  <p>Theme and screen mode for the mobile client.</p>
+                </div>
+                <div id="mobileSettingsDisplayHost" class="mobile-settings-group-body"></div>
+              </section>
+              <section class="mobile-settings-group-card" data-mobile-settings-anchor="encryption">
+                <div class="mobile-settings-group-head">
+                  <h2>Encryption</h2>
+                  <p>Encryption key, visibility and local secure message settings.</p>
+                </div>
+                <div id="mobileSettingsEncryptionHost" class="mobile-settings-group-body"></div>
+              </section>
+              <section class="mobile-settings-group-card" data-mobile-settings-anchor="sound">
+                <div class="mobile-settings-group-head">
+                  <h2>Sound</h2>
+                  <p>Audio routing, microphone test and push notifications.</p>
+                </div>
+                <div id="mobileSettingsSoundHost" class="mobile-settings-group-body"></div>
+              </section>
+              <section class="mobile-settings-group-card" data-mobile-settings-anchor="security">
+                <div class="mobile-settings-group-head">
+                  <h2>Security</h2>
+                  <p>Two-factor authentication and protected access flows.</p>
+                </div>
+                <div id="mobileSettingsSecurityHost" class="mobile-settings-group-body"></div>
+              </section>
+              <section class="mobile-settings-group-card" data-mobile-settings-anchor="account">
+                <div class="mobile-settings-group-head">
+                  <h2>Account</h2>
+                  <p>Avatar, profile name and account management actions.</p>
+                </div>
+                <div id="mobileSettingsAccountHost" class="mobile-settings-group-body"></div>
+              </section>
+            </div>
+          </div>
         </section>
 
         <section id="mobileProfilePanel" class="mobile-tab-panel mobile-mobile-panel hidden" data-mobile-panel="profile">
@@ -393,36 +422,34 @@
         </button>
 
         <nav class="mobile-bottom-nav" aria-label="Мобильная навигация">
-          <button class="mobile-bottom-btn active" type="button" data-mobile-tab-btn="chats">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" width="21" height="21" aria-hidden="true">
-              <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-            </svg>
-            <span>Chats</span>
+          <div id="mobileBottomIndicator" class="mobile-bottom-indicator" aria-hidden="true"></div>
+          <button class="mobile-bottom-btn active" type="button" data-mobile-tab-btn="chats" data-active="true">
+            <span class="mobile-bottom-btn-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" width="24" height="24" aria-hidden="true">
+                <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <span id="mobileBottomChatsBadge" class="mobile-bottom-badge hidden">0</span>
+            </span>
+            <span class="mobile-bottom-btn-label">Chats</span>
           </button>
-          <button class="mobile-bottom-btn" type="button" data-mobile-tab-btn="contacts">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" width="21" height="21" aria-hidden="true">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
-            <span>Contacts</span>
+          <button class="mobile-bottom-btn" type="button" data-mobile-tab-btn="settings" data-active="false">
+            <span class="mobile-bottom-btn-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" width="24" height="24" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+                </path>
+              </svg>
+            </span>
+            <span class="mobile-bottom-btn-label">Settings</span>
           </button>
-          <button class="mobile-bottom-btn" type="button" data-mobile-tab-btn="settings">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" width="21" height="21" aria-hidden="true">
-              <circle cx="12" cy="12" r="3"></circle>
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
-              </path>
-            </svg>
-            <span>Settings</span>
-          </button>
-          <button class="mobile-bottom-btn" type="button" data-mobile-tab-btn="profile">
-            <span id="mobileBottomAvatar" class="mobile-bottom-avatar" data-initial="W"></span>
-            <span>Profile</span>
+          <button class="mobile-bottom-btn" type="button" data-mobile-tab-btn="profile" data-active="false">
+            <span class="mobile-bottom-btn-icon">
+              <span id="mobileBottomAvatar" class="mobile-bottom-avatar" data-initial="W"></span>
+            </span>
+            <span class="mobile-bottom-btn-label">Profile</span>
           </button>
         </nav>
       </aside>
@@ -1138,6 +1165,7 @@
           </button>
         </div>
 
+        <div id="settingsDesktopPanelsHost">
         <!-- Tab: Внешний вид аккаунта -->
         <div class="settings-tab-panel active" data-panel="appearance" role="tabpanel">
           <section class="settings-section">
@@ -1447,6 +1475,7 @@
             </button>
           </section>
         </div>
+        </div>
 
       </div>
     </div>
@@ -1483,7 +1512,7 @@
       </div>
     </div>
   </div>
-  <script src="./app.js?v=20260313-9"></script>
+  <script src="./app.js?v=20260313-12"></script>
 </body>
 
 </html>

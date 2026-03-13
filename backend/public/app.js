@@ -183,19 +183,28 @@ const mobileMenuNewChatBtn = document.getElementById("mobileMenuNewChatBtn");
 const mobileMenuNewGroupBtn = document.getElementById("mobileMenuNewGroupBtn");
 const mobileMenuSettingsBtn = document.getElementById("mobileMenuSettingsBtn");
 const mobileMenuLogoutBtn = document.getElementById("mobileMenuLogoutBtn");
-const mobileContactsPanel = document.getElementById("mobileContactsPanel");
 const mobileContactsList = document.getElementById("mobileContactsList");
 const mobileSettingsPanel = document.getElementById("mobileSettingsPanel");
 const mobileSettingsContent = document.getElementById("mobileSettingsContent");
+const mobileSettingsSummary = document.getElementById("mobileSettingsSummary");
+const mobileSettingsDisplayHost = document.getElementById("mobileSettingsDisplayHost");
+const mobileSettingsEncryptionHost = document.getElementById("mobileSettingsEncryptionHost");
+const mobileSettingsSoundHost = document.getElementById("mobileSettingsSoundHost");
+const mobileSettingsSecurityHost = document.getElementById("mobileSettingsSecurityHost");
+const mobileSettingsAccountHost = document.getElementById("mobileSettingsAccountHost");
 const mobileProfilePanel = document.getElementById("mobileProfilePanel");
 const mobileProfileContent = document.getElementById("mobileProfileContent");
 const mobileFab = document.getElementById("mobileFab");
+const mobileBottomIndicator = document.getElementById("mobileBottomIndicator");
+const mobileBottomChatsBadge = document.getElementById("mobileBottomChatsBadge");
 const mobileBottomAvatar = document.getElementById("mobileBottomAvatar");
 const mobileTabButtons = Array.from(document.querySelectorAll("[data-mobile-tab-btn]"));
 const mobileChatFilters = Array.from(document.querySelectorAll("[data-chat-filter]"));
 const mobileFilterAllCount = document.getElementById("mobileFilterAllCount");
 const mobileFilterDirectCount = document.getElementById("mobileFilterDirectCount");
 const mobileFilterGroupsCount = document.getElementById("mobileFilterGroupsCount");
+const settingsDesktopPanelsHost = document.getElementById("settingsDesktopPanelsHost");
+const settingsTabPanels = Array.from(document.querySelectorAll(".settings-tab-panel"));
 
 const UI_SETTINGS_KEY = "messenger_ui_settings_v1";
 const DEFAULT_VIGENERE_KEY = "WAVE";
@@ -234,7 +243,7 @@ const ALLOWED_TRANSLATION_LANGS = new Set([
   "pl",
 ]);
 const ALLOWED_THEMES = new Set(["light", "dark"]);
-const ALLOWED_MOBILE_TABS = new Set(["chats", "contacts", "settings", "profile"]);
+const ALLOWED_MOBILE_TABS = new Set(["chats", "settings", "profile"]);
 const ALLOWED_PROFILE_FEEDS = new Set(["posts", "archived"]);
 const ALLOWED_CHAT_FILTERS = new Set(["all", "direct", "groups"]);
 const ENC_SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
@@ -2897,14 +2906,115 @@ function getUnreadConversationCount(conversation) {
     : 0;
 }
 
+function getTotalUnreadConversationCount() {
+  if (!Array.isArray(state.conversations) || !state.conversations.length) {
+    return 0;
+  }
+  return state.conversations.reduce(
+    (count, conversation) => count + getUnreadConversationCount(conversation),
+    0
+  );
+}
+
+function getMobileSettingsAnchor(tab) {
+  switch (String(tab || "").trim().toLowerCase()) {
+    case "theme":
+      return "display";
+    case "encryption":
+      return "encryption";
+    case "sounds":
+      return "sound";
+    case "security":
+      return "security";
+    case "appearance":
+    case "account":
+      return "account";
+    default:
+      return "account";
+  }
+}
+
+function syncSettingsSurfaceState({ refreshRemote = false } = {}) {
+  syncUiControls();
+  if (!state.me) {
+    return;
+  }
+  displayNameInput.value = state.me.displayName || "";
+  displayNameStatus.textContent = DISPLAY_NAME_HINT_TEXT;
+  if (refreshRemote) {
+    refreshTwoFaStatus();
+  }
+}
+
+function mountMobileSettingsPanels() {
+  if (!settingsDesktopPanelsHost || settingsTabPanels.length === 0) {
+    return;
+  }
+
+  const shouldInlineMount = isMobileLayout() && !isDesktopShellMode();
+  if (shouldInlineMount && settingsPanel && !settingsPanel.classList.contains("hidden")) {
+    setSettingsPanelOpen(false);
+  }
+  const mobileHosts = {
+    appearance: mobileSettingsAccountHost,
+    theme: mobileSettingsDisplayHost,
+    encryption: mobileSettingsEncryptionHost,
+    sounds: mobileSettingsSoundHost,
+    security: mobileSettingsSecurityHost,
+    account: mobileSettingsAccountHost,
+  };
+
+  settingsTabPanels.forEach((panel) => {
+    const panelName = String(panel.dataset.panel || "");
+    const targetHost = shouldInlineMount
+      ? mobileHosts[panelName]
+      : settingsDesktopPanelsHost;
+    if (targetHost && panel.parentElement !== targetHost) {
+      targetHost.appendChild(panel);
+    }
+    panel.classList.toggle("mobile-settings-panel-inline", shouldInlineMount);
+  });
+
+  if (mobileSettingsPanel) {
+    mobileSettingsPanel.classList.toggle("mobile-settings-mounted", shouldInlineMount);
+  }
+}
+
+function focusMobileSettingsAnchor(tab) {
+  const anchor = getMobileSettingsAnchor(tab);
+  const target = mobileSettingsPanel?.querySelector(
+    `[data-mobile-settings-anchor="${anchor}"]`
+  );
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function openInlineMobileSettings(
+  tab = "account",
+  { refreshRemote = true, focus = true } = {}
+) {
+  if (!isMobileLayout() || isDesktopShellMode()) {
+    return false;
+  }
+  syncSettingsSurfaceState({ refreshRemote });
+  setMobileTab("settings");
+  renderMobileSettingsOverview();
+  if (focus) {
+    requestAnimationFrame(() => {
+      focusMobileSettingsAnchor(tab);
+    });
+  }
+  return true;
+}
+
 function openSettingsPanelForTab(tab) {
   const nextTab = String(tab || "appearance").trim().toLowerCase() || "appearance";
-  setSettingsPanelOpen(true);
-  if (state.me) {
-    refreshTwoFaStatus();
-    displayNameInput.value = state.me.displayName || "";
-    displayNameStatus.textContent = DISPLAY_NAME_HINT_TEXT;
+  if (openInlineMobileSettings(nextTab, { refreshRemote: true, focus: true })) {
+    return;
   }
+  setSettingsPanelOpen(true);
+  syncSettingsSurfaceState({ refreshRemote: true });
   const targetButton = document.querySelector(`.settings-tab-btn[data-tab="${nextTab}"]`);
   if (targetButton) {
     targetButton.click();
@@ -2943,9 +3053,6 @@ function setMobileTab(tab, { persist = true } = {}) {
   if (chatView) {
     chatView.dataset.mobileTab = state.ui.mobileTab;
   }
-  if (mobileContactsPanel) {
-    mobileContactsPanel.classList.toggle("hidden", state.ui.mobileTab !== "contacts");
-  }
   if (mobileSettingsPanel) {
     mobileSettingsPanel.classList.toggle("hidden", state.ui.mobileTab !== "settings");
   }
@@ -2953,12 +3060,15 @@ function setMobileTab(tab, { persist = true } = {}) {
     mobileProfilePanel.classList.toggle("hidden", state.ui.mobileTab !== "profile");
   }
   mobileTabButtons.forEach((button) => {
-    button.classList.toggle(
-      "active",
-      button.dataset.mobileTabBtn === state.ui.mobileTab
-    );
+    const isActive = button.dataset.mobileTabBtn === state.ui.mobileTab;
+    button.classList.toggle("active", isActive);
+    button.dataset.active = isActive ? "true" : "false";
   });
+  requestAnimationFrame(updateMobileBottomIndicator);
   toggleMobileMenu(false);
+  if (state.ui.mobileTab === "settings" && isMobileLayout() && !isDesktopShellMode()) {
+    syncSettingsSurfaceState({ refreshRemote: true });
+  }
   if (persist) {
     saveUiSettings();
   }
@@ -3522,6 +3632,10 @@ function pulseEncryptionKeyIcon() {
 
 function setSettingsPanelOpen(isOpen) {
   const shouldOpen = Boolean(isOpen) && !state.chatLocked;
+  if (shouldOpen && openInlineMobileSettings("account", { refreshRemote: true, focus: false })) {
+    settingsPanel.classList.add("hidden");
+    return;
+  }
   settingsPanel.classList.toggle("hidden", !shouldOpen);
   if (shouldOpen) {
     syncSettingsCallControls();
@@ -5078,6 +5192,9 @@ settingsBtn.addEventListener("click", () => {
   }
 
   const willOpen = settingsPanel.classList.contains("hidden");
+  if (willOpen && openInlineMobileSettings("account", { refreshRemote: true, focus: false })) {
+    return;
+  }
   if (willOpen && state.deleteMode) {
     setDeleteMode(false);
   }
@@ -5810,6 +5927,22 @@ function formatLastSeen(isoDate) {
   return `был(а) ${Math.floor(diff / 1440)} дн. назад`;
 }
 
+function updateMobileBottomIndicator() {
+  if (!mobileBottomIndicator) {
+    return;
+  }
+  const activeButton = mobileTabButtons.find(
+    (button) => button.dataset.mobileTabBtn === state.ui.mobileTab
+  );
+  if (!activeButton || activeButton.offsetParent === null) {
+    mobileBottomIndicator.style.opacity = "0";
+    return;
+  }
+  mobileBottomIndicator.style.left = `${activeButton.offsetLeft}px`;
+  mobileBottomIndicator.style.width = `${activeButton.offsetWidth}px`;
+  mobileBottomIndicator.style.opacity = "1";
+}
+
 function renderMobileBottomAvatar() {
   if (!mobileBottomAvatar) {
     return;
@@ -5821,6 +5954,21 @@ function renderMobileBottomAvatar() {
   mobileBottomAvatar.innerHTML = safeAvatarUrl
     ? `<img src="${safeAvatarUrl}" alt="${escapeHtml(name)}">`
     : escapeHtml(initial);
+}
+
+function renderMobileBottomDock() {
+  renderMobileBottomAvatar();
+  if (mobileBottomChatsBadge) {
+    const unread = getTotalUnreadConversationCount();
+    mobileBottomChatsBadge.textContent = unread > 99 ? "99+" : String(unread);
+    mobileBottomChatsBadge.classList.toggle("hidden", unread < 1);
+  }
+  mobileTabButtons.forEach((button) => {
+    const isActive = button.dataset.mobileTabBtn === state.ui.mobileTab;
+    button.classList.toggle("active", isActive);
+    button.dataset.active = isActive ? "true" : "false";
+  });
+  requestAnimationFrame(updateMobileBottomIndicator);
 }
 
 function renderMobileContactsOverview() {
@@ -5873,7 +6021,7 @@ function renderMobileContactsOverview() {
   });
 }
 
-function renderMobileSettingsOverview() {
+function renderLegacyMobileSettingsOverview() {
   if (!mobileSettingsContent) {
     return;
   }
@@ -5964,6 +6112,33 @@ function renderMobileSettingsOverview() {
   });
 }
 
+function renderMobileSettingsOverview() {
+  if (!mobileSettingsContent) {
+    return;
+  }
+
+  const name = state.me
+    ? getDisplayName(state.me) || state.me.username || "Wave"
+    : "Wave";
+  const subline = state.me
+    ? `${escapeHtml(state.me.email || "")} â€¢ @${escapeHtml(state.me.username || "")}`
+    : "Configure display, security and account preferences.";
+
+  if (mobileSettingsSummary) {
+    mobileSettingsSummary.innerHTML = `
+      <div class="mobile-settings-summary-row">
+        ${buildMobileAvatarMarkup(name, state.me?.avatarUrl, "mobile-settings-avatar")}
+        <div class="mobile-settings-summary-copy">
+          <p class="mobile-settings-name">${escapeHtml(name)}</p>
+          <p class="mobile-settings-sub">${subline}</p>
+        </div>
+      </div>
+    `;
+  }
+
+  mountMobileSettingsPanels();
+}
+
 function renderMobileProfileOverview() {
   if (!mobileProfileContent) {
     return;
@@ -5994,10 +6169,6 @@ function renderMobileProfileOverview() {
       <button class="mobile-profile-action" type="button" data-profile-action="edit">
         ${getMobileIconSvg("edit")}
         <span>Edit Info</span>
-      </button>
-      <button class="mobile-profile-action" type="button" data-profile-action="settings">
-        ${getMobileIconSvg("settings")}
-        <span>Settings</span>
       </button>
     </div>
     <div class="mobile-profile-card">
@@ -6035,11 +6206,6 @@ function renderMobileProfileOverview() {
 
   mobileProfileContent.querySelectorAll("[data-profile-action]").forEach((button) => {
     button.addEventListener("click", () => {
-      const action = button.dataset.profileAction;
-      if (action === "settings") {
-        setMobileTab("settings");
-        return;
-      }
       openSettingsPanelForTab("appearance");
     });
   });
@@ -6050,8 +6216,7 @@ function renderMobileShell() {
     return;
   }
   chatView.dataset.mobileTab = normalizeMobileTab(state.ui.mobileTab);
-  renderMobileBottomAvatar();
-  renderMobileContactsOverview();
+  renderMobileBottomDock();
   renderMobileSettingsOverview();
   renderMobileProfileOverview();
 }

@@ -16,16 +16,19 @@ import '../controllers/session_controller.dart';
 import '../models/app_models.dart';
 import '../models/call_models.dart';
 import '../services/api_client.dart';
+import '../settings/app_settings.dart';
 import '../settings/avatar_upload.dart';
 import '../settings/settings_controller.dart';
 import '../settings/wave_settings_sheet.dart';
+import '../settings/widgets/settings_feedback_banner.dart';
+import '../settings/widgets/settings_section_card.dart';
 import '../update/app_update_install_flow.dart';
 import '../update/update_controller.dart';
 import '../update/update_prompt.dart';
 import '../widgets/wave_avatar.dart';
 import '../widgets/wave_brand_logo.dart';
 
-enum _MobileHomeTab { chats, contacts, settings, profile }
+enum _MobileHomeTab { chats, settings, profile }
 
 enum _MobileChatFilter { all, direct, groups }
 
@@ -82,6 +85,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final settingsController = context.read<SettingsController>();
     if (!identical(_settingsController, settingsController)) {
       _settingsController = settingsController;
+    }
+    if (!settingsController.isBootstrapped) {
+      unawaited(settingsController.bootstrap());
     }
   }
 
@@ -191,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       onNewChat: _openNewChatSheet,
       onNewGroup: _openNewGroupSheet,
-      onOpenProfile: _openSettingsSheet,
+      onOpenProfile: _openSettingsSurface,
     );
 
     final conversationBody = isWide
@@ -279,7 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.person_add_alt_1_rounded),
           ),
           IconButton(
-            onPressed: _openSettingsSheet,
+            onPressed: _openSettingsSurface,
             tooltip: 'Профиль',
             icon: const Icon(Icons.tune_rounded),
           ),
@@ -311,14 +317,18 @@ class _HomeScreenState extends State<HomeScreen> {
     required ConversationSummary? activeConversation,
     required List<ChatMessage> messages,
   }) {
-    final showConversation =
-        _mobileTab == _MobileHomeTab.chats &&
-            _mobileChatOpen &&
-            activeConversation != null;
-    final filteredConversations = _filterMobileConversations(chat.conversations);
-    final directConversations = chat.conversations
-        .where((conversation) => !conversation.isGroup)
-        .toList(growable: false);
+    final updateController = context.watch<UpdateController>();
+    final showConversation = _mobileTab == _MobileHomeTab.chats &&
+        _mobileChatOpen &&
+        activeConversation != null;
+    final filteredConversations =
+        _filterMobileConversations(chat.conversations);
+    final unreadDockCount = chat.conversations.where((conversation) {
+      final lastMessage = conversation.lastMessage;
+      return lastMessage != null &&
+          lastMessage.senderId != currentUser.id &&
+          lastMessage.readAt == null;
+    }).length;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
@@ -357,7 +367,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       currentUser: currentUser,
                       conversations: filteredConversations,
                       allConversations: chat.conversations,
-                      directConversations: directConversations,
                       settingsController: settings,
                       activeTab: _mobileTab,
                       selectedFilter: _mobileChatFilter,
@@ -376,9 +385,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       onOpenConversation: _openMobileConversation,
                       onOpenNewChat: () => unawaited(_openNewChatSheet()),
                       onOpenNewGroup: () => unawaited(_openNewGroupSheet()),
-                      onOpenSettings: () => unawaited(_openSettingsSheet()),
+                      onOpenSettings: () =>
+                          _setMobileTab(_MobileHomeTab.settings),
                       onOpenProfileEditor: () => unawaited(_openProfileSheet()),
                       onUploadAvatar: _uploadAvatarFromProfile,
+                      onRunMicrophoneTest: _runMicrophoneTest,
+                      onPreviewCallTone: _previewCallTone,
+                      onCheckForUpdates: _checkForUpdatesFromSettings,
+                      appVersionText: updateController.installedVersion,
+                      updateStatusText: updateController.updateStatusLabel,
                       onLogout: _logoutFromMobileShell,
                     ),
             ),
@@ -400,7 +415,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: _MobileBottomDock(
+                  currentUser: currentUser,
                   activeTab: _mobileTab,
+                  chatsBadgeCount: unreadDockCount,
                   onTabSelected: _setMobileTab,
                 ),
               ),
@@ -635,6 +652,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (conversation != null && mounted) {
       await chat.openConversation(conversation.id);
     }
+  }
+
+  Future<void> _openSettingsSurface() async {
+    if (MediaQuery.sizeOf(context).width < 920) {
+      _setMobileTab(_MobileHomeTab.settings);
+      return;
+    }
+    await _openSettingsSheet();
   }
 
   Future<void> _openSettingsSheet() async {
@@ -2010,7 +2035,6 @@ class _MobileHomeView extends StatelessWidget {
     required this.currentUser,
     required this.conversations,
     required this.allConversations,
-    required this.directConversations,
     required this.settingsController,
     required this.activeTab,
     required this.selectedFilter,
@@ -2024,13 +2048,17 @@ class _MobileHomeView extends StatelessWidget {
     required this.onOpenSettings,
     required this.onOpenProfileEditor,
     required this.onUploadAvatar,
+    required this.onRunMicrophoneTest,
+    required this.onPreviewCallTone,
+    required this.onCheckForUpdates,
+    required this.appVersionText,
+    required this.updateStatusText,
     required this.onLogout,
   });
 
   final PublicUser currentUser;
   final List<ConversationSummary> conversations;
   final List<ConversationSummary> allConversations;
-  final List<ConversationSummary> directConversations;
   final SettingsController settingsController;
   final _MobileHomeTab activeTab;
   final _MobileChatFilter selectedFilter;
@@ -2044,6 +2072,11 @@ class _MobileHomeView extends StatelessWidget {
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenProfileEditor;
   final Future<void> Function() onUploadAvatar;
+  final Future<void> Function() onRunMicrophoneTest;
+  final Future<void> Function() onPreviewCallTone;
+  final Future<void> Function() onCheckForUpdates;
+  final String? appVersionText;
+  final String? updateStatusText;
   final Future<void> Function() onLogout;
 
   @override
@@ -2074,14 +2107,17 @@ class _MobileHomeView extends StatelessWidget {
             onOpenSettings: onOpenSettings,
             onLogout: onLogout,
           ),
-        _MobileHomeTab.contacts => _MobileContactsTab(
-            directConversations: directConversations,
-            onOpenConversation: onOpenConversation,
-          ),
         _MobileHomeTab.settings => _MobileSettingsTab(
             currentUser: currentUser,
-            onOpenSettings: onOpenSettings,
-            onTabChanged: onTabChanged,
+            settingsController: settingsController,
+            onUploadAvatar: onUploadAvatar,
+            onOpenProfileEditor: onOpenProfileEditor,
+            onRunMicrophoneTest: onRunMicrophoneTest,
+            onPreviewCallTone: onPreviewCallTone,
+            onCheckForUpdates: onCheckForUpdates,
+            appVersionText: appVersionText,
+            updateStatusText: updateStatusText,
+            onLogout: onLogout,
           ),
         _MobileHomeTab.profile => _MobileProfileTab(
             currentUser: currentUser,
@@ -2089,7 +2125,6 @@ class _MobileHomeView extends StatelessWidget {
             onFeedTabChanged: onFeedTabChanged,
             onUploadAvatar: onUploadAvatar,
             onOpenProfileEditor: onOpenProfileEditor,
-            onOpenSettings: onOpenSettings,
           ),
       },
     );
@@ -2285,6 +2320,7 @@ class _MobileChatsTab extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _MobileContactsTab extends StatelessWidget {
   const _MobileContactsTab({
     required this.directConversations,
@@ -2384,8 +2420,9 @@ class _MobileContactsTab extends StatelessWidget {
   }
 }
 
-class _MobileSettingsTab extends StatelessWidget {
-  const _MobileSettingsTab({
+// ignore: unused_element
+class _LegacyMobileSettingsTab extends StatelessWidget {
+  const _LegacyMobileSettingsTab({
     required this.currentUser,
     required this.onOpenSettings,
     required this.onTabChanged,
@@ -2513,6 +2550,735 @@ class _MobileSettingsTab extends StatelessWidget {
   }
 }
 
+class _MobileSettingsTab extends StatefulWidget {
+  const _MobileSettingsTab({
+    required this.currentUser,
+    required this.settingsController,
+    required this.onUploadAvatar,
+    required this.onOpenProfileEditor,
+    required this.onRunMicrophoneTest,
+    required this.onPreviewCallTone,
+    required this.onCheckForUpdates,
+    required this.onLogout,
+    this.appVersionText,
+    this.updateStatusText,
+  });
+
+  final PublicUser currentUser;
+  final SettingsController settingsController;
+  final Future<void> Function() onUploadAvatar;
+  final VoidCallback onOpenProfileEditor;
+  final Future<void> Function() onRunMicrophoneTest;
+  final Future<void> Function() onPreviewCallTone;
+  final Future<void> Function() onCheckForUpdates;
+  final Future<void> Function() onLogout;
+  final String? appVersionText;
+  final String? updateStatusText;
+
+  @override
+  State<_MobileSettingsTab> createState() => _MobileSettingsTabState();
+}
+
+class _MobileSettingsTabState extends State<_MobileSettingsTab> {
+  late final TextEditingController _displayNameController;
+  late final TextEditingController _encryptionKeyController;
+  late final TextEditingController _twoFactorEnableController;
+  late final TextEditingController _twoFactorDisableController;
+  late final FocusNode _displayNameFocusNode;
+  late final FocusNode _encryptionKeyFocusNode;
+
+  SettingsController get _controller => widget.settingsController;
+  PublicUser get _currentUser => _controller.currentUser ?? widget.currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _displayNameController = TextEditingController();
+    _encryptionKeyController = TextEditingController();
+    _twoFactorEnableController = TextEditingController();
+    _twoFactorDisableController = TextEditingController();
+    _displayNameFocusNode = FocusNode();
+    _encryptionKeyFocusNode = FocusNode();
+    _controller.addListener(_handleControllerChanged);
+    _syncTextFields(force: true);
+    if (!_controller.isBootstrapped) {
+      unawaited(_controller.bootstrap());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _MobileSettingsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.settingsController, widget.settingsController)) {
+      return;
+    }
+    oldWidget.settingsController.removeListener(_handleControllerChanged);
+    widget.settingsController.addListener(_handleControllerChanged);
+    _syncTextFields(force: true);
+    if (!widget.settingsController.isBootstrapped) {
+      unawaited(widget.settingsController.bootstrap());
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_handleControllerChanged);
+    _displayNameController.dispose();
+    _encryptionKeyController.dispose();
+    _twoFactorEnableController.dispose();
+    _twoFactorDisableController.dispose();
+    _displayNameFocusNode.dispose();
+    _encryptionKeyFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleControllerChanged() {
+    if (!mounted) {
+      return;
+    }
+    _syncTextFields();
+    setState(() {});
+  }
+
+  void _syncTextFields({bool force = false}) {
+    final displayName = _currentUser.displayName ?? '';
+    final encryptionKey = _controller.settings.vigenereKey;
+
+    if (force ||
+        (!_displayNameFocusNode.hasFocus &&
+            _displayNameController.text != displayName)) {
+      _displayNameController.value = TextEditingValue(
+        text: displayName,
+        selection: TextSelection.collapsed(offset: displayName.length),
+      );
+    }
+
+    if (force ||
+        (!_encryptionKeyFocusNode.hasFocus &&
+            _encryptionKeyController.text != encryptionKey)) {
+      _encryptionKeyController.value = TextEditingValue(
+        text: encryptionKey,
+        selection: TextSelection.collapsed(offset: encryptionKey.length),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete account?'),
+          content: const Text(
+            'This removes the profile, conversations, and account data. '
+            'This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true) {
+      await _controller.deleteAccount();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final settings = controller.settings;
+    final user = _currentUser;
+    final joinedAt = DateFormat('dd.MM.yyyy').format(user.createdAt);
+    final appearanceFeedback =
+        controller.feedbackFor(SettingsFeedbackArea.appearance);
+    final encryptionFeedback =
+        controller.feedbackFor(SettingsFeedbackArea.encryption);
+    final soundFeedback = controller.feedbackFor(SettingsFeedbackArea.sounds);
+    final securityFeedback =
+        controller.feedbackFor(SettingsFeedbackArea.security);
+    final accountFeedback =
+        controller.feedbackFor(SettingsFeedbackArea.account);
+    final appearanceBusy =
+        controller.isAreaBusy(SettingsFeedbackArea.appearance);
+    final securityBusy = controller.isAreaBusy(SettingsFeedbackArea.security);
+    final accountBusy = controller.isAreaBusy(SettingsFeedbackArea.account);
+    final setup = controller.twoFactorSetup;
+    final twoFactorEnabled = user.twoFactorEnabled;
+    final metrics = controller.encryptionMetrics;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 126),
+      children: [
+        Center(
+          child: Column(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  WaveAvatar(
+                    label: user.displayNameOrUsername,
+                    imageUrl: user.avatarUrl,
+                    radius: 44,
+                  ),
+                  Positioned(
+                    right: -4,
+                    bottom: -4,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2DA8FF),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white, width: 3),
+                      ),
+                      child: const Icon(
+                        Icons.tune_rounded,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                user.displayNameOrUsername,
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  color: const Color(0xFF1B222C),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${user.email} • @${user.username}',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF7D8796),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+        SettingsSectionCard(
+          title: 'Display',
+          subtitle:
+              'Profile photo, public name, theme mode and presentation preferences.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (appearanceFeedback != null) ...[
+                SettingsFeedbackBanner(
+                  message: appearanceFeedback.message,
+                  isError: appearanceFeedback.isError,
+                ),
+                const SizedBox(height: 16),
+              ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  WaveAvatar(
+                    label: user.displayNameOrUsername,
+                    imageUrl: user.avatarUrl,
+                    radius: 30,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user.displayNameOrUsername,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${user.email} • @${user.username}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: appearanceBusy
+                        ? null
+                        : () => unawaited(widget.onUploadAvatar()),
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text('Change photo'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        appearanceBusy ? null : widget.onOpenProfileEditor,
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Edit profile'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _displayNameController,
+                focusNode: _displayNameFocusNode,
+                enabled: !appearanceBusy,
+                maxLength: 32,
+                onChanged: (_) =>
+                    controller.clearFeedback(SettingsFeedbackArea.appearance),
+                decoration: const InputDecoration(
+                  labelText: 'Display name',
+                  hintText: 'Enter your public profile name',
+                ),
+              ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                onPressed: appearanceBusy
+                    ? null
+                    : () => controller.updateDisplayName(
+                          _displayNameController.text,
+                        ),
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Save display name'),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Theme mode',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Light'),
+                    avatar: const Icon(Icons.light_mode_outlined, size: 18),
+                    selected: settings.themeMode == WaveThemeMode.light,
+                    onSelected: (_) => controller.setThemeMode(
+                      WaveThemeMode.light,
+                    ),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Dark'),
+                    avatar: const Icon(Icons.dark_mode_outlined, size: 18),
+                    selected: settings.themeMode == WaveThemeMode.dark,
+                    onSelected: (_) => controller.setThemeMode(
+                      WaveThemeMode.dark,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SwitchListTile.adaptive(
+                value: settings.fullscreen,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Fullscreen mode'),
+                subtitle: const Text(
+                  'Open chat workspace in fullscreen presentation mode.',
+                ),
+                onChanged: controller.setFullscreen,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        SettingsSectionCard(
+          title: 'Encryption',
+          subtitle:
+              'Local Vigenere encryption settings used for compatible text messages.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (encryptionFeedback != null) ...[
+                SettingsFeedbackBanner(
+                  message: encryptionFeedback.message,
+                  isError: encryptionFeedback.isError,
+                ),
+                const SizedBox(height: 16),
+              ],
+              SwitchListTile.adaptive(
+                value: settings.vigenereEnabled,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Encrypt outgoing text messages'),
+                subtitle: const Text(
+                  'Adds encryption metadata to outgoing text payloads.',
+                ),
+                onChanged: controller.setVigenereEnabled,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _encryptionKeyController,
+                focusNode: _encryptionKeyFocusNode,
+                obscureText: !controller.encryptionKeyVisible,
+                onChanged: controller.setVigenereKey,
+                decoration: InputDecoration(
+                  labelText: 'Encryption key',
+                  helperText: 'Empty values automatically fall back to WAVE.',
+                  suffixIcon: IconButton(
+                    onPressed: controller.toggleEncryptionKeyVisibility,
+                    icon: Icon(
+                      controller.encryptionKeyVisible
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _MobileSettingsMetricPill(
+                    label: 'Strength',
+                    value: metrics.label,
+                  ),
+                  _MobileSettingsMetricPill(
+                    label: 'Entropy',
+                    value: '${metrics.entropyBits} bits',
+                  ),
+                  _MobileSettingsMetricPill(
+                    label: 'Estimate',
+                    value: metrics.estimatedCrackTime,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest.withValues(alpha: 0.42),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Preview',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const SelectableText('Hello, Wave / Привет, Wave'),
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      controller.encryptMessage('Hello, Wave / Привет, Wave'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                onPressed: controller.saveEncryptionPreferences,
+                icon: const Icon(Icons.lock_outline),
+                label: const Text('Save encryption settings'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        SettingsSectionCard(
+          title: 'Sound',
+          subtitle:
+              'Call audio levels, incoming call cues and local notification preferences.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (soundFeedback != null) ...[
+                SettingsFeedbackBanner(
+                  message: soundFeedback.message,
+                  isError: soundFeedback.isError,
+                ),
+                const SizedBox(height: 16),
+              ],
+              _MobileSettingsSliderRow(
+                icon: Icons.mic_none_outlined,
+                label: 'Microphone level',
+                value: settings.microphoneVolume.toDouble(),
+                onChanged: controller.setMicrophoneVolume,
+              ),
+              const SizedBox(height: 12),
+              _MobileSettingsSliderRow(
+                icon: Icons.volume_up_outlined,
+                label: 'Speaker level',
+                value: settings.speakerVolume.toDouble(),
+                onChanged: controller.setSpeakerVolume,
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile.adaptive(
+                value: settings.callSoundsEnabled,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Play call sounds'),
+                subtitle: const Text(
+                  'Incoming, ended and rejected call tones.',
+                ),
+                onChanged: controller.setCallSoundsEnabled,
+              ),
+              SwitchListTile.adaptive(
+                value: settings.notificationsEnabled,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('System notifications'),
+                subtitle: const Text(
+                  'Foreground and background alert preference for this device.',
+                ),
+                onChanged: controller.setNotificationsEnabled,
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => unawaited(widget.onRunMicrophoneTest()),
+                    icon: const Icon(Icons.graphic_eq_outlined),
+                    label: const Text('Run mic test'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => unawaited(widget.onPreviewCallTone()),
+                    icon: const Icon(Icons.notifications_active_outlined),
+                    label: const Text('Preview tone'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                onPressed: controller.saveSoundPreferences,
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Save sound settings'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        SettingsSectionCard(
+          title: 'Security',
+          subtitle: 'Google Authenticator based 2FA and protected chat access.',
+          trailing: _MobileSettingsStatusBadge(
+            label: twoFactorEnabled ? 'Enabled' : 'Disabled',
+            active: twoFactorEnabled,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (securityFeedback != null) ...[
+                SettingsFeedbackBanner(
+                  message: securityFeedback.message,
+                  isError: securityFeedback.isError,
+                ),
+                const SizedBox(height: 16),
+              ],
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  FilledButton.icon(
+                    onPressed:
+                        securityBusy ? null : controller.beginTwoFactorSetup,
+                    icon: const Icon(Icons.qr_code_2_outlined),
+                    label: Text(
+                      twoFactorEnabled
+                          ? 'Rotate setup secret'
+                          : 'Begin 2FA setup',
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        securityBusy ? null : controller.refreshTwoFactorStatus,
+                    icon: const Icon(Icons.refresh_outlined),
+                    label: const Text('Refresh status'),
+                  ),
+                ],
+              ),
+              if (setup?.isReady == true) ...[
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Image.network(
+                    setup!.qrImageUrl,
+                    width: 148,
+                    height: 148,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) {
+                      return Container(
+                        width: 148,
+                        height: 148,
+                        decoration: BoxDecoration(
+                          color: colors.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: const Icon(Icons.qr_code_2_outlined, size: 42),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  setup.secret,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _twoFactorEnableController,
+                  enabled: !securityBusy,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(
+                    labelText: '6-digit code',
+                    hintText: 'Enter the current authenticator code',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: securityBusy
+                      ? null
+                      : () => controller.enableTwoFactor(
+                            _twoFactorEnableController.text,
+                          ),
+                  icon: const Icon(Icons.verified_user_outlined),
+                  label: const Text('Enable 2FA'),
+                ),
+              ],
+              if (twoFactorEnabled) ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _twoFactorDisableController,
+                  enabled: !securityBusy,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(
+                    labelText: 'Disable code',
+                    hintText: 'Enter your current 2FA code',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: securityBusy
+                      ? null
+                      : () => controller.disableTwoFactor(
+                            _twoFactorDisableController.text,
+                          ),
+                  icon: const Icon(Icons.lock_reset_outlined),
+                  label: const Text('Disable 2FA'),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        SettingsSectionCard(
+          title: 'Account',
+          subtitle:
+              'Device update status, session actions and destructive account controls.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (accountFeedback != null) ...[
+                SettingsFeedbackBanner(
+                  message: accountFeedback.message,
+                  isError: accountFeedback.isError,
+                ),
+                const SizedBox(height: 16),
+              ],
+              Text(
+                user.displayNameOrUsername,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${user.email} • @${user.username}',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Joined $joinedAt',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              if (widget.appVersionText != null) ...[
+                const SizedBox(height: 14),
+                Text(
+                  'Installed version: ${widget.appVersionText}',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+              if (widget.updateStatusText != null &&
+                  widget.updateStatusText!.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  widget.updateStatusText!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () => unawaited(widget.onCheckForUpdates()),
+                    icon: const Icon(Icons.system_update_alt_rounded),
+                    label: const Text('Check for updates'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        accountBusy ? null : () => unawaited(widget.onLogout()),
+                    icon: const Icon(Icons.logout_outlined),
+                    label: const Text('Log out'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                onPressed: accountBusy ? null : _confirmDeleteAccount,
+                style: FilledButton.styleFrom(
+                  backgroundColor: colors.error,
+                  foregroundColor: colors.onError,
+                ),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Delete account'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _MobileProfileTab extends StatelessWidget {
   const _MobileProfileTab({
     required this.currentUser,
@@ -2520,7 +3286,6 @@ class _MobileProfileTab extends StatelessWidget {
     required this.onFeedTabChanged,
     required this.onUploadAvatar,
     required this.onOpenProfileEditor,
-    required this.onOpenSettings,
   });
 
   final PublicUser currentUser;
@@ -2528,7 +3293,6 @@ class _MobileProfileTab extends StatelessWidget {
   final ValueChanged<_ProfileFeedTab> onFeedTabChanged;
   final Future<void> Function() onUploadAvatar;
   final VoidCallback onOpenProfileEditor;
-  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -2580,14 +3344,6 @@ class _MobileProfileTab extends StatelessWidget {
                 icon: Icons.edit_outlined,
                 label: 'Edit Info',
                 onTap: onOpenProfileEditor,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _MobileShortcutCard(
-                icon: Icons.settings_outlined,
-                label: 'Settings',
-                onTap: onOpenSettings,
               ),
             ),
           ],
@@ -2694,12 +3450,24 @@ class _MobileProfileTab extends StatelessWidget {
 
 class _MobileBottomDock extends StatelessWidget {
   const _MobileBottomDock({
+    required this.currentUser,
     required this.activeTab,
+    required this.chatsBadgeCount,
     required this.onTabSelected,
   });
 
+  final PublicUser currentUser;
   final _MobileHomeTab activeTab;
+  final int chatsBadgeCount;
   final ValueChanged<_MobileHomeTab> onTabSelected;
+
+  int _tabIndex(_MobileHomeTab tab) {
+    return switch (tab) {
+      _MobileHomeTab.chats => 0,
+      _MobileHomeTab.settings => 1,
+      _MobileHomeTab.profile => 2,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2707,50 +3475,80 @@ class _MobileBottomDock extends StatelessWidget {
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.98),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(40),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
         boxShadow: const [
           BoxShadow(
             color: Color(0x1A000000),
             blurRadius: 32,
-            offset: Offset(0, 16),
+            offset: Offset(0, 8),
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _MobileBottomDockItem(
-              icon: Icons.chat_bubble_outline_rounded,
-              label: 'Chats',
-              selected: activeTab == _MobileHomeTab.chats,
-              onTap: () => onTabSelected(_MobileHomeTab.chats),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final slotWidth = constraints.maxWidth / 3;
+          return SizedBox(
+            height: 68,
+            child: Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 500),
+                  curve: const Cubic(0.34, 1.56, 0.64, 1),
+                  left: slotWidth * _tabIndex(activeTab),
+                  top: 0,
+                  bottom: 0,
+                  width: slotWidth,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE5F3FF),
+                        borderRadius: BorderRadius.circular(32),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x120088CC),
+                            blurRadius: 18,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _MobileBottomDockItem(
+                        icon: Icons.chat_bubble_outline_rounded,
+                        label: 'Chats',
+                        selected: activeTab == _MobileHomeTab.chats,
+                        badgeCount: chatsBadgeCount,
+                        onTap: () => onTabSelected(_MobileHomeTab.chats),
+                      ),
+                    ),
+                    Expanded(
+                      child: _MobileBottomDockItem(
+                        icon: Icons.settings_outlined,
+                        label: 'Settings',
+                        selected: activeTab == _MobileHomeTab.settings,
+                        onTap: () => onTabSelected(_MobileHomeTab.settings),
+                      ),
+                    ),
+                    Expanded(
+                      child: _MobileBottomDockItem(
+                        label: 'Profile',
+                        selected: activeTab == _MobileHomeTab.profile,
+                        avatarUser: currentUser,
+                        onTap: () => onTabSelected(_MobileHomeTab.profile),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ),
-          Expanded(
-            child: _MobileBottomDockItem(
-              icon: Icons.perm_contact_calendar_outlined,
-              label: 'Contacts',
-              selected: activeTab == _MobileHomeTab.contacts,
-              onTap: () => onTabSelected(_MobileHomeTab.contacts),
-            ),
-          ),
-          Expanded(
-            child: _MobileBottomDockItem(
-              icon: Icons.settings_outlined,
-              label: 'Settings',
-              selected: activeTab == _MobileHomeTab.settings,
-              onTap: () => onTabSelected(_MobileHomeTab.settings),
-            ),
-          ),
-          Expanded(
-            child: _MobileBottomDockItem(
-              icon: Icons.person_outline_rounded,
-              label: 'Profile',
-              selected: activeTab == _MobileHomeTab.profile,
-              onTap: () => onTabSelected(_MobileHomeTab.profile),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -2758,50 +3556,275 @@ class _MobileBottomDock extends StatelessWidget {
 
 class _MobileBottomDockItem extends StatelessWidget {
   const _MobileBottomDockItem({
-    required this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
+    this.icon,
+    this.badgeCount = 0,
+    this.avatarUser,
   });
 
-  final IconData icon;
+  final IconData? icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final int badgeCount;
+  final PublicUser? avatarUser;
 
   @override
   Widget build(BuildContext context) {
-    const activeColor = Color(0xFF258FDD);
-    const inactiveColor = Color(0xFF2A3039);
+    const activeColor = Color(0xFF0088CC);
+    const inactiveColor = Color(0xFF1F2937);
 
     return Material(
-      color: selected ? const Color(0xFFE8F4FF) : Colors.transparent,
-      borderRadius: BorderRadius.circular(999),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(32),
       child: InkWell(
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(32),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: SizedBox(
+          height: 68,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                color: selected ? activeColor : inactiveColor,
+              SizedBox(
+                height: 30,
+                width: 46,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    if (avatarUser != null)
+                      _MobileBottomDockAvatar(
+                        user: avatarUser!,
+                        selected: selected,
+                      )
+                    else if (icon != null)
+                      Icon(
+                        icon,
+                        size: 24,
+                        color: selected ? activeColor : inactiveColor,
+                      ),
+                    if (badgeCount > 0)
+                      Positioned(
+                        top: -4,
+                        right: -6,
+                        child: AnimatedScale(
+                          duration: const Duration(milliseconds: 300),
+                          scale: selected ? 1.1 : 1,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3390EC),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 2,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x14000000),
+                                  blurRadius: 8,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              badgeCount > 99 ? '99+' : '$badgeCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 5),
               Text(
                 label,
                 style: TextStyle(
                   color: selected ? activeColor : inactiveColor,
-                  fontSize: 12,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MobileBottomDockAvatar extends StatelessWidget {
+  const _MobileBottomDockAvatar({
+    required this.user,
+    required this.selected,
+  });
+
+  final PublicUser user;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarBytes = _decodeDataImage(user.avatarUrl);
+    final avatarUrl = user.avatarUrl?.trim();
+    final imageProvider = avatarBytes != null
+        ? MemoryImage(avatarBytes)
+        : (avatarUrl != null && avatarUrl.isNotEmpty
+            ? NetworkImage(avatarUrl)
+            : null) as ImageProvider<Object>?;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.all(selected ? 2 : 1),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: selected ? const Color(0xFF0088CC) : const Color(0xFFD6DEE8),
+          width: selected ? 2 : 1,
+        ),
+      ),
+      child: CircleAvatar(
+        radius: 14,
+        backgroundColor: const Color(0xFFCCE9F7),
+        backgroundImage: imageProvider,
+        child: imageProvider == null
+            ? Text(
+                user.displayNameOrUsername.isEmpty
+                    ? '?'
+                    : user.displayNameOrUsername[0].toUpperCase(),
+                style: const TextStyle(
+                  color: Color(0xFF173042),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              )
+            : null,
+      ),
+    );
+  }
+}
+
+class _MobileSettingsMetricPill extends StatelessWidget {
+  const _MobileSettingsMetricPill({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Text(
+          '$label: $value',
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileSettingsStatusBadge extends StatelessWidget {
+  const _MobileSettingsStatusBadge({
+    required this.label,
+    required this.active,
+  });
+
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: active ? const Color(0xFFDCF7E7) : const Color(0xFFFFE6BF),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? const Color(0xFF1F8E4B) : const Color(0xFFA56300),
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileSettingsSliderRow extends StatelessWidget {
+  const _MobileSettingsSliderRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayValue = value.round().clamp(0, 100);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 18, color: const Color(0xFF5B6573)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+            Text(
+              '$displayValue%',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: const Color(0xFF6C7685),
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
+        Slider(
+          value: value.clamp(0, 100),
+          min: 0,
+          max: 100,
+          divisions: 100,
+          onChanged: onChanged,
+        ),
+      ],
     );
   }
 }
@@ -3122,9 +4145,8 @@ class _MobileSegmentButton extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: selected
-                  ? const Color(0xFF258FDD)
-                  : const Color(0xFF7A8494),
+              color:
+                  selected ? const Color(0xFF258FDD) : const Color(0xFF7A8494),
               fontSize: 15,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
             ),
