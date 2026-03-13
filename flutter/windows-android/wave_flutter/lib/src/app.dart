@@ -72,33 +72,6 @@ class AppBootstrap {
       apiClient: apiClient,
       realtimeService: realtimeService,
     );
-    final sessionController = SessionController(
-      apiClient: apiClient,
-      appConfig: resolvedAppConfig,
-      chatController: chatController,
-      sessionStore: sessionStore,
-      beforeLogout: notificationService.prepareForLogout,
-    );
-
-    await sessionController.bootstrap();
-
-    final settingsController = SettingsController(
-      apiClient: apiClient,
-      settingsStore: settingsStore,
-      initialUser: sessionController.currentUser,
-      onUserChanged: (user) {
-        if (user != null) {
-          sessionController.synchronizeCurrentUser(user);
-        }
-      },
-      onAccountDeleted: sessionController.handleAccountDeleted,
-    );
-    await settingsController.bootstrap();
-    notificationService.bindControllers(
-      sessionController: sessionController,
-      chatController: chatController,
-      settingsController: settingsController,
-    );
 
     Future<Map<String, dynamic>?> loadRtcConfiguration() async {
       try {
@@ -125,6 +98,35 @@ class AppBootstrap {
         rtcConfiguration: rtcConfiguration,
       ),
       rtcConfigurationLoader: loadRtcConfiguration,
+    );
+    await callController.activate();
+
+    final sessionController = SessionController(
+      apiClient: apiClient,
+      appConfig: resolvedAppConfig,
+      chatController: chatController,
+      sessionStore: sessionStore,
+      beforeLogout: notificationService.prepareForLogout,
+    );
+
+    await sessionController.bootstrap();
+
+    final settingsController = SettingsController(
+      apiClient: apiClient,
+      settingsStore: settingsStore,
+      initialUser: sessionController.currentUser,
+      onUserChanged: (user) {
+        if (user != null) {
+          sessionController.synchronizeCurrentUser(user);
+        }
+      },
+      onAccountDeleted: sessionController.handleAccountDeleted,
+    );
+    await settingsController.bootstrap();
+    notificationService.bindControllers(
+      sessionController: sessionController,
+      chatController: chatController,
+      settingsController: settingsController,
     );
     final updateController = UpdateController(
       AppUpdateService(

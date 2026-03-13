@@ -950,6 +950,87 @@ function cleanupExpiredCallSessions(now = Date.now()) {
   }
 }
 
+function cloneCallSignalPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  try {
+    return JSON.parse(JSON.stringify(payload));
+  } catch {
+    return null;
+  }
+}
+
+function getLatestIncomingCallSessionForUser(userId) {
+  cleanupExpiredCallSessions();
+
+  let latestSession = null;
+  let latestUpdatedAt = 0;
+  for (const session of callSessionsById.values()) {
+    const updatedAt = Number(session?.updatedAt || 0);
+    if (
+      session?.state !== "ringing" ||
+      session?.calleeId !== userId ||
+      !session?.offerPayload ||
+      updatedAt <= latestUpdatedAt
+    ) {
+      continue;
+    }
+    latestSession = session;
+    latestUpdatedAt = updatedAt;
+  }
+
+  return latestSession;
+}
+
+function sendPendingIncomingCallToSocket(userId, socket) {
+  const session = getLatestIncomingCallSessionForUser(userId);
+  if (!session || socket.readyState !== socket.OPEN) {
+    return;
+  }
+
+  const pendingSignals = [
+    session.offerPayload,
+    ...(
+      Array.isArray(session.pendingSignalsByUserId?.[userId])
+        ? session.pendingSignalsByUserId[userId]
+        : []
+    ),
+  ]
+    .map((item) => cloneCallSignalPayload(item))
+    .filter(Boolean);
+
+  for (const payload of pendingSignals) {
+    socket.send(JSON.stringify(payload));
+  }
+}
+
+function buildIncomingCallPushPayload({
+  caller,
+  fromUserId,
+  conversationId,
+  callId,
+}) {
+  const callerName =
+    getPublicName(caller) ||
+    normalize(caller?.username) ||
+    normalize(caller?.email) ||
+    "Wave contact";
+
+  return {
+    type: "call:incoming",
+    signalType: "offer",
+    title: "Incoming call",
+    body: `${callerName} is calling you.`,
+    tag: callId ? `wave-call-${callId}` : `wave-call-${fromUserId || "incoming"}`,
+    conversationId,
+    callId,
+    fromUserId,
+    senderName: callerName,
+    url: "/",
+  };
+}
+
 function queueMessageForUser(userId, payload) {
   if (NON_QUEUEABLE_TYPES.has(payload?.type)) return;
   if (!offlineMessageQueue.has(userId)) {
@@ -3014,9 +3095,12 @@ function buildFirebaseMessage(token, payload) {
 function buildFirebaseDataPayload(payload) {
   return {
     type: normalize(payload.type) || "message",
+    signalType: normalize(payload.signalType),
     title: normalize(payload.title) || "Wave Messenger",
     body: normalize(payload.body) || "New message",
     conversationId: normalize(payload.conversationId),
+    callId: normalize(payload.callId),
+    fromUserId: normalize(payload.fromUserId),
     messageId: normalize(payload.messageId),
     messageType: normalize(payload.messageType) || "text",
     senderName: normalize(payload.senderName),
@@ -3077,6 +3161,7 @@ wss.on("connection", async (socket, req) => {
     })
   );
   flushQueuedMessages(user.id, socket);
+  sendPendingIncomingCallToSocket(user.id, socket);
 
   socket.on("message", async (raw) => {
     let payload;
@@ -3147,27 +3232,65 @@ wss.on("connection", async (socket, req) => {
           return;
         }
 
+        const relayPayload = {
+          type: "call:signal",
+          fromUserId: user.id,
+          signalType,
+          conversationId: conversation.id,
+          data,
+        };
+        let shouldSendIncomingCallPush = false;
+
         if (callId) {
           cleanupExpiredCallSessions();
+          const session = callSessionsById.get(callId);
+          const matchesParticipants = Boolean(
+            session &&
+              session.conversationId === conversation.id &&
+              (
+                (session.callerId === user.id && session.calleeId === targetUserId) ||
+                (session.callerId === targetUserId && session.calleeId === user.id)
+              )
+          );
+
           if (signalType === "offer") {
-            callSessionsById.set(callId, {
-              callId,
-              callerId: user.id,
-              calleeId: targetUserId,
-              conversationId: conversation.id,
-              state: "ringing",
-              updatedAt: Date.now(),
-            });
+            const shouldResetSession =
+              !matchesParticipants || session?.state === "ended";
+            const nextSession = !shouldResetSession && session
+              ? session
+              : {
+                callId,
+                callerId: user.id,
+                calleeId: targetUserId,
+                conversationId: conversation.id,
+                state: "ringing",
+                updatedAt: Date.now(),
+                offerPayload: null,
+                pendingSignalsByUserId: {},
+              };
+            nextSession.callerId = user.id;
+            nextSession.calleeId = targetUserId;
+            nextSession.conversationId = conversation.id;
+            nextSession.offerPayload = cloneCallSignalPayload(relayPayload);
+            nextSession.pendingSignalsByUserId =
+              nextSession.pendingSignalsByUserId &&
+                typeof nextSession.pendingSignalsByUserId === "object"
+                ? nextSession.pendingSignalsByUserId
+                : {};
+            if (!Array.isArray(nextSession.pendingSignalsByUserId[targetUserId])) {
+              nextSession.pendingSignalsByUserId[targetUserId] = [];
+            }
+            nextSession.state =
+              matchesParticipants && session?.state === "accepted"
+                ? "accepted"
+                : "ringing";
+            nextSession.updatedAt = Date.now();
+            callSessionsById.set(callId, nextSession);
+            shouldSendIncomingCallPush =
+              nextSession.state === "ringing" &&
+              shouldResetSession &&
+              data.recovery !== true;
           } else {
-            const session = callSessionsById.get(callId);
-            const matchesParticipants = Boolean(
-              session &&
-                session.conversationId === conversation.id &&
-                (
-                  (session.callerId === user.id && session.calleeId === targetUserId) ||
-                  (session.callerId === targetUserId && session.calleeId === user.id)
-                )
-            );
             if (!matchesParticipants) {
               return;
             }
@@ -3183,7 +3306,22 @@ wss.on("connection", async (socket, req) => {
               return;
             }
 
-            if (signalType === "answer") {
+            if (signalType === "ice") {
+              const pendingSignalsByUserId =
+                session.pendingSignalsByUserId &&
+                  typeof session.pendingSignalsByUserId === "object"
+                  ? session.pendingSignalsByUserId
+                  : {};
+              const queuedSignals = Array.isArray(pendingSignalsByUserId[targetUserId])
+                ? pendingSignalsByUserId[targetUserId]
+                : [];
+              const clonedSignal = cloneCallSignalPayload(relayPayload);
+              if (clonedSignal) {
+                queuedSignals.push(clonedSignal);
+              }
+              pendingSignalsByUserId[targetUserId] = queuedSignals.slice(-64);
+              session.pendingSignalsByUserId = pendingSignalsByUserId;
+            } else if (signalType === "answer") {
               session.state = "accepted";
             } else if (signalType === "reject" || signalType === "busy" || signalType === "end") {
               session.state = "ended";
@@ -3192,13 +3330,20 @@ wss.on("connection", async (socket, req) => {
           }
         }
 
-        sendToUser(targetUserId, {
-          type: "call:signal",
-          fromUserId: user.id,
-          signalType,
-          conversationId: conversation.id,
-          data,
-        });
+        sendToUser(targetUserId, relayPayload);
+        if (shouldSendIncomingCallPush) {
+          sendPushNotificationToUser(
+            targetUserId,
+            buildIncomingCallPushPayload({
+              caller,
+              fromUserId: user.id,
+              conversationId: conversation.id,
+              callId,
+            })
+          ).catch((error) => {
+            console.warn(`Failed to send incoming call push notification: ${error.message}`);
+          });
+        }
       } catch (error) {
         console.error("Failed to relay call signal", error);
       }

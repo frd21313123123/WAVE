@@ -77,10 +77,10 @@ class ChatController extends ChangeNotifier {
 
     _realtimeSubscription ??=
         realtimeService.events.listen(_handleRealtimeEvent);
+    await realtimeService.activate();
     try {
       await loadConversations();
     } catch (_) {}
-    await realtimeService.activate();
 
     _isBootstrapping = false;
     notifyListeners();

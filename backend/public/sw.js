@@ -1,14 +1,14 @@
 /* ============================
-   Wave Messenger — Service Worker
+   Wave Messenger Service Worker
    Push notifications + offline cache
    ============================ */
 
-const CACHE_NAME = "wave-v8";
+const CACHE_NAME = "wave-v14";
 const PRECACHE_URLS = [
     "/",
     "/index.html",
     "/styles.css?v=20260313-7",
-    "/app.js?v=20260313-7",
+    "/app.js?v=20260313-14",
 ];
 
 /* ---------- Install ---------- */
@@ -56,7 +56,7 @@ self.addEventListener("fetch", (event) => {
 
 /* ---------- Push notification ---------- */
 self.addEventListener("push", (event) => {
-    let data = { title: "Wave Messenger", body: "Новое сообщение" };
+    let data = { title: "Wave Messenger", body: "New message" };
 
     if (event.data) {
         try {
@@ -66,15 +66,20 @@ self.addEventListener("push", (event) => {
         }
     }
 
+    const isIncomingCall = data.type === "call:incoming";
     const options = {
-        body: data.body || "Новое сообщение",
+        body: data.body || "New message",
         icon: data.icon || "/icons/icon-192.png",
         badge: "/icons/icon-192.png",
-        tag: data.tag || "wave-msg",
+        tag: data.tag || (isIncomingCall ? "wave-call" : "wave-msg"),
         renotify: true,
-        vibrate: [200, 100, 200],
+        requireInteraction: isIncomingCall,
+        vibrate: isIncomingCall ? [250, 150, 250, 150, 250] : [200, 100, 200],
         data: {
+            type: data.type || "message",
             conversationId: data.conversationId || null,
+            callId: data.callId || null,
+            fromUserId: data.fromUserId || null,
             url: data.url || "/",
         },
     };

@@ -153,8 +153,8 @@ class NotificationService {
       );
     }
 
-    final androidNotifications = _localNotifications
-        .resolvePlatformSpecificImplementation<
+    final androidNotifications =
+        _localNotifications.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
     await androidNotifications?.createNotificationChannel(_messageChannel);
   }
@@ -188,7 +188,8 @@ class NotificationService {
         unawaited(_registerNativePushToken(token));
       });
 
-      final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+      final initialMessage =
+          await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         _handleNotificationData(initialMessage.data);
       }
@@ -367,8 +368,8 @@ class NotificationService {
   }
 
   Future<void> _requestNotificationPermissions() async {
-    final androidNotifications = _localNotifications
-        .resolvePlatformSpecificImplementation<
+    final androidNotifications =
+        _localNotifications.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
     try {
       await androidNotifications?.requestNotificationsPermission();
@@ -391,7 +392,9 @@ class NotificationService {
 
   Future<void> _registerNativePushToken(String? token) async {
     final normalizedToken = token?.trim() ?? '';
-    if (normalizedToken.isEmpty || !_isAuthenticated || !_notificationsEnabled) {
+    if (normalizedToken.isEmpty ||
+        !_isAuthenticated ||
+        !_notificationsEnabled) {
       return;
     }
     if (_registeredNativeToken == normalizedToken) {
@@ -461,7 +464,9 @@ class NotificationService {
 
   void _handleNotificationData(Map<String, dynamic> data) {
     final type = data['type']?.toString();
-    if (type != _payloadConversationType) {
+    final isConversationPayload = type == _payloadConversationType;
+    final isIncomingCallPayload = type == 'call:incoming';
+    if (!isConversationPayload && !isIncomingCallPayload) {
       return;
     }
 

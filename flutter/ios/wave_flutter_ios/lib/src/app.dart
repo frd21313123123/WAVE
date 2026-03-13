@@ -52,6 +52,12 @@ class AppBootstrap {
       apiClient: apiClient,
       realtimeService: realtimeService,
     );
+    final callController = CallController(
+      chatController: chatController,
+      realtimeService: realtimeService,
+      mediaEngineFactory: () => FlutterWebRtcCallEngine(),
+    );
+    await callController.activate();
     final sessionController = SessionController(
       apiClient: apiClient,
       appConfig: appConfig,
@@ -73,12 +79,6 @@ class AppBootstrap {
       onAccountDeleted: sessionController.handleAccountDeleted,
     );
     await settingsController.bootstrap();
-
-    final callController = CallController(
-      chatController: chatController,
-      realtimeService: realtimeService,
-      mediaEngineFactory: () => FlutterWebRtcCallEngine(),
-    );
 
     return AppBootstrap(
       appConfig: appConfig,

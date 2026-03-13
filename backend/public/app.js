@@ -5146,10 +5146,10 @@ async function bootstrapSession(user) {
   renderSearchResults([]);
   updateAvatarPreview();
   renderMobileShell();
+  connectSocket();
   await refreshTwoFaStatus();
   await loadCallIceServers(true).catch(() => {});
   await loadConversations();
-  connectSocket();
 }
 
 setupPasswordToggle(loginPasswordToggle, loginForm.elements.password);
