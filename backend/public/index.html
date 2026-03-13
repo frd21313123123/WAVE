@@ -18,7 +18,7 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260313-9" />
+  <link rel="stylesheet" href="./styles.css?v=20260313-10" />
 </head>
 
 <body>
@@ -371,39 +371,59 @@
             <div id="mobileSettingsSummary" class="mobile-settings-overview"></div>
             <div id="mobileSettingsGroups" class="mobile-settings-groups">
               <section class="mobile-settings-group-card" data-mobile-settings-anchor="display">
-                <div class="mobile-settings-group-head">
-                  <h2>Display</h2>
-                  <p>Theme and screen mode for the mobile client.</p>
-                </div>
-                <div id="mobileSettingsDisplayHost" class="mobile-settings-group-body"></div>
+                <button class="mobile-settings-group-toggle" type="button" data-mobile-settings-toggle="display"
+                  aria-expanded="false">
+                  <span class="mobile-settings-group-head">
+                    <span class="mobile-settings-group-title">Display</span>
+                    <span class="mobile-settings-group-copy">Theme and screen mode for the mobile client.</span>
+                  </span>
+                  <span class="mobile-settings-group-chevron" aria-hidden="true">›</span>
+                </button>
+                <div id="mobileSettingsDisplayHost" class="mobile-settings-group-body" hidden></div>
               </section>
               <section class="mobile-settings-group-card" data-mobile-settings-anchor="encryption">
-                <div class="mobile-settings-group-head">
-                  <h2>Encryption</h2>
-                  <p>Encryption key, visibility and local secure message settings.</p>
-                </div>
-                <div id="mobileSettingsEncryptionHost" class="mobile-settings-group-body"></div>
+                <button class="mobile-settings-group-toggle" type="button" data-mobile-settings-toggle="encryption"
+                  aria-expanded="false">
+                  <span class="mobile-settings-group-head">
+                    <span class="mobile-settings-group-title">Encryption</span>
+                    <span class="mobile-settings-group-copy">Encryption key, visibility and local secure message settings.</span>
+                  </span>
+                  <span class="mobile-settings-group-chevron" aria-hidden="true">›</span>
+                </button>
+                <div id="mobileSettingsEncryptionHost" class="mobile-settings-group-body" hidden></div>
               </section>
               <section class="mobile-settings-group-card" data-mobile-settings-anchor="sound">
-                <div class="mobile-settings-group-head">
-                  <h2>Sound</h2>
-                  <p>Audio routing, microphone test and push notifications.</p>
-                </div>
-                <div id="mobileSettingsSoundHost" class="mobile-settings-group-body"></div>
+                <button class="mobile-settings-group-toggle" type="button" data-mobile-settings-toggle="sound"
+                  aria-expanded="false">
+                  <span class="mobile-settings-group-head">
+                    <span class="mobile-settings-group-title">Sound</span>
+                    <span class="mobile-settings-group-copy">Audio routing, microphone test and push notifications.</span>
+                  </span>
+                  <span class="mobile-settings-group-chevron" aria-hidden="true">›</span>
+                </button>
+                <div id="mobileSettingsSoundHost" class="mobile-settings-group-body" hidden></div>
               </section>
               <section class="mobile-settings-group-card" data-mobile-settings-anchor="security">
-                <div class="mobile-settings-group-head">
-                  <h2>Security</h2>
-                  <p>Two-factor authentication and protected access flows.</p>
-                </div>
-                <div id="mobileSettingsSecurityHost" class="mobile-settings-group-body"></div>
+                <button class="mobile-settings-group-toggle" type="button" data-mobile-settings-toggle="security"
+                  aria-expanded="false">
+                  <span class="mobile-settings-group-head">
+                    <span class="mobile-settings-group-title">Security</span>
+                    <span class="mobile-settings-group-copy">Two-factor authentication and protected access flows.</span>
+                  </span>
+                  <span class="mobile-settings-group-chevron" aria-hidden="true">›</span>
+                </button>
+                <div id="mobileSettingsSecurityHost" class="mobile-settings-group-body" hidden></div>
               </section>
               <section class="mobile-settings-group-card" data-mobile-settings-anchor="account">
-                <div class="mobile-settings-group-head">
-                  <h2>Account</h2>
-                  <p>Avatar, profile name and account management actions.</p>
-                </div>
-                <div id="mobileSettingsAccountHost" class="mobile-settings-group-body"></div>
+                <button class="mobile-settings-group-toggle" type="button" data-mobile-settings-toggle="account"
+                  aria-expanded="false">
+                  <span class="mobile-settings-group-head">
+                    <span class="mobile-settings-group-title">Account</span>
+                    <span class="mobile-settings-group-copy">Avatar, profile name and account management actions.</span>
+                  </span>
+                  <span class="mobile-settings-group-chevron" aria-hidden="true">›</span>
+                </button>
+                <div id="mobileSettingsAccountHost" class="mobile-settings-group-body" hidden></div>
               </section>
             </div>
           </div>
@@ -1512,7 +1532,7 @@
       </div>
     </div>
   </div>
-  <script src="./app.js?v=20260313-12"></script>
+  <script src="./app.js?v=20260313-13"></script>
 </body>
 
 </html>

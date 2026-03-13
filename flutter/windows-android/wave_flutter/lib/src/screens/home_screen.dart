@@ -21,7 +21,6 @@ import '../settings/avatar_upload.dart';
 import '../settings/settings_controller.dart';
 import '../settings/wave_settings_sheet.dart';
 import '../settings/widgets/settings_feedback_banner.dart';
-import '../settings/widgets/settings_section_card.dart';
 import '../update/app_update_install_flow.dart';
 import '../update/update_controller.dart';
 import '../update/update_prompt.dart';
@@ -33,6 +32,8 @@ enum _MobileHomeTab { chats, settings, profile }
 enum _MobileChatFilter { all, direct, groups }
 
 enum _ProfileFeedTab { posts, archived }
+
+enum _MobileSettingsSection { display, encryption, sound, security, account }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -2586,6 +2587,7 @@ class _MobileSettingsTabState extends State<_MobileSettingsTab> {
   late final TextEditingController _twoFactorDisableController;
   late final FocusNode _displayNameFocusNode;
   late final FocusNode _encryptionKeyFocusNode;
+  _MobileSettingsSection? _expandedSection;
 
   SettingsController get _controller => widget.settingsController;
   PublicUser get _currentUser => _controller.currentUser ?? widget.currentUser;
@@ -2691,6 +2693,12 @@ class _MobileSettingsTabState extends State<_MobileSettingsTab> {
     }
   }
 
+  void _toggleExpandedSection(_MobileSettingsSection section) {
+    setState(() {
+      _expandedSection = _expandedSection == section ? null : section;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
@@ -2770,10 +2778,14 @@ class _MobileSettingsTabState extends State<_MobileSettingsTab> {
           ),
         ),
         const SizedBox(height: 22),
-        SettingsSectionCard(
+        _MobileSettingsAccordionCard(
+          icon: Icons.palette_outlined,
           title: 'Display',
           subtitle:
               'Profile photo, public name, theme mode and presentation preferences.',
+          expanded: _expandedSection == _MobileSettingsSection.display,
+          onToggle: () =>
+              _toggleExpandedSection(_MobileSettingsSection.display),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -2902,10 +2914,14 @@ class _MobileSettingsTabState extends State<_MobileSettingsTab> {
           ),
         ),
         const SizedBox(height: 18),
-        SettingsSectionCard(
+        _MobileSettingsAccordionCard(
+          icon: Icons.lock_outline_rounded,
           title: 'Encryption',
           subtitle:
               'Local Vigenere encryption settings used for compatible text messages.',
+          expanded: _expandedSection == _MobileSettingsSection.encryption,
+          onToggle: () =>
+              _toggleExpandedSection(_MobileSettingsSection.encryption),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -3002,10 +3018,13 @@ class _MobileSettingsTabState extends State<_MobileSettingsTab> {
           ),
         ),
         const SizedBox(height: 18),
-        SettingsSectionCard(
+        _MobileSettingsAccordionCard(
+          icon: Icons.volume_up_outlined,
           title: 'Sound',
           subtitle:
               'Call audio levels, incoming call cues and local notification preferences.',
+          expanded: _expandedSection == _MobileSettingsSection.sound,
+          onToggle: () => _toggleExpandedSection(_MobileSettingsSection.sound),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -3075,9 +3094,13 @@ class _MobileSettingsTabState extends State<_MobileSettingsTab> {
           ),
         ),
         const SizedBox(height: 18),
-        SettingsSectionCard(
+        _MobileSettingsAccordionCard(
+          icon: Icons.verified_user_outlined,
           title: 'Security',
           subtitle: 'Google Authenticator based 2FA and protected chat access.',
+          expanded: _expandedSection == _MobileSettingsSection.security,
+          onToggle: () =>
+              _toggleExpandedSection(_MobileSettingsSection.security),
           trailing: _MobileSettingsStatusBadge(
             label: twoFactorEnabled ? 'Enabled' : 'Disabled',
             active: twoFactorEnabled,
@@ -3192,10 +3215,14 @@ class _MobileSettingsTabState extends State<_MobileSettingsTab> {
           ),
         ),
         const SizedBox(height: 18),
-        SettingsSectionCard(
+        _MobileSettingsAccordionCard(
+          icon: Icons.person_outline_rounded,
           title: 'Account',
           subtitle:
               'Device update status, session actions and destructive account controls.',
+          expanded: _expandedSection == _MobileSettingsSection.account,
+          onToggle: () =>
+              _toggleExpandedSection(_MobileSettingsSection.account),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -3711,6 +3738,126 @@ class _MobileBottomDockAvatar extends StatelessWidget {
                 ),
               )
             : null,
+      ),
+    );
+  }
+}
+
+class _MobileSettingsAccordionCard extends StatelessWidget {
+  const _MobileSettingsAccordionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.expanded,
+    required this.onToggle,
+    required this.child,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(
+          color: colors.outlineVariant.withValues(alpha: 0.55),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE5F3FF),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(icon, color: const Color(0xFF2796E3)),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          subtitle,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 12),
+                    trailing!,
+                  ],
+                  const SizedBox(width: 8),
+                  AnimatedRotation(
+                    turns: expanded ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          ClipRect(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: expanded
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        children: [
+                          Divider(
+                            height: 1,
+                            color:
+                                colors.outlineVariant.withValues(alpha: 0.55),
+                          ),
+                          const SizedBox(height: 18),
+                          child,
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ),
+        ],
       ),
     );
   }

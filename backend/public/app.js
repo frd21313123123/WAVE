@@ -246,6 +246,14 @@ const ALLOWED_THEMES = new Set(["light", "dark"]);
 const ALLOWED_MOBILE_TABS = new Set(["chats", "settings", "profile"]);
 const ALLOWED_PROFILE_FEEDS = new Set(["posts", "archived"]);
 const ALLOWED_CHAT_FILTERS = new Set(["all", "direct", "groups"]);
+const ALLOWED_MOBILE_SETTINGS_SECTIONS = new Set([
+  "",
+  "display",
+  "encryption",
+  "sound",
+  "security",
+  "account",
+]);
 const ENC_SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
 const SAFE_AVATAR_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i;
 const desktopShellModeEnabled =
@@ -409,6 +417,7 @@ const state = {
     mobileTab: "chats",
     mobileProfileFeed: "posts",
     mobileChatFilter: "all",
+    mobileSettingsSection: "",
   },
 };
 
@@ -2619,6 +2628,14 @@ function normalizeMobileChatFilter(value) {
   return filter;
 }
 
+function normalizeMobileSettingsSection(value) {
+  const section = String(value || "").trim().toLowerCase();
+  if (!ALLOWED_MOBILE_SETTINGS_SECTIONS.has(section)) {
+    return "";
+  }
+  return section;
+}
+
 function normalizeVigenereKey(value) {
   const key = String(value || "").trim();
   return key || DEFAULT_VIGENERE_KEY;
@@ -2793,6 +2810,9 @@ function saveUiSettings() {
         mobileTab: normalizeMobileTab(state.ui.mobileTab),
         mobileProfileFeed: normalizeMobileProfileFeed(state.ui.mobileProfileFeed),
         mobileChatFilter: normalizeMobileChatFilter(state.ui.mobileChatFilter),
+        mobileSettingsSection: normalizeMobileSettingsSection(
+          state.ui.mobileSettingsSection
+        ),
       })
     );
   } catch {
@@ -2821,6 +2841,9 @@ function loadUiSettings() {
     state.ui.mobileTab = normalizeMobileTab(parsed.mobileTab);
     state.ui.mobileProfileFeed = normalizeMobileProfileFeed(parsed.mobileProfileFeed);
     state.ui.mobileChatFilter = normalizeMobileChatFilter(parsed.mobileChatFilter);
+    state.ui.mobileSettingsSection = normalizeMobileSettingsSection(
+      parsed.mobileSettingsSection
+    );
   } catch {
   }
 }
@@ -2918,10 +2941,12 @@ function getTotalUnreadConversationCount() {
 
 function getMobileSettingsAnchor(tab) {
   switch (String(tab || "").trim().toLowerCase()) {
+    case "display":
     case "theme":
       return "display";
     case "encryption":
       return "encryption";
+    case "sound":
     case "sounds":
       return "sound";
     case "security":
@@ -2990,19 +3015,70 @@ function focusMobileSettingsAnchor(tab) {
   }
 }
 
+function renderMobileSettingsGroups() {
+  if (!mobileSettingsPanel) {
+    return;
+  }
+  const activeSection = normalizeMobileSettingsSection(state.ui.mobileSettingsSection);
+  mobileSettingsPanel.querySelectorAll("[data-mobile-settings-anchor]").forEach((sectionEl) => {
+    const section = normalizeMobileSettingsSection(sectionEl.dataset.mobileSettingsAnchor);
+    const isOpen = activeSection === section && Boolean(section);
+    sectionEl.classList.toggle("is-open", isOpen);
+    const toggle = sectionEl.querySelector("[data-mobile-settings-toggle]");
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      toggle.onclick = () => {
+        const willOpen = state.ui.mobileSettingsSection !== section;
+        setMobileSettingsSection(willOpen ? section : "", {
+          persist: true,
+          focus: willOpen,
+        });
+      };
+    }
+    const body = sectionEl.querySelector(".mobile-settings-group-body");
+    if (body) {
+      body.hidden = !isOpen;
+    }
+  });
+}
+
+function setMobileSettingsSection(
+  section,
+  { persist = true, focus = false } = {}
+) {
+  state.ui.mobileSettingsSection = normalizeMobileSettingsSection(section);
+  if (persist) {
+    saveUiSettings();
+  }
+  renderMobileSettingsGroups();
+  if (focus && state.ui.mobileSettingsSection) {
+    requestAnimationFrame(() => {
+      focusMobileSettingsAnchor(state.ui.mobileSettingsSection);
+    });
+  }
+}
+
 function openInlineMobileSettings(
-  tab = "account",
+  tab = "",
   { refreshRemote = true, focus = true } = {}
 ) {
   if (!isMobileLayout() || isDesktopShellMode()) {
     return false;
   }
+  if (tab) {
+    state.ui.mobileSettingsSection = normalizeMobileSettingsSection(
+      getMobileSettingsAnchor(tab)
+    );
+  } else {
+    state.ui.mobileSettingsSection = "";
+  }
+  saveUiSettings();
   syncSettingsSurfaceState({ refreshRemote });
   setMobileTab("settings");
   renderMobileSettingsOverview();
-  if (focus) {
+  if (focus && state.ui.mobileSettingsSection) {
     requestAnimationFrame(() => {
-      focusMobileSettingsAnchor(tab);
+      focusMobileSettingsAnchor(state.ui.mobileSettingsSection);
     });
   }
   return true;
@@ -3632,7 +3708,7 @@ function pulseEncryptionKeyIcon() {
 
 function setSettingsPanelOpen(isOpen) {
   const shouldOpen = Boolean(isOpen) && !state.chatLocked;
-  if (shouldOpen && openInlineMobileSettings("account", { refreshRemote: true, focus: false })) {
+  if (shouldOpen && openInlineMobileSettings("", { refreshRemote: true, focus: false })) {
     settingsPanel.classList.add("hidden");
     return;
   }
@@ -5192,7 +5268,7 @@ settingsBtn.addEventListener("click", () => {
   }
 
   const willOpen = settingsPanel.classList.contains("hidden");
-  if (willOpen && openInlineMobileSettings("account", { refreshRemote: true, focus: false })) {
+  if (willOpen && openInlineMobileSettings("", { refreshRemote: true, focus: false })) {
     return;
   }
   if (willOpen && state.deleteMode) {
@@ -5791,6 +5867,9 @@ mobileBack.addEventListener("click", () => {
 
 mobileTabButtons.forEach((button) => {
   button.addEventListener("click", () => {
+    if (button.dataset.mobileTabBtn === "settings") {
+      setMobileSettingsSection("", { persist: true, focus: false });
+    }
     setMobileTab(button.dataset.mobileTabBtn);
   });
 });
@@ -5823,6 +5902,7 @@ if (mobileMenuNewGroupBtn) {
 
 if (mobileMenuSettingsBtn) {
   mobileMenuSettingsBtn.addEventListener("click", () => {
+    setMobileSettingsSection("", { persist: true, focus: false });
     setMobileTab("settings");
   });
 }
@@ -6137,6 +6217,7 @@ function renderMobileSettingsOverview() {
   }
 
   mountMobileSettingsPanels();
+  renderMobileSettingsGroups();
 }
 
 function renderMobileProfileOverview() {

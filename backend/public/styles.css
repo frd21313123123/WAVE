@@ -8806,26 +8806,59 @@ html.theme-changing .theme-icon-moon {
     overflow: hidden;
   }
 
-  .mobile-settings-group-head {
-    padding: 18px 18px 10px;
+  .mobile-settings-group-toggle {
+    width: 100%;
+    border: none;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 18px;
+    text-align: left;
+    cursor: pointer;
   }
 
-  .mobile-settings-group-head h2 {
+  .mobile-settings-group-head {
+    display: block;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .mobile-settings-group-title {
+    display: block;
     margin: 0;
     font-size: 1rem;
     font-weight: 800;
     color: #151b24;
   }
 
-  .mobile-settings-group-head p {
-    margin: 6px 0 0;
+  .mobile-settings-group-copy {
+    display: block;
+    margin-top: 6px;
     color: #7b8696;
     font-size: 0.85rem;
     line-height: 1.45;
   }
 
+  .mobile-settings-group-chevron {
+    color: #7b8696;
+    font-size: 1.55rem;
+    line-height: 1;
+    transition: transform 220ms ease, color 220ms ease;
+  }
+
+  .mobile-settings-group-card.is-open .mobile-settings-group-chevron {
+    color: #2796e3;
+    transform: rotate(90deg);
+  }
+
   .mobile-settings-group-body {
     padding-bottom: 6px;
+  }
+
+  .mobile-settings-group-body[hidden] {
+    display: none !important;
   }
 
   .mobile-settings-mounted .mobile-settings-panel-inline {
@@ -9068,7 +9101,7 @@ html.theme-changing .theme-icon-moon {
   [data-theme="dark"] .mobile-contact-name,
   [data-theme="dark"] .mobile-profile-name,
   [data-theme="dark"] .mobile-settings-name,
-  [data-theme="dark"] .mobile-settings-group-head h2,
+  [data-theme="dark"] .mobile-settings-group-title,
   [data-theme="dark"] .mobile-settings-item-title,
   [data-theme="dark"] .mobile-profile-field-value,
   [data-theme="dark"] #conversationList .item-title {
@@ -9078,7 +9111,7 @@ html.theme-changing .theme-icon-moon {
   [data-theme="dark"] .mobile-panel-copy p,
   [data-theme="dark"] .mobile-contact-sub,
   [data-theme="dark"] .mobile-settings-sub,
-  [data-theme="dark"] .mobile-settings-group-head p,
+  [data-theme="dark"] .mobile-settings-group-copy,
   [data-theme="dark"] .mobile-profile-sub,
   [data-theme="dark"] .mobile-settings-item-sub,
   [data-theme="dark"] .mobile-profile-field-label,
@@ -9088,6 +9121,14 @@ html.theme-changing .theme-icon-moon {
   [data-theme="dark"] #conversationList .item-time,
   [data-theme="dark"] .section-label {
     color: #9aa3b5;
+  }
+
+  [data-theme="dark"] .mobile-settings-group-chevron {
+    color: #9aa3b5;
+  }
+
+  [data-theme="dark"] .mobile-settings-group-card.is-open .mobile-settings-group-chevron {
+    color: #69bfff;
   }
 
   [data-theme="dark"] .mobile-chat-filter {
