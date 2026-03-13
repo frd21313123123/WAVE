@@ -23,12 +23,19 @@ if not "%~1"=="" (
   set "WAVE_BASE_URL=%~1"
 )
 
+if not defined WAVE_DESKTOP_SHELL_REVISION (
+  for /f %%I in ('git rev-parse --short HEAD 2^>nul') do set "WAVE_DESKTOP_SHELL_REVISION=%%I"
+)
+
 echo [INFO] Project: "%PROJECT_DIR%"
 echo [INFO] Build mode: %BUILD_MODE%
 if defined WAVE_BASE_URL (
   echo [INFO] WAVE_BASE_URL=%WAVE_BASE_URL%
 ) else (
   echo [INFO] WAVE_BASE_URL is not set. Default Flutter config will be used.
+)
+if defined WAVE_DESKTOP_SHELL_REVISION (
+  echo [INFO] WAVE_DESKTOP_SHELL_REVISION=%WAVE_DESKTOP_SHELL_REVISION%
 )
 
 pushd "%PROJECT_DIR%"
@@ -43,9 +50,17 @@ if errorlevel 1 (
 
 echo [INFO] Building Windows executable...
 if defined WAVE_BASE_URL (
-  call flutter build windows --%BUILD_MODE% --dart-define=WAVE_BASE_URL=%WAVE_BASE_URL%
+  if defined WAVE_DESKTOP_SHELL_REVISION (
+    call flutter build windows --%BUILD_MODE% --dart-define=WAVE_BASE_URL=%WAVE_BASE_URL% --dart-define=WAVE_DESKTOP_SHELL_REVISION=%WAVE_DESKTOP_SHELL_REVISION%
+  ) else (
+    call flutter build windows --%BUILD_MODE% --dart-define=WAVE_BASE_URL=%WAVE_BASE_URL%
+  )
 ) else (
-  call flutter build windows --%BUILD_MODE%
+  if defined WAVE_DESKTOP_SHELL_REVISION (
+    call flutter build windows --%BUILD_MODE% --dart-define=WAVE_DESKTOP_SHELL_REVISION=%WAVE_DESKTOP_SHELL_REVISION%
+  ) else (
+    call flutter build windows --%BUILD_MODE%
+  )
 )
 
 if errorlevel 1 (

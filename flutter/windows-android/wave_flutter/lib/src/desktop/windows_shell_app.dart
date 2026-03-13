@@ -96,6 +96,11 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
   AppUpdateInfo? _availableUpdate;
   String? _updateError;
 
+  String get _shellUrl => buildDesktopShellUrl(
+        _settings.baseUrl,
+        clientRevision: desktopShellClientRevision,
+      );
+
   @override
   void initState() {
     super.initState();
@@ -158,7 +163,8 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
       await _controller.setPopupWindowPolicy(
         WebviewPopupWindowPolicy.sameWindow,
       );
-      await _controller.loadUrl(buildDesktopShellUrl(_settings.baseUrl));
+      await _controller.clearCache();
+      await _controller.loadUrl(_shellUrl);
 
       if (!mounted) {
         return;
@@ -229,7 +235,7 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
       _fatalError = null;
       _loadError = null;
     });
-    await _controller.reload();
+    await _controller.loadUrl(_shellUrl);
   }
 
   Future<void> _openSettingsDialog() async {
@@ -420,7 +426,12 @@ class _WaveWindowsShellScreenState extends State<WaveWindowsShellScreen> {
     });
 
     if (_controllerReady) {
-      await _controller.loadUrl(buildDesktopShellUrl(nextBaseUrl));
+      await _controller.loadUrl(
+        buildDesktopShellUrl(
+          nextBaseUrl,
+          clientRevision: desktopShellClientRevision,
+        ),
+      );
       return;
     }
 

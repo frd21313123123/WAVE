@@ -10,6 +10,11 @@ const String defaultDesktopBaseUrl = String.fromEnvironment(
 
 const String desktopVpsBaseUrl = 'http://45.12.70.75:3000';
 const String desktopShellQueryParameter = 'desktopShell';
+const String desktopShellClientQueryParameter = 'desktopClient';
+const String desktopShellClientRevision = String.fromEnvironment(
+  'WAVE_DESKTOP_SHELL_REVISION',
+  defaultValue: 'desktop-shell-v2',
+);
 
 const String _settingsFileName = 'wave_desktop_settings.json';
 const String _webViewDataFolderName = 'wave_webview';
@@ -36,7 +41,10 @@ String sanitizeDesktopBaseUrl(
   return normalized;
 }
 
-String buildDesktopShellUrl(String baseUrl) {
+String buildDesktopShellUrl(
+  String baseUrl, {
+  String clientRevision = desktopShellClientRevision,
+}) {
   final uri = Uri.tryParse(baseUrl);
   if (uri == null) {
     return baseUrl;
@@ -46,6 +54,11 @@ String buildDesktopShellUrl(String baseUrl) {
     ...uri.queryParameters,
     desktopShellQueryParameter: '1',
   };
+  final normalizedClientRevision = clientRevision.trim();
+  if (normalizedClientRevision.isNotEmpty) {
+    nextQueryParameters[desktopShellClientQueryParameter] =
+        normalizedClientRevision;
+  }
 
   return uri.replace(queryParameters: nextQueryParameters).toString();
 }

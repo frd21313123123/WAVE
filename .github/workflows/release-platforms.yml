@@ -213,6 +213,7 @@ jobs:
           if ($env:WAVE_BASE_URL) {
             $args += "--dart-define=WAVE_BASE_URL=$env:WAVE_BASE_URL"
           }
+          $args += "--dart-define=WAVE_DESKTOP_SHELL_REVISION=${{ github.sha }}"
           & flutter @args
 
       - name: Package portable Windows bundle
