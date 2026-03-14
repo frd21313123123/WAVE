@@ -5,15 +5,17 @@ import 'src/app.dart';
 import 'src/config/app_config.dart';
 import 'src/desktop/windows_shell_app.dart';
 
-const bool _useNativeWindowsClient =
-    bool.fromEnvironment('WAVE_WINDOWS_NATIVE_CLIENT');
+const String _windowsClientMode = String.fromEnvironment(
+  'WAVE_WINDOWS_CLIENT_MODE',
+  defaultValue: 'native',
+);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (!kIsWeb &&
       defaultTargetPlatform == TargetPlatform.windows &&
-      !_useNativeWindowsClient) {
+      _windowsClientMode.toLowerCase() == 'shell') {
     await runWaveWindowsShellApp();
     return;
   }

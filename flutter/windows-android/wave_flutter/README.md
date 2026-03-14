@@ -1,56 +1,50 @@
 # Wave Messenger Flutter
 
-Flutter-клиент для `Wave Messenger` теперь состоит из двух веток:
+Flutter client for `Wave Messenger` with Android and Windows targets.
 
-- Android: нативный mobile UI на Flutter.
-- Windows: desktop shell на Flutter, который открывает ту же веб-версию, что и браузер.
+## Windows
 
-## Что это значит для Windows
+Windows now starts the native Flutter client by default. This matters for calls:
 
-Windows-приложение не дублирует веб-функционал отдельным Flutter UI. Вместо этого оно использует `Microsoft Edge WebView2` и загружает тот же web client, что и обычный браузер. За счет этого desktop-версия повторяет браузерную по функционалу.
+- audio and video calls run through `flutter_webrtc`;
+- the Windows client uses the same backend and signaling flow as the web client;
+- calls between the Windows app and the web version are therefore compatible.
 
-По умолчанию shell открывает URL, заданный через `WAVE_BASE_URL`. Если `dart-define` не передан, используется текущее значение по умолчанию из Flutter-конфига проекта.
+The old `WebView2` shell is still available, but only as an explicit opt-in mode.
 
-Внутри Windows-приложения можно:
-
-- открыть тот же URL, что и в браузере;
-- сменить URL через настройки shell;
-- сохранить этот URL локально;
-- очистить cookies и cache встроенного WebView;
-- использовать `back`, `forward` и `reload`.
-
-## Запуск
+## Run
 
 ```bash
 flutter pub get
 flutter run
 ```
 
-Для Windows:
+For Windows:
 
 ```bash
 flutter run -d windows
 ```
 
-Чтобы запустить shell сразу против нужной веб-версии:
+To point the client at a specific backend:
 
 ```bash
 flutter run -d windows --dart-define=WAVE_BASE_URL=http://127.0.0.1:3000
 ```
 
-или:
+To launch the legacy WebView shell instead of the native Windows client:
 
 ```bash
-flutter run -d windows --dart-define=WAVE_BASE_URL=https://your-domain.example
+flutter run -d windows --dart-define=WAVE_WINDOWS_CLIENT_MODE=shell --dart-define=WAVE_BASE_URL=https://your-domain.example
 ```
 
-## Если платформенные файлы нужно пересоздать
+## Recreate platform files
 
 ```bash
 flutter create --platforms=android,windows .
 ```
 
-## Важно
+## Notes
 
-- Для Windows нужен установленный `Microsoft Edge WebView2 Runtime`.
-- Если `flutter build windows` или `flutter run -d windows` ругается на plugin symlink, включите Windows Developer Mode.
+- `WebView2` is no longer required for the default Windows build.
+- `WebView2` is required only for `WAVE_WINDOWS_CLIENT_MODE=shell`.
+- If `flutter build windows` or `flutter run -d windows` fails on plugin symlinks, enable Windows Developer Mode.
