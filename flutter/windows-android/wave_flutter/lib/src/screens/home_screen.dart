@@ -345,7 +345,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }).length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         children: [
           SafeArea(
@@ -2401,14 +2401,24 @@ class _MobileHomeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Color(0xFFF4F5F7),
-            Color(0xFFF0F2F5),
-            Color(0xFFECEFF3),
-          ],
+          colors: isDark
+              ? [
+                  const Color(0xFF07111D),
+                  const Color(0xFF0A1626),
+                  scheme.surface,
+                ]
+              : const [
+                  Color(0xFFF4F5F7),
+                  Color(0xFFF0F2F5),
+                  Color(0xFFECEFF3),
+                ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
@@ -2483,6 +2493,8 @@ class _MobileChatsTab extends StatelessWidget {
     final directCount = allConversations.where((item) => !item.isGroup).length;
     final groupCount = allConversations.where((item) => item.isGroup).length;
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Stack(
       children: [
@@ -2495,13 +2507,16 @@ class _MobileChatsTab extends StatelessWidget {
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color:
+                        isDark ? scheme.surfaceContainerHighest : Colors.white,
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: const [
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x12000000),
-                        blurRadius: 18,
-                        offset: Offset(0, 10),
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.24 : 0.07,
+                        ),
+                        blurRadius: isDark ? 22 : 18,
+                        offset: const Offset(0, 10),
                       ),
                     ],
                   ),
@@ -2516,14 +2531,14 @@ class _MobileChatsTab extends StatelessWidget {
                       Text(
                         'Wave',
                         style: theme.textTheme.titleLarge?.copyWith(
-                          color: const Color(0xFF1C232D),
+                          color: scheme.onSurface,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       Text(
                         '@${currentUser.username}',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF7C8798),
+                          color: scheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -2555,17 +2570,26 @@ class _MobileChatsTab extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.88),
+                color: isDark
+                    ? scheme.surfaceContainerHighest.withValues(alpha: 0.72)
+                    : Colors.white.withValues(alpha: 0.88),
                 borderRadius: BorderRadius.circular(24),
+                border: isDark
+                    ? Border.all(
+                        color: scheme.outlineVariant.withValues(alpha: 0.38),
+                      )
+                    : null,
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.search_rounded, color: Color(0xFF8891A0)),
-                  SizedBox(width: 10),
+                  Icon(Icons.search_rounded, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: 10),
                   Text(
                     'Search chats',
                     style: TextStyle(
-                      color: Color(0xFF8891A0),
+                      color: isDark
+                          ? const Color(0xFF8E9AAF)
+                          : const Color(0xFF8891A0),
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
@@ -2755,6 +2779,7 @@ class _LegacyMobileSettingsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 126),
@@ -2803,7 +2828,7 @@ class _LegacyMobileSettingsTab extends StatelessWidget {
                 '${currentUser.email}  •  @${currentUser.username}',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF7D8796),
+                  color: colors.onSurfaceVariant,
                 ),
               ),
             ],
@@ -3023,6 +3048,7 @@ class _MobileSettingsTabState extends State<_MobileSettingsTab> {
     final controller = _controller;
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final settings = controller.settings;
     final user = _currentUser;
     final joinedAt = DateFormat('dd.MM.yyyy').format(user.createdAt);
@@ -3066,7 +3092,10 @@ class _MobileSettingsTabState extends State<_MobileSettingsTab> {
                       decoration: BoxDecoration(
                         color: const Color(0xFF2DA8FF),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: Colors.white, width: 3),
+                        border: Border.all(
+                          color: isDark ? colors.surface : Colors.white,
+                          width: 3,
+                        ),
                       ),
                       child: const Icon(
                         Icons.tune_rounded,
@@ -3081,7 +3110,7 @@ class _MobileSettingsTabState extends State<_MobileSettingsTab> {
               Text(
                 user.displayNameOrUsername,
                 style: theme.textTheme.headlineMedium?.copyWith(
-                  color: const Color(0xFF1B222C),
+                  color: colors.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -3643,6 +3672,8 @@ class _MobileProfileTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final joinedAt = DateFormat('dd.MM.yyyy').format(currentUser.createdAt);
 
     return ListView(
@@ -3660,7 +3691,7 @@ class _MobileProfileTab extends StatelessWidget {
               Text(
                 currentUser.displayNameOrUsername,
                 style: theme.textTheme.headlineMedium?.copyWith(
-                  color: const Color(0xFF171E28),
+                  color: colors.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -3668,7 +3699,7 @@ class _MobileProfileTab extends StatelessWidget {
               Text(
                 'online',
                 style: theme.textTheme.bodyLarge?.copyWith(
-                  color: const Color(0xFF7A8392),
+                  color: colors.onSurfaceVariant,
                 ),
               ),
             ],
@@ -3698,8 +3729,14 @@ class _MobileProfileTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.9),
+            color: isDark
+                ? colors.surfaceContainerHighest.withValues(alpha: 0.58)
+                : Colors.white.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(30),
+            border: isDark
+                ? Border.all(
+                    color: colors.outlineVariant.withValues(alpha: 0.3))
+                : null,
           ),
           child: Column(
             children: [
@@ -3724,7 +3761,9 @@ class _MobileProfileTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.72),
+            color: isDark
+                ? colors.surfaceContainerHighest.withValues(alpha: 0.5)
+                : Colors.white.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(999),
           ),
           child: Row(
@@ -3750,8 +3789,14 @@ class _MobileProfileTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.fromLTRB(22, 26, 22, 24),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.92),
+            color: isDark
+                ? colors.surfaceContainerHighest.withValues(alpha: 0.62)
+                : Colors.white.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(34),
+            border: isDark
+                ? Border.all(
+                    color: colors.outlineVariant.withValues(alpha: 0.28))
+                : null,
           ),
           child: Column(
             children: [
@@ -3760,7 +3805,7 @@ class _MobileProfileTab extends StatelessWidget {
                     ? 'No posts yet...'
                     : 'No archived posts',
                 style: theme.textTheme.titleLarge?.copyWith(
-                  color: const Color(0xFF141A24),
+                  color: colors.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -3769,7 +3814,7 @@ class _MobileProfileTab extends StatelessWidget {
                 'Publish photos and short moments so they appear here in the profile.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF7C8798),
+                  color: colors.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 18),
@@ -3817,17 +3862,27 @@ class _MobileBottomDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.98),
+        color: isDark
+            ? colors.surface.withValues(alpha: 0.94)
+            : Colors.white.withValues(alpha: 0.98),
         borderRadius: BorderRadius.circular(40),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
-        boxShadow: const [
+        border: Border.all(
+          color: isDark
+              ? colors.outlineVariant.withValues(alpha: 0.4)
+              : Colors.white.withValues(alpha: 0.7),
+        ),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x1A000000),
-            blurRadius: 32,
-            offset: Offset(0, 8),
+            color: Colors.black.withValues(alpha: isDark ? 0.32 : 0.1),
+            blurRadius: isDark ? 38 : 32,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -3849,13 +3904,17 @@ class _MobileBottomDock extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 2),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE5F3FF),
+                        color: isDark
+                            ? colors.primary.withValues(alpha: 0.18)
+                            : const Color(0xFFE5F3FF),
                         borderRadius: BorderRadius.circular(32),
-                        boxShadow: const [
+                        boxShadow: [
                           BoxShadow(
-                            color: Color(0x120088CC),
+                            color: colors.primary.withValues(
+                              alpha: isDark ? 0.16 : 0.07,
+                            ),
                             blurRadius: 18,
-                            offset: Offset(0, 4),
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
@@ -3919,8 +3978,10 @@ class _MobileBottomDockItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const activeColor = Color(0xFF0088CC);
-    const inactiveColor = Color(0xFF1F2937);
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final activeColor = colors.primary;
+    final inactiveColor = colors.onSurfaceVariant;
 
     return Material(
       color: Colors.transparent,
@@ -3964,10 +4025,10 @@ class _MobileBottomDockItem extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF3390EC),
+                              color: activeColor,
                               borderRadius: BorderRadius.circular(999),
                               border: Border.all(
-                                color: Colors.white,
+                                color: colors.surface,
                                 width: 2,
                               ),
                               boxShadow: const [
@@ -4022,6 +4083,8 @@ class _MobileBottomDockAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final avatarBytes = _decodeDataImage(user.avatarUrl);
     final avatarUrl = user.avatarUrl?.trim();
     final imageProvider = avatarBytes != null
@@ -4037,21 +4100,21 @@ class _MobileBottomDockAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: selected ? const Color(0xFF0088CC) : const Color(0xFFD6DEE8),
+          color: selected ? colors.primary : colors.outlineVariant,
           width: selected ? 2 : 1,
         ),
       ),
       child: CircleAvatar(
         radius: 14,
-        backgroundColor: const Color(0xFFCCE9F7),
+        backgroundColor: colors.primary.withValues(alpha: 0.16),
         backgroundImage: imageProvider,
         child: imageProvider == null
             ? Text(
                 user.displayNameOrUsername.isEmpty
                     ? '?'
                     : user.displayNameOrUsername[0].toUpperCase(),
-                style: const TextStyle(
-                  color: Color(0xFF173042),
+                style: TextStyle(
+                  color: colors.primary,
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                 ),
@@ -4109,10 +4172,10 @@ class _MobileSettingsAccordionCard extends StatelessWidget {
                     width: 42,
                     height: 42,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE5F3FF),
+                      color: colors.primary.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Icon(icon, color: const Color(0xFF2796E3)),
+                    child: Icon(icon, color: colors.primary),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -4223,9 +4286,12 @@ class _MobileSettingsStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: active ? const Color(0xFFDCF7E7) : const Color(0xFFFFE6BF),
+        color: active
+            ? (isDark ? const Color(0xFF173827) : const Color(0xFFDCF7E7))
+            : (isDark ? const Color(0xFF3A2C12) : const Color(0xFFFFE6BF)),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
@@ -4233,7 +4299,9 @@ class _MobileSettingsStatusBadge extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: active ? const Color(0xFF1F8E4B) : const Color(0xFFA56300),
+            color: active
+                ? const Color(0xFF79D69A)
+                : (isDark ? const Color(0xFFF5C46C) : const Color(0xFFA56300)),
             fontSize: 12,
             fontWeight: FontWeight.w700,
           ),
@@ -4258,13 +4326,14 @@ class _MobileSettingsSliderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final displayValue = value.round().clamp(0, 100);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(icon, size: 18, color: const Color(0xFF5B6573)),
+            Icon(icon, size: 18, color: colors.onSurfaceVariant),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -4277,7 +4346,7 @@ class _MobileSettingsSliderRow extends StatelessWidget {
             Text(
               '$displayValue%',
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: const Color(0xFF6C7685),
+                    color: colors.onSurfaceVariant,
                     fontWeight: FontWeight.w700,
                   ),
             ),
@@ -4311,13 +4380,17 @@ class _MobileConversationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final lastMessage = conversation.lastMessage;
     final unread = lastMessage != null &&
         lastMessage.senderId != currentUser.id &&
         lastMessage.readAt == null;
 
     return Material(
-      color: Colors.white.withValues(alpha: 0.9),
+      color: isDark
+          ? colors.surfaceContainerHighest.withValues(alpha: 0.58)
+          : Colors.white.withValues(alpha: 0.9),
       borderRadius: BorderRadius.circular(30),
       child: InkWell(
         borderRadius: BorderRadius.circular(30),
@@ -4345,7 +4418,10 @@ class _MobileConversationTile extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: const Color(0xFF3CCB69),
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(
+                            color: isDark ? colors.surface : Colors.white,
+                            width: 2,
+                          ),
                         ),
                       ),
                     ),
@@ -4364,7 +4440,7 @@ class _MobileConversationTile extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.titleMedium?.copyWith(
-                              color: const Color(0xFF111821),
+                              color: colors.onSurface,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -4373,7 +4449,7 @@ class _MobileConversationTile extends StatelessWidget {
                         Text(
                           _formatTime(conversation.updatedAt),
                           style: theme.textTheme.labelMedium?.copyWith(
-                            color: const Color(0xFF8090A0),
+                            color: colors.onSurfaceVariant,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -4391,7 +4467,7 @@ class _MobileConversationTile extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: const Color(0xFF7B8595),
+                              color: colors.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -4524,8 +4600,13 @@ class _MobileShortcutCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Material(
-      color: Colors.white.withValues(alpha: 0.88),
+      color: isDark
+          ? colors.surfaceContainerHighest.withValues(alpha: 0.58)
+          : Colors.white.withValues(alpha: 0.88),
       borderRadius: BorderRadius.circular(26),
       child: InkWell(
         borderRadius: BorderRadius.circular(26),
@@ -4534,13 +4615,17 @@ class _MobileShortcutCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
           child: Column(
             children: [
-              Icon(icon, size: 26, color: const Color(0xFF1D232E)),
+              Icon(
+                icon,
+                size: 26,
+                color: isDark ? colors.primary : const Color(0xFF1D232E),
+              ),
               const SizedBox(height: 12),
               Text(
                 label,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF1A2029),
+                style: TextStyle(
+                  color: colors.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
@@ -4564,13 +4649,14 @@ class _MobileInfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           value,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: const Color(0xFF141A24),
+                color: colors.onSurface,
                 fontWeight: FontWeight.w700,
               ),
         ),
@@ -4578,7 +4664,7 @@ class _MobileInfoRow extends StatelessWidget {
         Text(
           label,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF8B94A2),
+                color: colors.onSurfaceVariant,
               ),
         ),
       ],
@@ -4599,8 +4685,14 @@ class _MobileSegmentButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: selected ? const Color(0xFFE3F2FF) : Colors.transparent,
+      color: selected
+          ? (isDark
+              ? colors.primary.withValues(alpha: 0.18)
+              : const Color(0xFFE3F2FF))
+          : Colors.transparent,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -4611,8 +4703,7 @@ class _MobileSegmentButton extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color:
-                  selected ? const Color(0xFF258FDD) : const Color(0xFF7A8494),
+              color: selected ? colors.primary : colors.onSurfaceVariant,
               fontSize: 15,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
             ),
@@ -4638,10 +4729,16 @@ class _MobileFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
       color: selected
-          ? const Color(0xFFE5F3FF)
-          : Colors.white.withValues(alpha: 0.82),
+          ? (isDark
+              ? colors.primary.withValues(alpha: 0.18)
+              : const Color(0xFFE5F3FF))
+          : (isDark
+              ? colors.surfaceContainerHighest.withValues(alpha: 0.52)
+              : Colors.white.withValues(alpha: 0.82)),
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -4654,9 +4751,7 @@ class _MobileFilterChip extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  color: selected
-                      ? const Color(0xFF258FDD)
-                      : const Color(0xFF6E7785),
+                  color: selected ? colors.primary : colors.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -4665,14 +4760,17 @@ class _MobileFilterChip extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
                   color: selected
-                      ? const Color(0xFF2DA8FF)
-                      : const Color(0xFFDCE2EA),
+                      ? colors.primary
+                      : (isDark
+                          ? colors.surface.withValues(alpha: 0.9)
+                          : const Color(0xFFDCE2EA)),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   '$count',
                   style: TextStyle(
-                    color: selected ? Colors.white : const Color(0xFF79808C),
+                    color:
+                        selected ? colors.onPrimary : colors.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -4701,11 +4799,18 @@ class _MobileBlankCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 26, 22, 24),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
+        color: isDark
+            ? colors.surfaceContainerHighest.withValues(alpha: 0.58)
+            : Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(32),
+        border: isDark
+            ? Border.all(color: colors.outlineVariant.withValues(alpha: 0.28))
+            : null,
       ),
       child: Column(
         children: [
@@ -4721,7 +4826,7 @@ class _MobileBlankCard extends StatelessWidget {
             subtitle,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF7E8795),
+                  color: colors.onSurfaceVariant,
                 ),
           ),
           if (actionLabel != null && onAction != null) ...[
