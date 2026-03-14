@@ -306,14 +306,20 @@ class AppUpdateService {
       for (final asset in assets) {
         final name = asset['name']?.toString() ?? '';
         final url = asset['browser_download_url']?.toString() ?? '';
-        if (name.toLowerCase().endsWith(suffix) && url.isNotEmpty) {
-          final digest = asset['digest']?.toString();
-          return _GithubReleaseAsset(
-            name: name,
-            downloadUrl: url,
-            sha256Digest: _normalizeSha256Digest(digest),
-          );
+        if (!name.toLowerCase().endsWith(suffix) || url.isEmpty) {
+          continue;
         }
+
+        final digest = _normalizeSha256Digest(asset['digest']?.toString());
+        if (digest == null) {
+          continue;
+        }
+
+        return _GithubReleaseAsset(
+          name: name,
+          downloadUrl: url,
+          sha256Digest: digest,
+        );
       }
     }
 
