@@ -302,28 +302,49 @@ class AppUpdateService {
       _ => const <String>[],
     };
 
-    for (final suffix in options) {
-      for (final asset in assets) {
-        final name = asset['name']?.toString() ?? '';
-        final url = asset['browser_download_url']?.toString() ?? '';
-        if (!name.toLowerCase().endsWith(suffix) || url.isEmpty) {
-          continue;
-        }
+    final prioritizedSuffixes = <String, int>{
+      for (var i = 0; i < options.length; i += 1) options[i]: i,
+    };
 
-        final digest = _normalizeSha256Digest(asset['digest']?.toString());
-        if (digest == null) {
-          continue;
-        }
+    _GithubReleaseAsset? bestCandidate;
+    var bestPriority = options.length;
 
-        return _GithubReleaseAsset(
+    for (final asset in assets) {
+      final name = asset['name']?.toString() ?? '';
+      final normalizedName = name.toLowerCase();
+      final url = asset['browser_download_url']?.toString() ?? '';
+      if (url.isEmpty) {
+        continue;
+      }
+
+      String? matchedSuffix;
+      for (final suffix in options) {
+        if (normalizedName.endsWith(suffix)) {
+          matchedSuffix = suffix;
+          break;
+        }
+      }
+      if (matchedSuffix == null) {
+        continue;
+      }
+
+      final digest = _normalizeSha256Digest(asset['digest']?.toString());
+      if (digest == null) {
+        continue;
+      }
+
+      final priority = prioritizedSuffixes[matchedSuffix] ?? options.length;
+      if (bestCandidate == null || priority < bestPriority) {
+        bestCandidate = _GithubReleaseAsset(
           name: name,
           downloadUrl: url,
           sha256Digest: digest,
         );
+        bestPriority = priority;
       }
     }
 
-    return null;
+    return bestCandidate;
   }
 
   String _actionLabelForCurrentPlatform(bool hasDirectAsset) {
