@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -147,6 +148,32 @@ class AppUpdateService {
       );
     }
 
+    final expectedSha256 = _normalizeSha256Digest(update.sha256Digest);
+    if (expectedSha256 == null) {
+      await targetFile.delete().catchError((_) {});
+      return const AppUpdateInstallResult(
+        status: AppUpdateInstallStatus.failed,
+        message:
+            'В релизе отсутствует контрольная сумма SHA-256. Установка из приложения заблокирована.',
+      );
+    }
+
+    onProgress?.call(
+      const AppUpdateDownloadProgress(
+        message: 'Проверяем целостность файла...',
+      ),
+    );
+
+    final actualSha256 = await _computeSha256Hex(targetFile);
+    if (actualSha256 != expectedSha256) {
+      await targetFile.delete().catchError((_) {});
+      return const AppUpdateInstallResult(
+        status: AppUpdateInstallStatus.failed,
+        message:
+            'Проверка целостности обновления не пройдена. Установка отменена.',
+      );
+    }
+
     onProgress?.call(
       const AppUpdateDownloadProgress(
         message: 'Запускаем установщик...',
@@ -166,6 +193,30 @@ class AppUpdateService {
     } catch (_) {
       return null;
     }
+  }
+
+
+  Future<String> _computeSha256Hex(File file) async {
+    final digest = await sha256.bind(file.openRead()).first;
+    return digest.toString();
+  }
+
+  String? _normalizeSha256Digest(String? digest) {
+    if (digest == null) {
+      return null;
+    }
+
+    final trimmed = digest.trim().toLowerCase();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final normalized = trimmed.startsWith('sha256:')
+        ? trimmed.substring('sha256:'.length)
+        : trimmed;
+
+    final isHex = RegExp(r'^[a-f0-9]{64}$').hasMatch(normalized);
+    return isHex ? normalized : null;
   }
 
   Future<File> _resolveDownloadTarget(AppUpdateInfo update) async {
@@ -210,6 +261,7 @@ class AppUpdateService {
         publishedAt: publishedAt,
         downloadUrl: Uri.tryParse(selectedAsset?.downloadUrl ?? ''),
         assetName: selectedAsset?.name,
+        sha256Digest: selectedAsset?.sha256Digest,
         actionLabel: _actionLabelForCurrentPlatform(selectedAsset != null),
         canDetermineIfNewer: true,
       );
@@ -231,6 +283,7 @@ class AppUpdateService {
       publishedAt: publishedAt,
       downloadUrl: Uri.tryParse(selectedAsset.downloadUrl),
       assetName: selectedAsset.name,
+      sha256Digest: selectedAsset.sha256Digest,
       actionLabel: _actionLabelForCurrentPlatform(true),
       canDetermineIfNewer: false,
     );
@@ -254,7 +307,12 @@ class AppUpdateService {
         final name = asset['name']?.toString() ?? '';
         final url = asset['browser_download_url']?.toString() ?? '';
         if (name.toLowerCase().endsWith(suffix) && url.isNotEmpty) {
-          return _GithubReleaseAsset(name: name, downloadUrl: url);
+          final digest = asset['digest']?.toString();
+          return _GithubReleaseAsset(
+            name: name,
+            downloadUrl: url,
+            sha256Digest: _normalizeSha256Digest(digest),
+          );
         }
       }
     }
@@ -387,6 +445,7 @@ class AppUpdateInfo {
     this.publishedAt,
     this.downloadUrl,
     this.assetName,
+    this.sha256Digest,
   });
 
   final String currentVersion;
@@ -397,6 +456,7 @@ class AppUpdateInfo {
   final Uri? downloadUrl;
   final DateTime? publishedAt;
   final String? assetName;
+  final String? sha256Digest;
   final String actionLabel;
   final bool canDetermineIfNewer;
 }
@@ -405,10 +465,12 @@ class _GithubReleaseAsset {
   const _GithubReleaseAsset({
     required this.name,
     required this.downloadUrl,
+    required this.sha256Digest,
   });
 
   final String name;
   final String downloadUrl;
+  final String? sha256Digest;
 }
 
 class _ParsedVersion {
