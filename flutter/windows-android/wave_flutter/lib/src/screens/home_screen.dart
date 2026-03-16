@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -7,7 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
 
 import '../calls/calls.dart';
 import '../config/app_config.dart';
@@ -48,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _imagePicker = ImagePicker();
   final _callTonePlayer = AudioPlayer(playerId: 'wave-call-tone');
   final _messageSoundPlayer = AudioPlayer(playerId: 'wave-message-sounds');
+  final AudioRecorder _voiceRecorder = AudioRecorder();
   final Map<String, String> _conversationMessageSoundKeys = <String, String>{};
   String? _lastConversationId;
   int _lastMessageCount = 0;
@@ -56,6 +60,9 @@ class _HomeScreenState extends State<HomeScreen> {
   _ProfileFeedTab _profileFeedTab = _ProfileFeedTab.posts;
   bool _mobileChatOpen = false;
   String? _mobilePendingConversationId;
+  bool _isVoiceRecording = false;
+  Duration _voiceRecordingDuration = Duration.zero;
+  Timer? _voiceRecordingTimer;
   ChatController? _chatController;
   CallController? _callController;
   SettingsController? _settingsController;
@@ -100,6 +107,8 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_callController?.deactivate() ?? Future<void>.value());
     unawaited(_callTonePlayer.dispose());
     unawaited(_messageSoundPlayer.dispose());
+    _voiceRecordingTimer?.cancel();
+    unawaited(_voiceRecorder.dispose());
     _composerController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -218,7 +227,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   scrollController: _scrollController,
                   onComposerChanged: (_) => chat.sendTypingSignal(),
                   onSend: () => _sendMessage(chat),
+                  onToggleVoiceRecording: () => _toggleVoiceRecording(chat),
+                  voiceRecordingActive: _isVoiceRecording,
+                  voiceRecordingDuration: _voiceRecordingDuration,
                   onEditMessage: (message) => _editMessage(chat, message),
+                  onToggleReaction: (message, emoji) =>
+                      _toggleReaction(chat, message, emoji),
                   onStartAudioCall: () =>
                       _startOutgoingCall(videoRequested: false),
                   onStartVideoCall: () =>
@@ -237,7 +251,12 @@ class _HomeScreenState extends State<HomeScreen> {
             scrollController: _scrollController,
             onComposerChanged: (_) => chat.sendTypingSignal(),
             onSend: () => _sendMessage(chat),
+            onToggleVoiceRecording: () => _toggleVoiceRecording(chat),
+            voiceRecordingActive: _isVoiceRecording,
+            voiceRecordingDuration: _voiceRecordingDuration,
             onEditMessage: (message) => _editMessage(chat, message),
+            onToggleReaction: (message, emoji) =>
+                _toggleReaction(chat, message, emoji),
             onStartAudioCall: () => _startOutgoingCall(videoRequested: false),
             onStartVideoCall: () => _startOutgoingCall(videoRequested: true),
           );
@@ -368,7 +387,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       scrollController: _scrollController,
                       onComposerChanged: (_) => chat.sendTypingSignal(),
                       onSend: () => _sendMessage(chat),
+                      onToggleVoiceRecording: () =>
+                          _toggleVoiceRecording(chat),
+                      voiceRecordingActive: _isVoiceRecording,
+                      voiceRecordingDuration: _voiceRecordingDuration,
                       onEditMessage: (message) => _editMessage(chat, message),
+                      onToggleReaction: (message, emoji) =>
+                          _toggleReaction(chat, message, emoji),
                       onStartAudioCall: () =>
                           _startOutgoingCall(videoRequested: false),
                       onStartVideoCall: () =>
@@ -604,6 +629,123 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message)),
       );
+    }
+  }
+
+  Future<void> _toggleReaction(
+    ChatController chat,
+    ChatMessage message,
+    String emoji,
+  ) async {
+    try {
+      await chat.toggleReaction(
+        conversationId: message.conversationId,
+        messageId: message.id,
+        emoji: emoji,
+      );
+    } on ApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
+  }
+
+  Future<void> _toggleVoiceRecording(ChatController chat) async {
+    if (_isVoiceRecording) {
+      await _finishVoiceRecording(chat);
+      return;
+    }
+    await _startVoiceRecording();
+  }
+
+  Future<void> _startVoiceRecording() async {
+    final hasPermission = await _voiceRecorder.hasPermission();
+    if (!hasPermission) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Нет доступа к микрофону.')),
+      );
+      return;
+    }
+
+    final tempDir = await getTemporaryDirectory();
+    final filePath =
+        '${tempDir.path}${Platform.pathSeparator}wave-voice-${DateTime.now().microsecondsSinceEpoch}.m4a';
+
+    await _voiceRecorder.start(
+      const RecordConfig(encoder: AudioEncoder.aacLc),
+      path: filePath,
+    );
+
+    _voiceRecordingTimer?.cancel();
+    _voiceRecordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || !_isVoiceRecording) {
+        return;
+      }
+      setState(() {
+        _voiceRecordingDuration =
+            Duration(seconds: _voiceRecordingDuration.inSeconds + 1);
+      });
+    });
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isVoiceRecording = true;
+      _voiceRecordingDuration = Duration.zero;
+    });
+  }
+
+  Future<void> _finishVoiceRecording(ChatController chat) async {
+    _voiceRecordingTimer?.cancel();
+    _voiceRecordingTimer = null;
+
+    final path = await _voiceRecorder.stop();
+    final duration = _voiceRecordingDuration;
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isVoiceRecording = false;
+      _voiceRecordingDuration = Duration.zero;
+    });
+
+    if (path == null || duration < const Duration(milliseconds: 700)) {
+      return;
+    }
+
+    final bytes = await File(path).readAsBytes();
+    final base64Data =
+        'data:audio/mp4;base64,${base64Encode(bytes)}';
+    try {
+      await chat.sendTextMessageWithPayload(
+        rawText: '🎤 Голосовое сообщение',
+        requestBody: {
+          'text': '🎤 Голосовое сообщение',
+          'voiceData': base64Data,
+        },
+        optimisticText: '🎤 Голосовое сообщение',
+        optimisticEncryption: null,
+      );
+    } on ApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } finally {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
     }
   }
 
@@ -1183,7 +1325,11 @@ class _ChatPane extends StatelessWidget {
     required this.scrollController,
     required this.onComposerChanged,
     required this.onSend,
+    required this.onToggleVoiceRecording,
+    required this.voiceRecordingActive,
+    required this.voiceRecordingDuration,
     required this.onEditMessage,
+    required this.onToggleReaction,
     required this.onStartAudioCall,
     required this.onStartVideoCall,
     this.showBackButton = false,
@@ -1201,7 +1347,11 @@ class _ChatPane extends StatelessWidget {
   final ScrollController scrollController;
   final ValueChanged<String> onComposerChanged;
   final VoidCallback onSend;
+  final VoidCallback onToggleVoiceRecording;
+  final bool voiceRecordingActive;
+  final Duration voiceRecordingDuration;
   final ValueChanged<ChatMessage> onEditMessage;
+  final void Function(ChatMessage message, String emoji) onToggleReaction;
   final VoidCallback onStartAudioCall;
   final VoidCallback onStartVideoCall;
   final bool showBackButton;
@@ -1357,14 +1507,25 @@ class _ChatPane extends StatelessWidget {
                             settingsController.isMessageEncrypted(message);
 
                         return GestureDetector(
-                          onLongPress:
-                              canEdit ? () => onEditMessage(message) : null,
+                          onLongPress: () async {
+                            final emoji = await _showReactionPicker(context);
+                            if (emoji != null) {
+                              onToggleReaction(message, emoji);
+                              return;
+                            }
+                            if (canEdit) {
+                              onEditMessage(message);
+                            }
+                          },
                           child: _MessageBubble(
                             message: message,
                             isMine: isMine,
                             senderName: senderName,
                             displayText: displayText,
                             encrypted: encrypted,
+                            currentUserId: currentUser.id,
+                            onToggleReaction: (emoji) =>
+                                onToggleReaction(message, emoji),
                           ),
                         );
                       },
@@ -1417,6 +1578,30 @@ class _ChatPane extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
+                  IconButton.filledTonal(
+                    onPressed: canSend ? onToggleVoiceRecording : null,
+                    style: IconButton.styleFrom(
+                      backgroundColor: voiceRecordingActive
+                          ? scheme.errorContainer
+                          : null,
+                      foregroundColor: voiceRecordingActive
+                          ? scheme.onErrorContainer
+                          : null,
+                    ),
+                    icon: Icon(
+                      voiceRecordingActive
+                          ? Icons.stop_circle_outlined
+                          : Icons.mic_none_rounded,
+                    ),
+                  ),
+                  if (voiceRecordingActive) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      _formatRecordingDuration(voiceRecordingDuration),
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                  ],
+                  const SizedBox(width: 10),
                   FilledButton(
                     onPressed: canSend ? onSend : null,
                     style: FilledButton.styleFrom(
@@ -1441,6 +1626,8 @@ class _MessageBubble extends StatelessWidget {
     required this.isMine,
     required this.displayText,
     required this.encrypted,
+    required this.currentUserId,
+    required this.onToggleReaction,
     this.senderName,
   });
 
@@ -1448,6 +1635,8 @@ class _MessageBubble extends StatelessWidget {
   final bool isMine;
   final String displayText;
   final bool encrypted;
+  final String currentUserId;
+  final ValueChanged<String> onToggleReaction;
   final String? senderName;
 
   @override
@@ -1593,12 +1782,57 @@ class _MessageBubble extends StatelessWidget {
                     ],
                   ],
                 ),
+                if (message.reactions.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _buildReactionChips(
+                      context: context,
+                      textColor: textColor,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  List<Widget> _buildReactionChips({
+    required BuildContext context,
+    required Color textColor,
+  }) {
+    final grouped = <String, List<String>>{};
+    for (final reaction in message.reactions) {
+      grouped.putIfAbsent(reaction.emoji, () => <String>[]).add(reaction.userId);
+    }
+
+    return grouped.entries.map((entry) {
+      final containsMine = entry.value.contains(currentUserId);
+      return InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => onToggleReaction(entry.key),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: containsMine
+                ? textColor.withValues(alpha: 0.22)
+                : textColor.withValues(alpha: 0.12),
+          ),
+          child: Text(
+            '${entry.key} ${entry.value.length}',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: textColor,
+                  fontWeight: containsMine ? FontWeight.w700 : FontWeight.w500,
+                ),
+          ),
+        ),
+      );
+    }).toList();
   }
 }
 
@@ -4942,6 +5176,42 @@ String _formatPlaybackDuration(Duration duration) {
   final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
   final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
   return '$minutes:$seconds';
+}
+
+String _formatRecordingDuration(Duration duration) {
+  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return '$minutes:$seconds';
+}
+
+Future<String?> _showReactionPicker(BuildContext context) {
+  const emojis = ['👍', '❤️', '😂', '🔥', '😮', '😢', '👏', '🎉'];
+  return showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: emojis
+                .map(
+                  (emoji) => ActionChip(
+                    label: Text(
+                      emoji,
+                      style: const TextStyle(fontSize: 22),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(emoji),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _DecodedAudioSource {
