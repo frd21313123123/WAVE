@@ -37,6 +37,40 @@ To launch the legacy WebView shell instead of the native Windows client:
 flutter run -d windows --dart-define=WAVE_WINDOWS_CLIENT_MODE=shell --dart-define=WAVE_BASE_URL=https://your-domain.example
 ```
 
+## Android update-safe release builds
+
+To install a new Android build over an already installed app, two things must stay consistent:
+
+1. the same `applicationId` (`com.wave.messenger`);
+2. the same **release keystore** used to sign every release.
+
+If signing key changes (or debug key is used), Android will fail to update with a signature mismatch.
+
+### 1) Configure release keystore once
+
+Create `flutter/windows-android/wave_flutter/android/key.properties`:
+
+```properties
+storeFile=../keys/wave-upload.jks
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=wave-upload
+keyPassword=YOUR_KEY_PASSWORD
+```
+
+Keep this keystore safe and never rotate it for normal updates.
+
+### 2) Increase build number on every release
+
+Build number maps to Android `versionCode` and must always grow for updates.
+
+```bash
+flutter build appbundle --release --build-number=2
+```
+
+For next release use `--build-number=3`, then `4`, etc.
+
+> The Android Gradle config now blocks release builds when `android/key.properties` is missing, so broken non-updatable releases are prevented early.
+
 ## Recreate platform files
 
 ```bash
