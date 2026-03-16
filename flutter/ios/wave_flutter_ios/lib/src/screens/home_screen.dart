@@ -1153,6 +1153,7 @@ class _MessageBubble extends StatelessWidget {
                     child: Image.memory(
                       imageBytes,
                       fit: BoxFit.cover,
+                      gaplessPlayback: true,
                     ),
                   ),
                   if (displayText.trim().isNotEmpty &&
