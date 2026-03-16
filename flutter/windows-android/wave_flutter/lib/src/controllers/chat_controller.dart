@@ -298,6 +298,27 @@ class ChatController extends ChangeNotifier {
     }
   }
 
+  Future<void> toggleReaction({
+    required String conversationId,
+    required String messageId,
+    required String emoji,
+  }) async {
+    final payload = await apiClient.post(
+      '/api/conversations/$conversationId/messages/$messageId/reactions',
+      data: {'emoji': emoji},
+    );
+    final reactions = ((payload['reactions'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => MessageReaction.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+    _applyReactions(
+      conversationId: conversationId,
+      messageId: messageId,
+      reactions: reactions,
+    );
+    notifyListeners();
+  }
+
   Future<List<PublicUser>> searchUsers(String query) async {
     final trimmed = query.trim();
     if (trimmed.length < 2) {
@@ -449,6 +470,23 @@ class ChatController extends ChangeNotifier {
           notifyListeners();
         }
         return;
+      case 'message:reactions':
+        final conversationId = event['conversationId']?.toString();
+        final messageId = event['messageId']?.toString();
+        if (conversationId != null && messageId != null) {
+          final reactions = ((event['reactions'] as List?) ?? const [])
+              .whereType<Map>()
+              .map((item) =>
+                  MessageReaction.fromJson(Map<String, dynamic>.from(item)))
+              .toList();
+          _applyReactions(
+            conversationId: conversationId,
+            messageId: messageId,
+            reactions: reactions,
+          );
+          notifyListeners();
+        }
+        return;
       case 'conversation:deleted':
         final conversationId = event['conversationId']?.toString();
         if (conversationId != null) {
@@ -465,6 +503,22 @@ class ChatController extends ChangeNotifier {
       default:
         return;
     }
+  }
+
+  void _applyReactions({
+    required String conversationId,
+    required String messageId,
+    required List<MessageReaction> reactions,
+  }) {
+    final bucket = _messagesByConversation[conversationId];
+    if (bucket == null) {
+      return;
+    }
+    final index = bucket.indexWhere((message) => message.id == messageId);
+    if (index < 0) {
+      return;
+    }
+    bucket[index].reactions = reactions;
   }
 
   void _mergeIncomingMessage(ChatMessage message) {
