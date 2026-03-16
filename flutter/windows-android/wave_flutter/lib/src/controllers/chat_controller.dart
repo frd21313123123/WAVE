@@ -25,6 +25,7 @@ class ChatController extends ChangeNotifier {
   String? _activeConversationId;
   String? _typingDisplayName;
   bool _isBootstrapping = false;
+  bool _isResyncing = false;
   DateTime? _lastTypingSentAt;
   int _sendSequence = 0;
 
@@ -136,8 +137,8 @@ class ChatController extends ChangeNotifier {
     await markConversationAsRead(conversationId);
   }
 
-  Future<void> loadMessages(String conversationId) async {
-    if (_loadedMessagesConversationIds.contains(conversationId)) {
+  Future<void> loadMessages(String conversationId, {bool force = false}) async {
+    if (!force && _loadedMessagesConversationIds.contains(conversationId)) {
       return;
     }
 
@@ -354,6 +355,8 @@ class ChatController extends ChangeNotifier {
 
     switch (type) {
       case 'ready':
+        unawaited(_refreshAfterReconnect());
+        return;
       case 'pong':
         return;
       case 'conversation:update':
@@ -571,5 +574,25 @@ class ChatController extends ChangeNotifier {
 
   void _sortConversations() {
     _conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  Future<void> _refreshAfterReconnect() async {
+    if (_isResyncing || _currentUser == null) {
+      return;
+    }
+
+    _isResyncing = true;
+    try {
+      await loadConversations();
+
+      final activeConversationId = _activeConversationId;
+      if (activeConversationId != null) {
+        await loadMessages(activeConversationId, force: true);
+      }
+    } catch (_) {
+      return;
+    } finally {
+      _isResyncing = false;
+    }
   }
 }
