@@ -8,6 +8,11 @@ plugins {
 
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
+val releaseKeystoreMissingError = """
+Release signing is not configured.
+Create android/key.properties with your production keystore values.
+Without a stable release keystore Android cannot install updates over previous versions.
+""".trimIndent()
 
 if (keystorePropertiesFile.exists()) {
     FileInputStream(keystorePropertiesFile).use { stream ->
@@ -47,11 +52,11 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            if (!keystorePropertiesFile.exists()) {
+                throw GradleException(releaseKeystoreMissingError)
             }
+
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
