@@ -363,108 +363,112 @@ class _HomeScreenState extends State<HomeScreen> {
           lastMessage.readAt == null;
     }).length;
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Stack(
-        children: [
-          SafeArea(
-            bottom: false,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 240),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              child: showConversation
-                  ? _ChatPane(
-                      key: ValueKey<String>(
-                        'mobile-chat-${mobileConversation?.id ?? pendingConversationId ?? 'loading'}',
+    return WillPopScope(
+      onWillPop: _handleMobileBackPress,
+      child: Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Stack(
+          children: [
+            SafeArea(
+              bottom: false,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 240),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: showConversation
+                    ? _ChatPane(
+                        key: ValueKey<String>(
+                          'mobile-chat-${mobileConversation?.id ?? pendingConversationId ?? 'loading'}',
+                        ),
+                        currentUser: currentUser,
+                        settingsController: settings,
+                        conversation: mobileConversation,
+                        messages: mobileConversationMessages,
+                        typingDisplayName: chat.typingDisplayName,
+                        composerController: _composerController,
+                        scrollController: _scrollController,
+                        onComposerChanged: (_) => chat.sendTypingSignal(),
+                        onSend: () => _sendMessage(chat),
+                        onToggleVoiceRecording: () =>
+                            _toggleVoiceRecording(chat),
+                        voiceRecordingActive: _isVoiceRecording,
+                        voiceRecordingDuration: _voiceRecordingDuration,
+                        onEditMessage: (message) => _editMessage(chat, message),
+                        onToggleReaction: (message, emoji) =>
+                            _toggleReaction(chat, message, emoji),
+                        onStartAudioCall: () =>
+                            _startOutgoingCall(videoRequested: false),
+                        onStartVideoCall: () =>
+                            _startOutgoingCall(videoRequested: true),
+                        showBackButton: true,
+                        onBack: _closeMobileConversation,
+                        isLoading: isConversationLoading,
+                        loadingConversationTitle: mobileConversation?.titleFor(
+                          currentUser.id,
+                        ),
+                      )
+                    : _MobileHomeView(
+                        key: ValueKey<String>('mobile-tab-${_mobileTab.name}'),
+                        currentUser: currentUser,
+                        conversations: filteredConversations,
+                        allConversations: chat.conversations,
+                        settingsController: settings,
+                        activeTab: _mobileTab,
+                        selectedFilter: _mobileChatFilter,
+                        selectedFeedTab: _profileFeedTab,
+                        onFilterChanged: (value) {
+                          setState(() {
+                            _mobileChatFilter = value;
+                          });
+                        },
+                        onFeedTabChanged: (value) {
+                          setState(() {
+                            _profileFeedTab = value;
+                          });
+                        },
+                        onTabChanged: _setMobileTab,
+                        onOpenConversation: _openMobileConversation,
+                        onOpenNewChat: () => unawaited(_openNewChatSheet()),
+                        onOpenNewGroup: () => unawaited(_openNewGroupSheet()),
+                        onOpenSettings: () =>
+                            _setMobileTab(_MobileHomeTab.settings),
+                        onOpenProfileEditor: () =>
+                            unawaited(_openProfileSheet()),
+                        onUploadAvatar: _uploadAvatarFromProfile,
+                        onRunMicrophoneTest: _runMicrophoneTest,
+                        onPreviewCallTone: _previewCallTone,
+                        onCheckForUpdates: _checkForUpdatesFromSettings,
+                        appVersionText: updateController.installedVersion,
+                        updateStatusText: updateController.updateStatusLabel,
+                        onLogout: _logoutFromMobileShell,
                       ),
-                      currentUser: currentUser,
-                      settingsController: settings,
-                      conversation: mobileConversation,
-                      messages: mobileConversationMessages,
-                      typingDisplayName: chat.typingDisplayName,
-                      composerController: _composerController,
-                      scrollController: _scrollController,
-                      onComposerChanged: (_) => chat.sendTypingSignal(),
-                      onSend: () => _sendMessage(chat),
-                      onToggleVoiceRecording: () =>
-                          _toggleVoiceRecording(chat),
-                      voiceRecordingActive: _isVoiceRecording,
-                      voiceRecordingDuration: _voiceRecordingDuration,
-                      onEditMessage: (message) => _editMessage(chat, message),
-                      onToggleReaction: (message, emoji) =>
-                          _toggleReaction(chat, message, emoji),
-                      onStartAudioCall: () =>
-                          _startOutgoingCall(videoRequested: false),
-                      onStartVideoCall: () =>
-                          _startOutgoingCall(videoRequested: true),
-                      showBackButton: true,
-                      onBack: _closeMobileConversation,
-                      isLoading: isConversationLoading,
-                      loadingConversationTitle: mobileConversation?.titleFor(
-                        currentUser.id,
-                      ),
-                    )
-                  : _MobileHomeView(
-                      key: ValueKey<String>('mobile-tab-${_mobileTab.name}'),
-                      currentUser: currentUser,
-                      conversations: filteredConversations,
-                      allConversations: chat.conversations,
-                      settingsController: settings,
-                      activeTab: _mobileTab,
-                      selectedFilter: _mobileChatFilter,
-                      selectedFeedTab: _profileFeedTab,
-                      onFilterChanged: (value) {
-                        setState(() {
-                          _mobileChatFilter = value;
-                        });
-                      },
-                      onFeedTabChanged: (value) {
-                        setState(() {
-                          _profileFeedTab = value;
-                        });
-                      },
-                      onTabChanged: _setMobileTab,
-                      onOpenConversation: _openMobileConversation,
-                      onOpenNewChat: () => unawaited(_openNewChatSheet()),
-                      onOpenNewGroup: () => unawaited(_openNewGroupSheet()),
-                      onOpenSettings: () =>
-                          _setMobileTab(_MobileHomeTab.settings),
-                      onOpenProfileEditor: () => unawaited(_openProfileSheet()),
-                      onUploadAvatar: _uploadAvatarFromProfile,
-                      onRunMicrophoneTest: _runMicrophoneTest,
-                      onPreviewCallTone: _previewCallTone,
-                      onCheckForUpdates: _checkForUpdatesFromSettings,
-                      appVersionText: updateController.installedVersion,
-                      updateStatusText: updateController.updateStatusLabel,
-                      onLogout: _logoutFromMobileShell,
-                    ),
-            ),
-          ),
-          if (callState.pendingIncoming != null)
-            IncomingCallSheet(
-              state: callState,
-              onAccept: () => unawaited(_acceptIncomingCall()),
-              onReject: () => unawaited(callController.rejectIncomingCall()),
-              onAcceptWithVideo: () =>
-                  unawaited(_acceptIncomingCall(videoRequested: true)),
-            ),
-        ],
-      ),
-      bottomNavigationBar: showConversation
-          ? null
-          : SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: _MobileBottomDock(
-                  currentUser: currentUser,
-                  activeTab: _mobileTab,
-                  chatsBadgeCount: unreadDockCount,
-                  onTabSelected: _setMobileTab,
-                ),
               ),
             ),
+            if (callState.pendingIncoming != null)
+              IncomingCallSheet(
+                state: callState,
+                onAccept: () => unawaited(_acceptIncomingCall()),
+                onReject: () => unawaited(callController.rejectIncomingCall()),
+                onAcceptWithVideo: () =>
+                    unawaited(_acceptIncomingCall(videoRequested: true)),
+              ),
+          ],
+        ),
+        bottomNavigationBar: showConversation
+            ? null
+            : SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: _MobileBottomDock(
+                    currentUser: currentUser,
+                    activeTab: _mobileTab,
+                    chatsBadgeCount: unreadDockCount,
+                    onTabSelected: _setMobileTab,
+                  ),
+                ),
+              ),
+      ),
     );
   }
 
@@ -530,6 +534,18 @@ class _HomeScreenState extends State<HomeScreen> {
       _mobileChatOpen = false;
       _mobilePendingConversationId = null;
     });
+  }
+
+  Future<bool> _handleMobileBackPress() async {
+    if (_mobileChatOpen) {
+      _closeMobileConversation();
+      return false;
+    }
+    if (_mobileTab != _MobileHomeTab.chats) {
+      _setMobileTab(_MobileHomeTab.chats);
+      return false;
+    }
+    return true;
   }
 
   Future<void> _openProfileSheet() async {
